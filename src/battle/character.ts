@@ -3,7 +3,7 @@ import { CANVAS_SIZE, DEFAULT_PARAMS, detect, type DetectParams, type DetectResu
 import { cutParts, type Parts } from "../parts";
 import type { FighterConfig } from "../sim/world";
 import type { EffectId } from "../sim/special";
-import { fighterShape, VISUAL_SIZE, type ShapeFeatures } from "../shape";
+import { buildHurt, fighterShape, VISUAL_SIZE, type ShapeFeatures } from "../shape";
 
 export { VISUAL_SIZE };
 
@@ -36,6 +36,7 @@ export function buildCharacter(name: string, strokes: Stroke[], special: EffectI
       hasFeet: shape.hasFeet,
       special,
       traits: shape.traits,
+      hurt: buildHurt(strokes, res), // 描いた線と塗りの部分だけが当たる
     },
   };
 }

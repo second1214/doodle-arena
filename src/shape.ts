@@ -1,6 +1,6 @@
 // 絵の形 → 性能（形の性能）。DOM 非依存。長さは絵の外接矩形の長辺 L で割るので、描いた大きさに依らない。
 // 係数は SHAPE で外出し（調整はここだけ）。保存時は結果を凍結し SHAPE_VERSION を記録する想定。
-import type { DetectResult } from "./detect";
+import { CANVAS_SIZE, edt, rasterize, type DetectResult, type Stroke } from "./detect";
 
 export const SHAPE_VERSION = 1;
 
@@ -156,4 +156,42 @@ export function describeShape(sh: ReturnType<typeof fighterShape>): string[] {
   if (k) out.push(`${k}（×${t.knockTaken.toFixed(2)}）`);
   if (t.radius >= 1.15) out.push("横に大きい（当たりやすい）");
   return out;
+}
+
+// 当たり判定の地図（描いた線と塗りの部分だけが体。空白は素通り）。DOM 非依存で、同じ絵なら必ず同じ結果。
+// 座標は見た目と同じ: 左右 u は絵の重心からの距離、高さ v は足元からの高さ（どちらも戦闘の単位）。
+export interface Hurt {
+  cs: number; // 1マスの大きさ（単位）
+  gw: number; gh: number;
+  ox: number; // 重心の位置（マス）
+  dist: Float32Array; // 各マスから一番近い描いた部分までの距離（マス）
+  handV: number; // 一番長い手の付け根の高さ（通常攻撃が当たる高さの目安）
+}
+
+const HURT_RES = 128;
+
+export function buildHurt(strokes: Stroke[], r: DetectResult): Hurt | undefined {
+  const m = rasterize(strokes, HURT_RES);
+  let x0 = HURT_RES, y0 = HURT_RES, x1 = -1, y1 = -1;
+  for (let i = 0; i < m.length; i++) {
+    if (!m[i]) continue;
+    const x = i % HURT_RES, y = (i - x) / HURT_RES;
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
+  if (x1 < 0) return undefined;
+  const px = CANVAS_SIZE / HURT_RES; // 1マスが何画素か
+  const scale = VISUAL_SIZE / Math.max(40, (x1 - x0 + 1) * px, (y1 - y0 + 1) * px); // 見た目と同じ縮尺
+  const gw = x1 - x0 + 1, gh = y1 - y0 + 1;
+  const N = Math.max(gw, gh);
+  const crop = new Uint8Array(N * N);
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) crop[y * N + x] = m[(y + y0) * HURT_RES + x + x0];
+  const d2 = edt(crop, N);
+  const dist = new Float32Array(gw * gh);
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) dist[y * gw + x] = Math.sqrt(d2[y * N + x]);
+  const g = CANVAS_SIZE / r.size; // 検知の1マスが何画素か
+  const cxPx = r.centroid[0] * g;
+  const hands = r.limbs.filter((l) => l.kind === "hand").sort((a, b) => b.length - a.length);
+  const bottomPx = (y1 + 1) * px;
+  const handV = hands.length ? Math.max(0.2, (bottomPx - hands[0].pivot[1] * g) * scale) : (gh * px * scale) / 2;
+  return { cs: px * scale, gw, gh, ox: cxPx / px - x0, dist, handV };
 }

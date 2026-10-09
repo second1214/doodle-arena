@@ -2,7 +2,7 @@
 // 空間は地面の平面(x, z)＋高さ h。数値はすべて調整前提の仮値。
 import { Rng } from "./rng";
 import { composeSpecial, type EffectId, type ProjSpec } from "./special";
-import { DEFAULT_TRAITS, type Traits } from "../shape";
+import { DEFAULT_TRAITS, type Hurt, type Traits } from "../shape";
 import { composeMelee, type MeleeEffectId, type MeleeSpec } from "./melee";
 import { statEffects, type StatEffects, type Stats } from "./stats";
 
@@ -51,6 +51,7 @@ export interface FighterConfig {
   melee?: MeleeEffectId[]; // 近接型の効果
   traits?: Traits; // 絵の形による性能（無ければ標準）
   stats?: Stats; // 能力値の振り分け（無ければ標準）
+  hurt?: Hurt; // 描いた部分だけの当たり判定（無ければ体の円）
   personality?: Personality; // CPU が動かすときの性格
 }
 
@@ -59,6 +60,23 @@ export type Personality = "aggressive" | "cautious" | "sniper" | "tricky";
 const tr = (c: FighterConfig) => c.traits ?? DEFAULT_TRAITS;
 const rad = (c: FighterConfig) => BODY_RADIUS * tr(c).radius;
 export const bodyRadius = rad;
+
+const HURT_DEPTH = 0.35; // 膨らませた体の厚みの半分（目安）
+
+// 世界の点 (wx, wh=高さ, wz) から半径 r の範囲に、f の「描いた部分」があるか。空白は素通り。
+export function hurtHit(f: Fighter, wx: number, wh: number, wz: number, r: number): boolean {
+  const H = f.cfg.hurt;
+  if (!H) return Math.hypot(wx - f.x, wz - f.z) <= r + rad(f.cfg) && wh <= BODY_HEIGHT + r && wh >= -r;
+  if (Math.abs(wz - f.z) > HURT_DEPTH + r) return false;
+  const facing = f.fx >= 0 ? 1 : -1; // 左を向くと絵は左右反転（見た目と同じ）
+  const u = (wx - f.x) * facing;
+  const gx = u / H.cs + H.ox, gy = H.gh - wh / H.cs;
+  const cx = Math.max(0, Math.min(H.gw - 1, Math.floor(gx)));
+  const cy = Math.max(0, Math.min(H.gh - 1, Math.floor(gy)));
+  const outside = Math.hypot(gx < 0 ? -gx : gx > H.gw ? gx - H.gw : 0, gy < 0 ? -gy : gy > H.gh ? gy - H.gh : 0);
+  // 見た目は線を少し太らせて膨らませているので、その分（約 0.06）を足す
+  return (H.dist[cy * H.gw + cx] + outside) * H.cs <= r + H.cs * 0.5 + 0.06;
+}
 
 export interface Input {
   mx: number; // 画面右が +
@@ -166,6 +184,7 @@ export interface BattleEvent {
   restrained?: boolean;
   status?: "wobble" | "legbind" | "crumple";
   heal?: number; // 防御成功で回復した量
+  gap?: boolean; // 空白を素通りした（描いていない所に当たった）
 }
 
 const idleMelee = (): MeleeState => ({ phase: "none", t: 0, hitsDone: 0, rehit: 0, spin: 0, dashLeft: 0, dirX: 1, dirZ: 0, grabbed: false, slamR: 0, slamHit: false, extraRecover: 0 });
@@ -393,8 +412,27 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
       me.vx = me.fx * lunge; me.vz = me.fz * lunge;
     }
     const reach = meleeRange(me.cfg, op.cfg);
+    // 当たり: 相手に描いた部分があれば、手の届く先（手の高さ付近の縦の幅）がそこに触れたら当たり。空白は素通り
+    let touch = dist <= reach;
+    if (touch && op.cfg.hurt) {
+      const tipD = rad(me.cfg) + (me.cfg.hasHands ? me.cfg.reach : 0.35);
+      const hx = me.x + me.fx * tipD, hz = me.z + me.fz * tipD;
+      const hv = me.cfg.hasHands ? (me.cfg.hurt?.handV ?? 1) : 0.9;
+      const span = me.cfg.hasHands ? 0.45 : 0.7;
+      touch = false;
+      for (const dv of [-span, -span / 2, 0, span / 2, span]) {
+        // 届く先から手前までの線上を調べる（相手の体の手前側に触れれば当たり）
+        for (const back of [0, 0.25, 0.5]) {
+          if (hurtHit(op, hx - me.fx * back, hv + dv, hz - me.fz * back, 0.18)) { touch = true; break; }
+        }
+        if (touch) break;
+      }
+      if (!touch && !me.attackHit && me.swingHits === 0 && me.attackT === activeTicks(me.cfg) - 1) {
+        w.events.push({ kind: "evade", x: op.x, z: op.z, h: 1.2, amount: 0, src: "melee", target: 1 - i, dx: 0, dz: 0, size: 0, gap: true });
+      }
+    }
     // 手が多いと 2tick おきに複数回当たる（合計威力は回数の 0.25 乗）
-    if (me.swingHits < T.hits && me.attackT >= me.swingHits * 2 && dist <= reach) {
+    if (me.swingHits < T.hits && me.attackT >= me.swingHits * 2 && touch) {
       const mom = 1 + T.momentum * Math.min(1, me.preSpeed / (MOVE_SPEED * T.top));
       const total = (me.cfg.hasHands ? PUNCH_DAMAGE : TACKLE_DAMAGE) * T.dmg * Math.pow(T.hits, 0.25) * mom;
       const amount = total / T.hits;
@@ -575,7 +613,7 @@ function stepProjectile(w: World, p: Projectile): boolean {
   const target = w.fighters[1 - p.owner];
   p.age++;
   if (p.rehit > 0) p.rehit--;
-  const overlapping = Math.hypot(target.x - p.x, target.z - p.z) <= s.size + rad(target.cfg);
+  const overlapping = Math.hypot(target.x - p.x, target.z - p.z) <= s.size + rad(target.cfg) && hurtHit(target, p.x, p.h, p.z, s.size);
   const moveScale = s.grind && overlapping ? 0.15 : 1; // 多段ヒットは相手に食い込んで削る
 
   if (s.meteor) {
@@ -614,7 +652,7 @@ function stepProjectile(w: World, p: Projectile): boolean {
   }
 
   // 当たり判定（地面の円＋高さ）
-  const near = Math.hypot(target.x - p.x, target.z - p.z) <= s.size + rad(target.cfg);
+  const near = Math.hypot(target.x - p.x, target.z - p.z) <= s.size + rad(target.cfg) + 0.6 && hurtHit(target, p.x, p.h, p.z, s.size);
   if (near && target.dodgeT === 0 && p.age > PROJ_ARM && p.h - s.size <= BODY_HEIGHT && p.h + s.size >= 0 && p.rehit === 0) {
     // 吹き飛ぶ向き: 落下弾は着弾点から外向き、それ以外は弾の進行方向
     let kdx = p.dx, kdz = p.dz;

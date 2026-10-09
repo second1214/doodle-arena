@@ -6,9 +6,10 @@ import { ARENA_RADIUS, BODY_RADIUS, meleeSpecialRange, type BattleEvent, type Fi
 import type { CharacterBuild } from "./character";
 import { arcTexture, glowTexture, Particles, Popups, ringTexture, sparkTexture, starTexture, type Flash } from "./fx";
 import { ProjectileVisual, SpecialTextures } from "./specialfx";
+import { inflateCanvas } from "./inflate";
 import { specialCharge } from "../sim/world";
 
-const TILT = -0.26; // カメラ側へ約15°後傾
+const TILT = -0.1; // 立体なので後傾は少しだけ
 const PROJ_COLORS = [0xff7a1a, 0x9b5cff];
 const HIT_COLOR = 0xffe08a;
 const GUARD_COLOR = 0x5cc8ff;
@@ -26,8 +27,8 @@ class FighterVisual {
   swing: THREE.Mesh;
   aura: THREE.Sprite;
   limbs: LimbVisual[] = [];
-  materials: THREE.MeshBasicMaterial[] = [];
-  flipCur = 1;
+  materials: THREE.MeshStandardMaterial[] = [];
+  flipCur = 0; // 向き（Y 軸回転）
   flipTarget = 1;
   squash = 0; // 被弾時のつぶれ
   koT = 0;
@@ -38,7 +39,7 @@ class FighterVisual {
   rangeRing: THREE.Mesh; // 竜巻の届く範囲（見た目と当たり判定を一致させる）
 
   setGhost(on: boolean) {
-    for (const m of this.materials) { m.transparent = on; m.opacity = on ? 0.45 : 1; }
+    for (const m of this.materials) { m.transparent = on; m.opacity = on ? 0.45 : 1; m.depthWrite = !on; }
   }
 
   constructor(build: CharacterBuild, teamColor: number, tex: { arc: THREE.Texture; ring: THREE.Texture; glow: THREE.Texture }, disposables: { dispose(): void }[]) {
@@ -50,19 +51,23 @@ class FighterVisual {
     const W = x1 - x0, H = y1 - y0;
     const toLocal = (px: number, py: number) => new THREE.Vector3((px - originX) * k, (b.y1 - py) * k, 0);
     const center = toLocal(x0 + W / 2, y0 + H / 2);
-    const geo = new THREE.PlaneGeometry(W * k, H * k);
-    disposables.push(geo);
 
+    // パーツごとに描いた線・塗りを膨らませて立体にする
     const makeMesh = (src: HTMLCanvasElement) => {
+      // 太らせる分の余白を周りに付けて切り出す（中心位置は変わらない）
+      const PAD = 12;
       const c = document.createElement("canvas");
-      c.width = W; c.height = H;
-      c.getContext("2d")!.drawImage(src, x0, y0, W, H, 0, 0, W, H);
-      const t = new THREE.CanvasTexture(c);
-      t.colorSpace = THREE.SRGBColorSpace;
-      const mat = new THREE.MeshBasicMaterial({ map: t, alphaTest: 0.4, side: THREE.DoubleSide });
-      disposables.push(t, mat);
+      c.width = W + PAD * 2; c.height = H + PAD * 2;
+      c.getContext("2d")!.drawImage(src, x0, y0, W, H, PAD, PAD, W, H);
+      const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0, side: THREE.DoubleSide });
       this.materials.push(mat);
-      return new THREE.Mesh(geo, mat);
+      disposables.push(mat);
+      const g = inflateCanvas(c, k, { maxCells: 96, grow: 1, smooth: 3 });
+      if (!g) return new THREE.Object3D(); // そのパーツに描かれた部分が無い
+      disposables.push(g);
+      const m = new THREE.Mesh(g, mat);
+      m.castShadow = true;
+      return m;
     };
 
     const torso = makeMesh(parts.canvases[0]);
@@ -83,7 +88,7 @@ class FighterVisual {
     });
 
     const shadowGeo = new THREE.CircleGeometry(0.75, 32);
-    const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22, depthWrite: false });
+    const shadowMat = new THREE.MeshBasicMaterial({ color: 0x5a4a7a, transparent: true, opacity: 0.1, depthWrite: false });
     this.shadow = new THREE.Mesh(shadowGeo, shadowMat);
     this.shadow.rotation.x = -Math.PI / 2;
     this.shadow.position.y = 0.01;
@@ -165,15 +170,17 @@ class FighterVisual {
     this.root.position.set(f.x, 0, f.z);
     if (f.fx > 0.08) this.flipTarget = 1;
     else if (f.fx < -0.08) this.flipTarget = -1;
-    this.flipCur += (this.flipTarget - this.flipCur) * 0.25; // 向き変更は横反転を補間（紙がくるっと返る）
-    const sx = Math.abs(this.flipCur) < 0.02 ? 0.02 : this.flipCur;
+    // 向き変更: 立体なのでその場でくるっと振り返る（裏から見ると絵は左右反転）
+    const wantYaw = this.flipTarget > 0 ? 0 : Math.PI;
+    this.flipCur += (wantYaw - this.flipCur) * 0.22;
 
     const T = f.cfg.traits;
     const weight = T?.weight ?? 1;
     // 被弾でつぶれて戻る（重いほど大きくつぶれる）
     this.squash = Math.max(0, this.squash - dt * 5);
     const sq = Math.sin(this.squash * Math.PI) * 0.25 * Math.min(1.5, weight);
-    this.flip.scale.set(sx * (1 + sq), 1 - sq, 1);
+    this.flip.scale.set(1 + sq, 1 - sq, 1 + sq);
+    this.flip.rotation.y = this.flipCur;
 
     const walking = f.moving && f.cfg.hasFeet && f.stun === 0;
     // 脚が長いほどゆったり大股、短足はちょこちょこ
@@ -225,7 +232,7 @@ class FighterVisual {
 
     const flash = f.hitFlash > 0;
     const blink = flash && f.hitFlash % 2 === 0;
-    for (const m of this.materials) m.color.setRGB(1, blink ? 0.25 : 1, blink ? 0.25 : 1);
+    for (const m of this.materials) m.emissive.setRGB(blink ? 0.9 : 0, blink ? 0.1 : 0, blink ? 0.1 : 0);
     this.guard.visible = f.guarding;
     if (f.guarding) {
       this.guard.rotation.z += dt * 1.5;
@@ -305,7 +312,8 @@ export class BattleScene {
   private camDist = 12;
   private camInit = false;
   private koZoom = 0;
-  private lookY = 0.4;
+  private sun!: THREE.DirectionalLight;
+  private lookY = 0.9;
   private wobK = 0;
   private wobT = 0;
 
@@ -318,21 +326,60 @@ export class BattleScene {
     this.overlay.className = "b-pops";
     container.appendChild(this.overlay);
     this.popups = new Popups(this.overlay);
-    this.scene.background = new THREE.Color(0xcfe3f2);
-    this.scene.fog = new THREE.Fog(0xcfe3f2, 30, 60);
+    // 画面の雰囲気: 机の上のおもちゃの舞台。空はやわらかいグラデーション、丸い台座、やわらかい光と影
+    const sky = document.createElement("canvas");
+    sky.width = 4; sky.height = 256;
+    const sg = sky.getContext("2d")!;
+    const grad = sg.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, "#bfe0ff");
+    grad.addColorStop(0.55, "#f3ecff");
+    grad.addColorStop(1, "#ffe9d6");
+    sg.fillStyle = grad;
+    sg.fillRect(0, 0, 4, 256);
+    const skyTex = new THREE.CanvasTexture(sky);
+    skyTex.colorSpace = THREE.SRGBColorSpace;
+    this.scene.background = skyTex;
+    this.scene.fog = new THREE.Fog(0xf3ecff, 28, 70);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(ARENA_RADIUS, 72), new THREE.MeshBasicMaterial({ color: 0xe9dcc0 }));
-    ground.rotation.x = -Math.PI / 2;
-    const edge = new THREE.Mesh(new THREE.RingGeometry(ARENA_RADIUS, ARENA_RADIUS + 0.35, 72), new THREE.MeshBasicMaterial({ color: 0x8c6d46 }));
-    edge.rotation.x = -Math.PI / 2;
-    edge.position.y = 0.005;
-    const grid = new THREE.PolarGridHelper(ARENA_RADIUS, 8, 4, 64, 0xd6c6a3, 0xd6c6a3);
-    grid.position.y = 0.003;
-    const floor = new THREE.Mesh(new THREE.CircleGeometry(ARENA_RADIUS + 30, 32), new THREE.MeshBasicMaterial({ color: 0xa9c8a0 }));
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xd9cfee, 1.25);
+    const sun = new THREE.DirectionalLight(0xffffff, 1.7);
+    sun.position.set(-5, 12, 7);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.camera.left = -7; sun.shadow.camera.right = 7;
+    sun.shadow.camera.top = 7; sun.shadow.camera.bottom = -7;
+    sun.shadow.camera.near = 1; sun.shadow.camera.far = 40;
+    sun.shadow.bias = -0.0015;
+    sun.shadow.radius = 4;
+    this.sun = sun;
+    this.scene.add(hemi, sun, sun.target);
+
+    // 丸い台座（上面＋側面）
+    const top = new THREE.Mesh(new THREE.CircleGeometry(ARENA_RADIUS, 96), new THREE.MeshStandardMaterial({ color: 0xfff6e8, roughness: 0.9 }));
+    top.rotation.x = -Math.PI / 2;
+    top.receiveShadow = true;
+    const side = new THREE.Mesh(new THREE.CylinderGeometry(ARENA_RADIUS + 0.35, ARENA_RADIUS + 0.55, 0.9, 96, 1, true), new THREE.MeshStandardMaterial({ color: 0xf2a65a, roughness: 0.7 }));
+    side.position.y = -0.45;
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(ARENA_RADIUS + 0.17, 0.2, 12, 96), new THREE.MeshStandardMaterial({ color: 0xff8a5c, roughness: 0.5 }));
+    rim.rotation.x = -Math.PI / 2;
+    rim.position.y = 0.02;
+    // 方眼紙のような薄いマス目（描いた紙の上で戦う感じ）
+    const grid = new THREE.GridHelper(ARENA_RADIUS * 2, 18, 0xe6d6c2, 0xefe2d2);
+    grid.position.y = 0.004;
+    (grid.material as THREE.Material).transparent = true;
+    (grid.material as THREE.Material).opacity = 0.7;
+    const gridMask = new THREE.Mesh(new THREE.RingGeometry(ARENA_RADIUS, ARENA_RADIUS * 1.5, 96), new THREE.MeshStandardMaterial({ color: 0xfff6e8, roughness: 0.9 }));
+    gridMask.rotation.x = -Math.PI / 2;
+    gridMask.position.y = 0.006;
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(ARENA_RADIUS + 40, 48), new THREE.MeshStandardMaterial({ color: 0xd9e8f5, roughness: 1 }));
     floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -0.01;
-    this.scene.add(floor, ground, edge, grid);
-    this.disposables.push(ground.geometry, ground.material as THREE.Material, edge.geometry, edge.material as THREE.Material, floor.geometry, floor.material as THREE.Material, grid);
+    floor.position.y = -0.9;
+    floor.receiveShadow = true;
+    this.scene.add(floor, side, top, grid, gridMask, rim);
+    for (const m of [top, side, rim, gridMask, floor]) this.disposables.push(m.geometry, m.material as THREE.Material);
+    this.disposables.push(grid, skyTex);
 
     this.fighters = builds.map((b, i) => new FighterVisual(b, PROJ_COLORS[i], this.tex, this.disposables));
     for (const f of this.fighters) this.scene.add(f.root);
@@ -360,13 +407,13 @@ export class BattleScene {
     const sep = Math.hypot(a.x - b.x, a.z - b.z);
     const vHalf = THREE.MathUtils.degToRad(this.camera.fov / 2);
     const hHalf = Math.atan(Math.tan(vHalf) * this.camera.aspect);
-    const need = Math.max(2.4, sep / 2 + 1.8);
-    let dist = Math.max(6, need / Math.tan(hHalf));
+    const need = Math.max(2.0, sep / 2 + 1.5);
+    let dist = Math.max(5, need / Math.tan(hHalf));
     // 打ち上げ弾が高く上がっている間は引いて、落ちてくるところまで見せる
     let high = 0;
     for (const p of w.projectiles) if (p.spec.meteor && (p.spec.visible || p.owner === this.viewer)) high = Math.max(high, p.h + p.spec.size);
     dist += high * 0.9;
-    this.lookY += ((high > 1.5 ? high * 0.45 : 0.4) - this.lookY) * 0.08;
+    this.lookY += ((high > 1.5 ? high * 0.45 : 0.9) - this.lookY) * 0.08;
     if (w.winner !== -1) {
       this.koZoom = Math.min(1, this.koZoom + dt * 1.5);
       dist *= 1 - 0.15 * this.koZoom;
@@ -374,9 +421,11 @@ export class BattleScene {
     if (!this.camInit) { this.camTarget.copy(mid); this.camDist = dist; this.camInit = true; }
     this.camTarget.lerp(mid, 0.12);
     this.camDist += (dist - this.camDist) * 0.06;
-    const dir = new THREE.Vector3(0, 15, 12).normalize();
+    const dir = new THREE.Vector3(0, 7, 12).normalize(); // 低めの斜め上から（立体感が見える角度）
     this.camera.position.copy(this.camTarget).addScaledVector(dir, this.camDist);
-    this.camera.lookAt(this.camTarget.x, this.lookY, this.camTarget.z + 0.9); // 2体を画面のやや上寄りに（下はボタンが重なるため）
+    this.camera.lookAt(this.camTarget.x, this.lookY, this.camTarget.z + 0.4); // 2体を画面のやや上寄りに（下はボタンが重なるため）
+    this.sun.position.set(this.camTarget.x - 5, 12, this.camTarget.z + 7);
+    this.sun.target.position.set(this.camTarget.x, 0, this.camTarget.z);
     // 自分がグニャグニャ・目回し中: カメラがゆらゆら傾き、ズームが呼吸のように揺れ、画面の色もずれる
     const me = this.viewer >= 0 ? w.fighters[this.viewer] : null;
     const wob = me ? Math.min(1, Math.max(me.wobble, me.dizzy * 0.6) / 30) : 0;
@@ -517,7 +566,8 @@ export class BattleScene {
         break;
       }
       case "evade":
-        this.popups.add("回避!", new THREE.Vector3(e.x, 2.3, e.z), "evade");
+        // 回避中 / 描いていない空白を攻撃が素通りした
+        this.popups.add(e.gap ? "すり抜け" : "回避!", new THREE.Vector3(e.x, 2.3, e.z), "evade");
         break;
       case "recoil": {
         // 体当たりの反動: 自分も赤く光って少し跳ね返る
