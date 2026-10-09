@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>らくがきアリーナ試作</title>
+    <style>
+      :root {
+        --bg: #f6f4ef;
+        --panel: #ffffff;
+        --ink: #222222;
+        --muted: #6b6b6b;
+        --line: #dedad2;
+        --accent: #e8590c;
+        --paper: #ffffff;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --bg: #1b1b1d;
+          --panel: #26262a;
+          --ink: #ececec;
+          --muted: #a0a0a0;
+          --line: #3a3a40;
+          --accent: #ff8a3d;
+          --paper: #ffffff;
+          color-scheme: dark;
+        }
+      }
+      :root[data-theme="dark"] {
+        --bg: #1b1b1d;
+        --panel: #26262a;
+        --ink: #ececec;
+        --muted: #a0a0a0;
+        --line: #3a3a40;
+        --accent: #ff8a3d;
+        --paper: #ffffff;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html, body { margin: 0; background: var(--bg); color: var(--ink); }
+      body {
+        font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+        font-size: 15px;
+        padding: 12px 16px 32px;
+        max-width: 560px;
+        margin: 0 auto;
+        -webkit-tap-highlight-color: transparent;
+      }
+      h1 { font-size: 18px; margin: 0 0 8px; }
+      .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+      .tabs button { flex: 1; }
+      button, select {
+        font: inherit; color: var(--ink); background: var(--panel);
+        border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-height: 40px;
+      }
+      button.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+      .stage {
+        position: relative; width: 100%; aspect-ratio: 1; border-radius: 12px; overflow: hidden;
+        border: 1px solid var(--line); background: var(--paper);
+      }
+      .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+      .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+      .swatch { width: 40px; height: 40px; border-radius: 50%; padding: 0; border: 3px solid var(--line); }
+      .swatch.on { border-color: var(--accent); }
+      .result { margin-top: 10px; font-size: 16px; font-weight: 600; min-height: 1.4em; }
+      .note { color: var(--muted); font-size: 13px; margin-top: 4px; }
+      details { margin-top: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+      summary { cursor: pointer; font-weight: 600; }
+      label.slider { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin-top: 10px; font-size: 13px; }
+      label.slider input { grid-column: 1 / -1; width: 100%; }
+      .legend { display: flex; gap: 12px; font-size: 13px; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
+      .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+      .field { margin-top: 10px; display: grid; gap: 6px; }
+      .traits { margin: 0; padding-left: 1.2em; color: var(--ink); font-size: 14px; line-height: 1.6; }
+      .label { font-weight: 600; }
+      .cost { color: var(--muted); font-weight: 400; font-size: 13px; }
+      .seg { display: flex; gap: 6px; }
+      .seg button { flex: 1; }
+      .seg button.on { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+      .effects { display: flex; flex-wrap: wrap; gap: 6px; }
+      .effects label { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 10px; min-height: 40px; }
+      .effects label.on { border-color: var(--accent); }
+      .effects label.off { opacity: 0.45; }
+      .effects small { color: var(--muted); }
+      label.check { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+      button.primary { margin-top: 12px; width: 100%; background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 700; font-size: 17px; min-height: 48px; }
+      body.in-battle { overflow: hidden; }
+      .battle { position: fixed; inset: 0; z-index: 10; background: #cfe3f2; display: flex; flex-direction: column; touch-action: none; user-select: none; -webkit-user-select: none; padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); }
+      .b-view { position: absolute; inset: 0; }
+      .b-view canvas { display: block; width: 100%; height: 100%; }
+      @media (prefers-reduced-motion: reduce) { .b-view canvas { filter: none !important; } }
+      .b-hud { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: start; padding: 10px 52px 0 12px; color: #1b2a36; }
+      .b-name { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .b-side.right { text-align: right; }
+      .b-bar { height: 12px; background: rgba(0,0,0,.18); border-radius: 6px; overflow: hidden; margin-top: 3px; }
+      .b-bar.thin { height: 5px; }
+      .b-bar i { display: block; height: 100%; width: 100%; background: #2fb344; transition: width .1s; }
+      .b-bar.thin i { background: #f59f00; }
+      .b-side.right .b-bar i { margin-left: auto; background: #d6336c; }
+      .b-side.right .b-bar.thin i { background: #f59f00; }
+      .b-time { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: center; }
+      .b-controls { position: absolute; left: 0; right: 0; bottom: env(safe-area-inset-bottom, 0px); z-index: 1; display: flex; justify-content: space-between; align-items: flex-end; padding: 0 16px 20px; pointer-events: none; }
+      .b-controls.spectate { display: none; }
+      .b-stick { pointer-events: auto; width: 130px; height: 130px; border-radius: 50%; background: rgba(255,255,255,.35); border: 2px solid rgba(0,0,0,.15); display: grid; place-items: center; touch-action: none; }
+      .b-knob { width: 56px; height: 56px; border-radius: 50%; background: rgba(255,255,255,.9); box-shadow: 0 2px 6px rgba(0,0,0,.25); pointer-events: none; }
+      .b-buttons { pointer-events: auto; display: grid; grid-template-columns: auto auto auto; grid-template-areas: "sp dg ." "sh . gd" ". at ."; gap: 2px 6px; align-items: center; justify-items: center; }
+      .b-btn { width: 66px; height: 66px; border-radius: 50%; border: none; color: #fff; font-weight: 800; font-size: 15px; box-shadow: 0 3px 8px rgba(0,0,0,.25); touch-action: none; min-height: 0; padding: 0; }
+      .b-btn.down { transform: scale(.92); filter: brightness(.9); }
+      .b-btn.attack { grid-area: at; background: #e8590c; width: 84px; height: 84px; }
+      .b-btn.guard { grid-area: gd; background: #1c7ed6; }
+      .b-btn.dodge { grid-area: dg; background: #0ca678; width: 60px; height: 60px; font-size: 14px; }
+      .b-btn.shove { grid-area: sh; background: #868e96; width: 60px; height: 60px; font-size: 12px; line-height: 1.1; }
+      .b-btn.special { grid-area: sp; background: conic-gradient(rgba(0,0,0,.45) calc(var(--cd, 0) * 360deg), #7048e8 0); }
+      .b-result { position: absolute; inset: 0; z-index: 2; display: grid; place-content: center; gap: 16px; background: rgba(0,0,0,.45); color: #fff; text-align: center; }
+      .b-result-text { font-size: 40px; font-weight: 900; }
+      .b-result-buttons { display: flex; gap: 10px; justify-content: center; }
+      .b-result-buttons button { min-width: 110px; font-weight: 700; }
+      .b-pops { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+      .pop { position: absolute; left: 0; top: 0; font-weight: 900; font-size: 22px; color: #fff; -webkit-text-stroke: 1.5px #3a1d00; paint-order: stroke; text-shadow: 0 2px 0 rgba(0,0,0,.35); white-space: nowrap; will-change: transform; }
+      .pop.big { font-size: 32px; color: #ffd43b; }
+      .pop.guard { font-size: 16px; color: #bfe9ff; -webkit-text-stroke-color: #08324d; }
+      .pop.ko { font-size: 46px; color: #ffd43b; -webkit-text-stroke: 3px #7a1f00; }
+      .b-bar { position: relative; }
+      .b-bar span { position: absolute; top: -1px; left: 6px; font-size: 10px; font-weight: 800; color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,.6); line-height: 14px; font-variant-numeric: tabular-nums; }
+      .b-side.right .b-bar span { left: auto; right: 6px; }
+      .b-bar.thin.low i { background: #e03131 !important; animation: blink .4s steps(2) infinite; }
+      @keyframes blink { 50% { opacity: .35; } }
+      .b-charge { display: flex; gap: 3px; margin-top: 4px; }
+      .b-side.right .b-charge { justify-content: flex-end; }
+      .b-charge i { width: 14px; height: 6px; border-radius: 3px; background: rgba(0,0,0,.18); }
+      .b-charge i.on { background: #7048e8; }
+      .b-side:first-child .b-charge i.on { background: #ff7a1a; }
+      .b-charge.full i { animation: blink .5s steps(2) infinite; }
+      .b-btn.low { filter: grayscale(1) brightness(.85); }
+      .b-btn.special.ready { box-shadow: 0 0 0 4px #ffd43b, 0 0 22px 6px rgba(255, 212, 59, .8); animation: throb .6s ease-in-out infinite alternate; }
+      @keyframes throb { to { transform: scale(1.08); } }
+      .b-count { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; font-size: 96px; font-weight: 900; color: #fff; -webkit-text-stroke: 4px #1a1a1a; paint-order: stroke; pointer-events: none; }
+      .b-count.go { color: #ffd43b; }
+      .b-count.pop-in { animation: popin .35s ease-out; }
+      @keyframes popin { from { transform: scale(2.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+      .b-mute { position: absolute; z-index: 3; top: calc(env(safe-area-inset-top, 0px) + 50px); left: 50%; transform: translateX(-50%); height: 26px; min-height: 0; padding: 0 10px; border-radius: 13px; background: rgba(255,255,255,.75); color: #222; border: none; font-size: 11px; font-weight: 700; }
+      .b-stats { border-collapse: collapse; margin: 0 auto; font-size: 14px; background: rgba(0,0,0,.35); border-radius: 10px; }
+      .b-stats td, .b-stats th { padding: 4px 10px; font-variant-numeric: tabular-nums; }
+      .b-stats th { font-weight: 400; color: #ddd; font-size: 12px; }
+      .b-stats td.nm { font-weight: 700; font-size: 12px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .pop.special { font-size: 30px; color: #ff7a1a; -webkit-text-stroke: 2px #1a1a1a; }
+      .pop.ready { font-size: 22px; color: #ffd43b; -webkit-text-stroke: 2px #4a2a00; }
+      .pop.combo { font-size: 20px; color: #74c0fc; -webkit-text-stroke: 2px #0b2a4a; }
+      .pop.bind { font-size: 22px; color: #ffd43b; -webkit-text-stroke: 2px #1a1a1a; }
+      .pop.heal { font-size: 16px; color: #8ce99a; -webkit-text-stroke: 1.5px #0b3d1a; }
+      .pop.evade { font-size: 18px; color: #c3fae8; -webkit-text-stroke: 1.5px #08372b; }
+      .pop.recoil { font-size: 15px; color: #ff8787; -webkit-text-stroke: 1.5px #3a0000; }
+      .pop.thud { font-size: 30px; color: #fff; -webkit-text-stroke: 2.5px #5a3b12; }
+      .pop.thud.big { font-size: 52px; }
+      .b-close { position: absolute; z-index: 3; top: calc(env(safe-area-inset-top, 0px) + 8px); right: 10px; width: 36px; height: 36px; min-height: 0; padding: 0; border-radius: 50%; background: rgba(255,255,255,.8); color: #222; border: none; font-size: 20px; }
+    </style>
+  </head>
+  <body>
+    <h1>らくがきアリーナ 試作</h1>
+    <div class="tabs">
+      <button data-view="draw" class="on">描く</button>
+      <button data-view="detect">検知結果</button>
+      <button data-view="anim">動かす</button>
+      <button data-view="battle">戦う</button>
+    </div>
+    <section id="battleSetup" hidden>
+      <div class="field">
+        <div class="label">あなたのキャラの特徴（絵の形で決まる）</div>
+        <ul id="myTraits" class="traits"></ul>
+      </div>
+      <div class="field">
+        <div class="label">相手（CPUが作ったキャラ）</div>
+        <select id="cpuChar"></select>
+      </div>
+      <div class="field">
+        <div class="label">あなたの必殺技 <span id="costInfo" class="cost"></span></div>
+        <div class="seg" role="radiogroup" aria-label="必殺技の型">
+          <button type="button" data-stype="ranged" class="on">遠距離（弾）</button>
+          <button type="button" data-stype="melee">近接</button>
+        </div>
+        <div id="effects" class="effects"></div>
+        <div class="note">効果ごとに必要なポイントが違います。矛盾した組み合わせも付けられます。</div>
+      </div>
+      <label class="check"><input type="checkbox" id="spectate" /> 観戦モード（自分のキャラも CPU が操作）</label>
+      <button id="startBattle" class="primary">戦闘開始</button>
+      <div class="note">操作: 左下のスティックで移動、右下のボタンで攻撃・防御（押している間）・必殺・突き飛ばし（スタミナ不要）・回避（入力方向へ素早く移動、その間は当たらない。方向なしなら後ろへ）。PC は WASD / J=攻撃 / K=防御 / L=必殺 / H=突き飛ばし / スペース=回避。</div>
+    </section>
+    <div class="stage">
+      <canvas id="view" width="512" height="512"></canvas>
+    </div>
+    <div class="result" id="result"></div>
+    <div class="legend" id="legend" hidden>
+      <span><i style="background:#9aa0a6"></i>胴体</span>
+      <span><i style="background:#e8590c"></i>手</span>
+      <span><i style="background:#1c7ed6"></i>足</span>
+      <span>● 関節　・ 先端</span>
+    </div>
+    <div id="drawTools">
+      <div class="row" id="palette"></div>
+      <div class="row">
+        <button data-width="4">細</button>
+        <button data-width="9" class="on">中</button>
+        <button data-width="18">太</button>
+        <button id="eraser">消しゴム</button>
+      </div>
+      <div class="row">
+        <button id="undo">1つ戻す</button>
+        <button id="clear">全部消す</button>
+        <select id="sample"><option value="">サンプルを読み込む…</option></select>
+      </div>
+    </div>
+    <details>
+      <summary>検知の調整</summary>
+      <div id="sliders"></div>
+      <div class="row"><button id="resetParams">初期値に戻す</button></div>
+      <div class="note">変えると「検知結果」「動かす」に即反映されます。良い値が見つかったら教えてください。</div>
+    </details>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
