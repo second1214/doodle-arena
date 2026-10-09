@@ -1,5 +1,9 @@
-import { CANVAS_SIZE, DEFAULT_PARAMS, detect, labelAt, type DetectParams, type DetectResult, type Stroke } from "./detect";
+import { CANVAS_SIZE, DEFAULT_PARAMS, detect, type DetectParams, type DetectResult, type Stroke } from "./detect";
+import { cutParts, drawStroke } from "./parts";
 import { SAMPLES } from "./samples";
+import { startBattle } from "./battle/battle";
+import { buildCharacter } from "./battle/character";
+import { EFFECTS, specialCost, type EffectId } from "./sim/special";
 
 const STORAGE_KEY = "doodle-arena:proto1";
 const COLORS = ["#222222", "#e03131", "#1c7ed6", "#f2c200", "#2f9e44", "#ae3ec9", "#f08c00"];
@@ -7,13 +11,16 @@ const HAND_COLORS = ["#e8590c", "#f76707", "#d9480f", "#fd7e14", "#c2255c"];
 const FOOT_COLORS = ["#1c7ed6", "#1971c2", "#3b5bdb", "#0c8599", "#5f3dc4"];
 const TORSO_COLOR = "#9aa0a6";
 
-type View = "draw" | "detect" | "anim";
+type View = "draw" | "detect" | "anim" | "battle";
+const SPECIAL_BUDGET = 20; // 必殺ポイント（仮）。全効果は付けられない
 
 const canvas = document.getElementById("view") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 const resultEl = document.getElementById("result")!;
 const legendEl = document.getElementById("legend")!;
 const drawTools = document.getElementById("drawTools")!;
+const stageEl = document.querySelector(".stage") as HTMLElement;
+const battleSetup = document.getElementById("battleSetup")!;
 
 let strokes: Stroke[] = load();
 let params: DetectParams = { ...DEFAULT_PARAMS };
@@ -42,65 +49,6 @@ function save() {
   }
 }
 
-function drawStroke(c: CanvasRenderingContext2D, st: Stroke) {
-  const p = st.points;
-  if (p.length < 2) return;
-  c.save();
-  c.lineCap = "round";
-  c.lineJoin = "round";
-  c.lineWidth = st.width;
-  if (st.color === "erase") {
-    c.globalCompositeOperation = "destination-out";
-    c.strokeStyle = "#000";
-    c.fillStyle = "#000";
-  } else {
-    c.strokeStyle = st.color;
-    c.fillStyle = st.color;
-  }
-  if (p.length === 2) {
-    c.beginPath();
-    c.arc(p[0], p[1], st.width / 2, 0, Math.PI * 2);
-    c.fill();
-  } else {
-    c.beginPath();
-    c.moveTo(p[0], p[1]);
-    for (let i = 2; i < p.length; i += 2) c.lineTo(p[i], p[i + 1]);
-    c.stroke();
-  }
-  c.restore();
-}
-
-function renderStrokes(): HTMLCanvasElement {
-  const off = document.createElement("canvas");
-  off.width = off.height = CANVAS_SIZE;
-  const c = off.getContext("2d")!;
-  for (const st of strokes) drawStroke(c, st);
-  return off;
-}
-
-// 検知結果に従って、元の線画をパーツごとの画像に切り出す（塗りつぶしは検知専用で、表示には使わない）。
-function cutParts(res: DetectResult): HTMLCanvasElement[] {
-  const base = renderStrokes();
-  const src = base.getContext("2d")!.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-  const n = res.limbs.length + 1;
-  const datas = Array.from({ length: n }, () => new ImageData(CANVAS_SIZE, CANVAS_SIZE));
-  for (let y = 0; y < CANVAS_SIZE; y++) {
-    for (let x = 0; x < CANVAS_SIZE; x++) {
-      const o = (y * CANVAS_SIZE + x) * 4;
-      if (src.data[o + 3] === 0) continue;
-      const part = labelAt(res, x, y) - 1; // 0=胴体, 1..=手足
-      const d = datas[Math.max(0, part)].data;
-      d[o] = src.data[o]; d[o + 1] = src.data[o + 1]; d[o + 2] = src.data[o + 2]; d[o + 3] = src.data[o + 3];
-    }
-  }
-  return datas.map((data) => {
-    const c = document.createElement("canvas");
-    c.width = c.height = CANVAS_SIZE;
-    c.getContext("2d")!.putImageData(data, 0, 0);
-    return c;
-  });
-}
-
 function tint(part: HTMLCanvasElement, col: string): HTMLCanvasElement {
   const c = document.createElement("canvas");
   c.width = c.height = CANVAS_SIZE;
@@ -114,7 +62,7 @@ function tint(part: HTMLCanvasElement, col: string): HTMLCanvasElement {
 
 function runDetect() {
   const res = detect(strokes, params);
-  detected = { res, parts: cutParts(res) };
+  detected = { res, parts: cutParts(strokes, res).canvases };
   const hands = res.limbs.filter((l) => l.kind === "hand").length;
   const feet = res.limbs.filter((l) => l.kind === "foot").length;
   const notes: string[] = [];
@@ -130,6 +78,7 @@ function limbColor(res: DetectResult, k: number) {
 }
 
 function render() {
+  if (view === "battle") return;
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
   if (view === "draw") {
     for (const st of strokes) drawStroke(ctx, st);
@@ -224,6 +173,12 @@ function setView(v: View) {
   document.querySelectorAll<HTMLButtonElement>(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
   drawTools.hidden = v !== "draw";
   legendEl.hidden = v !== "detect";
+  stageEl.hidden = v === "battle";
+  battleSetup.hidden = v !== "battle";
+  if (v === "battle") {
+    resultEl.textContent = strokes.length ? "" : "絵がまだ無いので、あなたのキャラは「棒人間」で戦います";
+    return;
+  }
   if (v === "draw") {
     resultEl.textContent = "";
   } else {
@@ -370,6 +325,61 @@ document.getElementById("resetParams")!.addEventListener("click", () => {
   params = { ...DEFAULT_PARAMS };
   for (const i of sliderInputs) (i as HTMLInputElement & { sync?: () => void }).sync?.();
   scheduleRedetect();
+});
+
+// --- 戦う ---
+const cpuSel = document.getElementById("cpuChar") as HTMLSelectElement;
+cpuSel.add(new Option("ランダム", ""));
+for (const name of Object.keys(SAMPLES)) cpuSel.add(new Option(name, name));
+let chosen: EffectId[] = ["homing"];
+const effectsEl = document.getElementById("effects")!;
+const costInfo = document.getElementById("costInfo")!;
+function renderEffects() {
+  effectsEl.innerHTML = "";
+  const used = specialCost(chosen);
+  costInfo.textContent = `${used} / ${SPECIAL_BUDGET} ポイント`;
+  for (const e of EFFECTS) {
+    const on = chosen.includes(e.id);
+    const fits = on || used + e.cost <= SPECIAL_BUDGET;
+    const lab = document.createElement("label");
+    lab.className = on ? "on" : fits ? "" : "off";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = on;
+    box.disabled = !fits;
+    box.addEventListener("change", () => {
+      chosen = box.checked ? [...chosen, e.id] : chosen.filter((x) => x !== e.id);
+      renderEffects();
+    });
+    const txt = document.createElement("span");
+    txt.innerHTML = `${e.name} <small>${e.cost}</small>`;
+    lab.append(box, txt);
+    effectsEl.appendChild(lab);
+  }
+}
+renderEffects();
+
+// CPU の必殺技は予算内でランダムに組む
+function randomSpecial(): EffectId[] {
+  const pool = [...EFFECTS].sort(() => Math.random() - 0.5);
+  const out: EffectId[] = [];
+  for (const e of pool) if (specialCost([...out, e.id]) <= SPECIAL_BUDGET) out.push(e.id);
+  return out;
+}
+
+document.getElementById("startBattle")!.addEventListener("click", () => {
+  const names = Object.keys(SAMPLES);
+  const cpuName = cpuSel.value || names[Math.floor(Math.random() * names.length)];
+  const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
+  const player = buildCharacter("あなた", mine, chosen, params);
+  const cpu = buildCharacter(`CPU（${cpuName}）`, SAMPLES[cpuName](), randomSpecial(), params);
+  startBattle({
+    player,
+    cpu,
+    spectate: (document.getElementById("spectate") as HTMLInputElement).checked,
+    seed: (Math.random() * 0xffffffff) >>> 0,
+    onExit: () => {},
+  });
 });
 
 render();
