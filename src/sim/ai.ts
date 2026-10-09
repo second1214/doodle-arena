@@ -1,6 +1,6 @@
 // CPU の操作。性格ごとに行動の重みを変える（試作では「猛攻」のみ）。
 // 反応の遅れ・迷いはシード固定の乱数で決めるので、同じシードなら同じ試合になる。
-import { attackCostOf, meleeRange, specialCharge, type Input, type World } from "./world";
+import { attackCostOf, meleeRange, meleeSpecialRange, specialCharge, type Input, type World } from "./world";
 
 export type Personality = "aggressive";
 
@@ -19,9 +19,10 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState, _p: Personality = "aggr
   // 押した瞬間だけ有効な入力は毎 tick 消す
   const out: Input = { ...ai.hold, attack: false, special: false };
   if (ai.wait > 0) { ai.wait--; return out; }
-  ai.wait = 2 + Math.floor(rng.next() * 4); // 反応の間
-
   const me = w.fighters[i];
+  // 反応の間（グニャグニャ中は鈍る）
+  ai.wait = 2 + Math.floor(rng.next() * 4) + (me.wobble > 0 || me.dizzy > 0 ? 2 + Math.floor(rng.next() * 3) : 0);
+
   const op = w.fighters[1 - i];
   const dx = op.x - me.x, dz = op.z - me.z;
   const dist = Math.hypot(dx, dz) || 1;
@@ -38,6 +39,10 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState, _p: Personality = "aggr
   });
   const opWinding = op.attack === "windup" && dist < meleeRange(op.cfg, me.cfg) + 0.6;
   const ready = me.charge >= specialCharge;
+  const melee = me.cfg.specialType === "melee";
+  const mReach = meleeSpecialRange(me.cfg, me.mspec, op.cfg);
+  // 相手が近接必殺を構えている / 撃てる状態で近い → 下がるか守る
+  const opMeleeThreat = op.cfg.specialType === "melee" && (op.ms.phase === "windup" || (op.charge >= specialCharge && dist < meleeSpecialRange(op.cfg, op.mspec, me.cfg) + 0.5));
 
   let mx = 0, mz = 0, guard = false, attack = false, special = false;
 
@@ -55,6 +60,14 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState, _p: Personality = "aggr
     }
   } else if (opWinding && rng.next() < 0.35) {
     guard = me.stamina > 10;
+  } else if (opMeleeThreat && rng.next() < 0.4) {
+    if (rng.next() < 0.5) guard = me.stamina > 10;
+    else { mx = -ux; mz = -uz; }
+  } else if (ready && melee) {
+    // 近接型: 届く距離まで寄ってから撃つ（突進や地面たたきは少し遠めでも撃つ）
+    const want = me.mspec.dash > 0 ? mReach + 3 : me.mspec.slam ? 4 : mReach;
+    if (dist <= want && rng.next() < 0.7) special = true;
+    else { mx = ux; mz = uz; }
   } else if (ready && (dist > 2.5 ? rng.next() < 0.6 : rng.next() < 0.2)) {
     special = true;
   } else if (dist > reach * 0.9) {

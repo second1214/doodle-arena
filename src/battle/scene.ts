@@ -13,7 +13,7 @@ const PROJ_COLORS = [0xff7a1a, 0x9b5cff];
 const HIT_COLOR = 0xffe08a;
 const GUARD_COLOR = 0x5cc8ff;
 
-interface LimbVisual { pivot: THREE.Object3D; kind: "hand" | "foot"; nth: number }
+interface LimbVisual { pivot: THREE.Object3D; kind: "hand" | "foot"; nth: number; length: number }
 
 class FighterVisual {
   root = new THREE.Group();
@@ -32,6 +32,9 @@ class FighterVisual {
   squash = 0; // 被弾時のつぶれ
   koT = 0;
   roll = 0; // 転がりの回転角
+  dizzy: THREE.Sprite; // 頭の上の「@_@」
+  limbScale = 1;
+  crumpleK = 0;
 
   constructor(build: CharacterBuild, teamColor: number, tex: { arc: THREE.Texture; ring: THREE.Texture; glow: THREE.Texture }, disposables: { dispose(): void }[]) {
     const { parts, res, scale: k, originX } = build;
@@ -71,7 +74,7 @@ class FighterVisual {
       mesh.position.copy(center).sub(p);
       pivot.add(mesh);
       this.flip.add(pivot);
-      this.limbs.push({ pivot, kind: l.kind, nth: count[l.kind]++ });
+      this.limbs.push({ pivot, kind: l.kind, nth: count[l.kind]++, length: l.length });
     });
 
     const shadowGeo = new THREE.CircleGeometry(0.75, 32);
@@ -111,6 +114,22 @@ class FighterVisual {
     this.swing.visible = false;
     disposables.push(shadowGeo, shadowMat, guardGeo, guardMat, ringGeo, ringMat, swingGeo, swingMat);
 
+    // 目を回しているときの「@_@」
+    const dc = document.createElement("canvas");
+    dc.width = 128; dc.height = 64;
+    const dg = dc.getContext("2d")!;
+    dg.font = "bold 44px sans-serif"; dg.textAlign = "center"; dg.textBaseline = "middle";
+    dg.lineWidth = 8; dg.strokeStyle = "#1a1a1a"; dg.strokeText("@_@", 64, 34);
+    dg.fillStyle = "#ffe14d"; dg.fillText("@_@", 64, 34);
+    const dt = new THREE.CanvasTexture(dc);
+    dt.colorSpace = THREE.SRGBColorSpace;
+    const dm = new THREE.SpriteMaterial({ map: dt, transparent: true, depthWrite: false });
+    this.dizzy = new THREE.Sprite(dm);
+    this.dizzy.scale.set(1.0, 0.5, 1);
+    this.dizzy.position.set(0, 2.25, 0);
+    this.dizzy.visible = false;
+    disposables.push(dt, dm);
+
     // 必殺技を撃てる状態のオーラ
     const auraMat = new THREE.SpriteMaterial({ map: tex.glow, color: teamColor, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     this.aura = new THREE.Sprite(auraMat);
@@ -119,7 +138,7 @@ class FighterVisual {
     disposables.push(auraMat);
 
     this.body.rotation.x = TILT;
-    this.root.add(this.aura);
+    this.root.add(this.aura, this.dizzy);
     this.flip.add(this.swing);
     this.spin.position.y = center.y;
     this.flip.position.y = -center.y;
@@ -204,7 +223,41 @@ class FighterVisual {
       this.aura.scale.set(2.6 * k, 3.2 * k, 1);
       (this.aura.material as THREE.SpriteMaterial).opacity = 0.75 + Math.sin(t * 13) * 0.2;
     }
-    this.rootRing.visible = f.rooted > 0;
+    // --- 近接必殺・状態異常 ---
+    const ms = f.ms, sp = f.mspec;
+    const inMelee = ms.phase === "windup" || ms.phase === "active";
+    const wantScale = inMelee ? sp.limbScale : 1;
+    this.limbScale += (wantScale - this.limbScale) * Math.min(1, dt * 12);
+    let longest = -1, best = -1;
+    this.limbs.forEach((l, k) => { if (l.kind === "hand" && l.length > best) { best = l.length; longest = k; } });
+    this.limbs.forEach((l, k) => {
+      const rubber = inMelee && k === longest ? sp.rubberScale : 1;
+      const sc = this.limbScale * (k === longest ? 1 + (rubber - 1) * (ms.phase === "active" ? 1 : 0.3) : 1);
+      l.pivot.scale.setScalar(sc);
+      if (inMelee && l.kind === "hand") l.pivot.rotation.z = ms.phase === "windup" ? 0.9 : -1.5; // 構え→振り抜き
+    });
+    // 竜巻: 紙人形が縦軸で回る（真横で一瞬「線」になる）
+    this.spin.rotation.y = ms.phase === "active" && sp.spinTicks > 0 ? ms.spin : 0;
+    // 地面たたき: 構えで跳ぶ
+    if (sp.slam && ms.phase === "windup") this.body.position.y = Math.sin(Math.min(1, ms.t / sp.windup) * Math.PI) * 1.2;
+    // 紙くしゃくしゃ: 縮んで玉になり転がる
+    this.crumpleK += ((f.crumple > 0 ? 1 : 0) - this.crumpleK) * Math.min(1, dt * 10);
+    if (this.crumpleK > 0.01) {
+      const k = 1 - 0.5 * this.crumpleK;
+      this.spin.scale.set(k, k, 1);
+      this.spin.rotation.z += Math.hypot(f.vx, f.vz) * dt * 3 * (f.vx >= 0 ? -1 : 1);
+      this.roll = this.spin.rotation.z;
+    } else this.spin.scale.set(1, 1, 1);
+    this.dizzy.visible = f.wobble > 0 || f.dizzy > 0;
+    if (this.dizzy.visible) {
+      (this.dizzy.material as THREE.SpriteMaterial).rotation = Math.sin(t * 6) * 0.4;
+      this.dizzy.position.x = Math.sin(t * 3) * 0.2;
+    }
+    // 足封じ: 足は動かさない
+    if (f.legbind > 0) for (const l of this.limbs) if (l.kind === "foot") l.pivot.rotation.z = 0;
+
+    this.rootRing.visible = f.rooted > 0 || f.legbind > 0;
+    (this.rootRing.material as THREE.MeshBasicMaterial).color.set(f.legbind > 0 && f.rooted === 0 ? 0x8c5a2b : 0xffd43b);
     if (this.rootRing.visible) {
       this.rootRing.rotation.z += dt * 4;
       this.rootRing.scale.setScalar(0.8 + Math.sin(t * 8) * 0.08);
@@ -236,6 +289,8 @@ export class BattleScene {
   private camInit = false;
   private koZoom = 0;
   private lookY = 0.4;
+  private wobK = 0;
+  private wobT = 0;
 
   constructor(private container: HTMLElement, builds: [CharacterBuild, CharacterBuild], private viewer: number) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -305,6 +360,21 @@ export class BattleScene {
     const dir = new THREE.Vector3(0, 15, 12).normalize();
     this.camera.position.copy(this.camTarget).addScaledVector(dir, this.camDist);
     this.camera.lookAt(this.camTarget.x, this.lookY, this.camTarget.z + 0.9); // 2体を画面のやや上寄りに（下はボタンが重なるため）
+    // 自分がグニャグニャ・目回し中: カメラがゆらゆら傾き、ズームが呼吸のように揺れ、画面の色もずれる
+    const me = this.viewer >= 0 ? w.fighters[this.viewer] : null;
+    const wob = me ? Math.min(1, Math.max(me.wobble, me.dizzy * 0.6) / 30) : 0;
+    this.wobK += (wob - this.wobK) * Math.min(1, dt * 4);
+    if (this.wobK > 0.01) {
+      this.wobT += dt;
+      this.camera.rotateZ(Math.sin(this.wobT * 2.3) * 0.18 * this.wobK);
+      this.camera.fov = 38 + Math.sin(this.wobT * 3.1) * 6 * this.wobK;
+      this.camera.updateProjectionMatrix();
+      this.renderer.domElement.style.filter = `hue-rotate(${Math.sin(this.wobT * 1.7) * 60 * this.wobK}deg) saturate(${1 + 0.6 * this.wobK}) blur(${0.6 * this.wobK}px)`;
+    } else if (this.renderer.domElement.style.filter) {
+      this.renderer.domElement.style.filter = "";
+      this.camera.fov = 38;
+      this.camera.updateProjectionMatrix();
+    }
     // 画面揺れ
     if (this.shake > 0) {
       const s = this.shake * this.shake;
@@ -374,6 +444,46 @@ export class BattleScene {
         this.fighters[e.target].squash = 0.6;
         const invisible = (e.tags ?? []).includes("invisible");
         this.popups.add(invisible ? "必殺…？" : "必殺!", new THREE.Vector3(e.x, 2.7, e.z), "special");
+        break;
+      }
+      case "mstart": {
+        const col = PROJ_COLORS[e.target];
+        this.addFlash(this.tex.glow, col, new THREE.Vector3(e.x, 1, e.z), 0.6, 3.2, 0.3);
+        this.addFlash(this.tex.ring, col, new THREE.Vector3(e.x, 0.05, e.z), 0.4, 3.5, 0.4, true);
+        this.particles.emit({ count: 26, x: e.x, y: 1, z: e.z, color: col, speed: 7, spread: 1, life: 0.35, size: 0.25, drag: 5 });
+        this.shake = Math.max(this.shake, 0.3);
+        this.popups.add("必殺!", new THREE.Vector3(e.x, 2.7, e.z), "special");
+        break;
+      }
+      case "mactive": {
+        const tags = (e.tags ?? []) as string[];
+        if (tags.includes("tornado")) this.popups.add("ギュイーン!", new THREE.Vector3(e.x, 2.9, e.z), "combo");
+        if (tags.includes("rubber")) this.popups.add("ビヨーン!", new THREE.Vector3(e.x + e.dx, 2.4, e.z + e.dz), "combo");
+        if (tags.includes("dash")) this.sparks.emit({ count: 12, x: e.x, y: 0.2, z: e.z, color: 0xd8c7a0, speed: 4, dir: [-e.dx, 0.3, -e.dz], spread: 0.5, life: 0.4, size: 0.3 });
+        break;
+      }
+      case "grab": {
+        this.addFlash(this.tex.star, 0xffffff, new THREE.Vector3(e.x + e.dx, 1.1, e.z + e.dz), 0.5, 2, 0.2);
+        this.popups.add("ガシッ!", new THREE.Vector3(e.x + e.dx, 2.4, e.z + e.dz), "bind");
+        break;
+      }
+      case "whiff":
+        this.popups.add("スカッ", new THREE.Vector3(e.x, 2.3, e.z), "guard");
+        break;
+      case "slam": {
+        // 輪の衝撃波（戦闘計算の輪と同じ速さで広がる。内側は安全）
+        const col = PROJ_COLORS[e.target];
+        this.addFlash(this.tex.ring, col, new THREE.Vector3(e.x, 0.06, e.z), 0.8, 9.6, 0.55, true);
+        this.addFlash(this.tex.ring, 0xffffff, new THREE.Vector3(e.x, 0.07, e.z), 0.6, 8.6, 0.5, true);
+        this.sparks.emit({ count: 30, x: e.x, y: 0.1, z: e.z, color: 0xd9c7a0, speed: 8, spread: 1, dir: [0, 0.2, 0], up: 2, life: 0.6, size: 0.3, gravity: 8 });
+        this.shake = Math.max(this.shake, 0.7);
+        this.popups.add("ドゴン!", new THREE.Vector3(e.x, 1.6, e.z), "thud big");
+        break;
+      }
+      case "status": {
+        const label = e.status === "wobble" ? "グニャ〜" : e.status === "legbind" ? "足封じ!" : "クシャッ!";
+        this.popups.add(label, new THREE.Vector3(e.x, 2.9, e.z), "bind");
+        if (e.status === "crumple") this.sparks.emit({ count: 14, x: e.x, y: 1, z: e.z, color: 0xffffff, speed: 4, spread: 1, life: 0.4, size: 0.25 });
         break;
       }
       case "recoil": {
@@ -450,6 +560,21 @@ export class BattleScene {
       this.proj.delete(id);
       this.combo.delete(id);
     }
+    // 近接必殺の粒子（竜巻の渦・突進の残像）
+    w.fighters.forEach((f, i) => {
+      if (f.ms.phase !== "active") return;
+      if (f.mspec.spinTicks > 0) {
+        const a = f.ms.spin;
+        for (let k = 0; k < 2; k++) {
+          const r = 0.9 + k * 0.5;
+          this.particles.emit({ count: 1, x: f.x + Math.cos(a + k * Math.PI) * r, y: 0.3 + Math.random() * 1.6, z: f.z + Math.sin(a + k * Math.PI) * r, color: k ? 0xffffff : PROJ_COLORS[i], speed: 1.5, up: 1.5, life: 0.4, size: 0.35 });
+        }
+      }
+      if (f.mspec.dash > 0 && f.ms.dashLeft > 0) {
+        this.particles.emit({ count: 3, x: f.x, y: 0.9, z: f.z, color: PROJ_COLORS[i], speed: 0.3, life: 0.35, size: 0.9, grow: -2 });
+      }
+    });
+
     // オーラの粒子
     w.fighters.forEach((f, i) => {
       if (f.charge >= specialCharge && f.hp > 0 && Math.random() < 0.6) {

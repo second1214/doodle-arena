@@ -75,6 +75,9 @@
       .traits { margin: 0; padding-left: 1.2em; color: var(--ink); font-size: 14px; line-height: 1.6; }
       .label { font-weight: 600; }
       .cost { color: var(--muted); font-weight: 400; font-size: 13px; }
+      .seg { display: flex; gap: 6px; }
+      .seg button { flex: 1; }
+      .seg button.on { border-color: var(--accent); color: var(--accent); font-weight: 700; }
       .effects { display: flex; flex-wrap: wrap; gap: 6px; }
       .effects label { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 10px; min-height: 40px; }
       .effects label.on { border-color: var(--accent); }
@@ -86,6 +89,7 @@
       .battle { position: fixed; inset: 0; z-index: 10; background: #cfe3f2; display: flex; flex-direction: column; touch-action: none; user-select: none; -webkit-user-select: none; padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); }
       .b-view { position: absolute; inset: 0; }
       .b-view canvas { display: block; width: 100%; height: 100%; }
+      @media (prefers-reduced-motion: reduce) { .b-view canvas { filter: none !important; } }
       .b-hud { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: start; padding: 10px 52px 0 12px; color: #1b2a36; }
       .b-name { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .b-side.right { text-align: right; }
@@ -167,6 +171,10 @@
       </div>
       <div class="field">
         <div class="label">あなたの必殺技 <span id="costInfo" class="cost"></span></div>
+        <div class="seg" role="radiogroup" aria-label="必殺技の型">
+          <button type="button" data-stype="ranged" class="on">遠距離（弾）</button>
+          <button type="button" data-stype="melee">近接</button>
+        </div>
         <div id="effects" class="effects"></div>
         <div class="note">効果ごとに必要なポイントが違います。矛盾した組み合わせも付けられます。</div>
       </div>

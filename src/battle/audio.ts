@@ -74,5 +74,11 @@ export class Sfx {
   ready() { [660, 880, 1320].forEach((f, i) => this.tone("triangle", f, f, 0.12, 0.25, i * 0.07)); }
   bind() { this.tone("square", 500, 250, 0.2, 0.15); this.tone("square", 520, 260, 0.2, 0.12, 0.08); }
   ko() { this.noise(0.8, 1, 200, 0.4); this.tone("sine", 120, 30, 1.0, 1.2); [523, 659, 784].forEach((f) => this.tone("triangle", f, f, 0.8, 0.12, 0.35)); }
+  spin() { this.tone("sawtooth", 200, 900, 0.7, 0.12); this.noise(0.7, 0.3, 1500, 0.6); }
+  boing() { this.tone("sine", 220, 660, 0.25, 0.5); this.tone("sine", 660, 330, 0.2, 0.3, 0.2); }
+  grab() { this.noise(0.06, 0.8, 900, 1); this.tone("square", 300, 200, 0.08, 0.15); }
+  whiff() { this.noise(0.15, 0.3, 3000, 0.5); }
+  crumple() { for (let k = 0; k < 6; k++) this.noise(0.04, 0.6, 2500 + k * 300, 3, k * 0.03); }
+  wah() { this.tone("triangle", 400, 200, 0.3, 0.25); this.tone("triangle", 300, 450, 0.3, 0.2, 0.25); }
   beep(high = false) { this.tone("square", high ? 1046 : 523, high ? 1046 : 523, high ? 0.35 : 0.12, 0.2); }
 }

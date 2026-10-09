@@ -190,6 +190,17 @@ export function startBattle(opts: BattleOptions) {
       case "land": sfx.land(e.size); break;
       case "ready": sfx.ready(); break;
       case "ko": sfx.ko(); break;
+      case "mstart": stats[e.target].shots++; sfx.shoot(0.5); break;
+      case "mactive": {
+        const tags = (e.tags ?? []) as string[];
+        if (tags.includes("tornado")) sfx.spin();
+        if (tags.includes("rubber")) sfx.boing();
+        break;
+      }
+      case "grab": sfx.grab(); break;
+      case "whiff": sfx.whiff(); break;
+      case "slam": sfx.land(1); break;
+      case "status": if (e.status === "crumple") sfx.crumple(); else if (e.status === "wobble") sfx.wah(); else sfx.bind(); break;
     }
   };
 

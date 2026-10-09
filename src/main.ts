@@ -5,6 +5,7 @@ import { startBattle } from "./battle/battle";
 import { Sfx } from "./battle/audio";
 import { buildCharacter } from "./battle/character";
 import { EFFECTS, specialCost, type EffectId } from "./sim/special";
+import { MELEE_EFFECTS, meleeCost, type MeleeEffectId } from "./sim/melee";
 import { describeShape, fighterShape } from "./shape";
 
 const STORAGE_KEY = "doodle-arena:proto1";
@@ -342,14 +343,26 @@ const cpuSel = document.getElementById("cpuChar") as HTMLSelectElement;
 cpuSel.add(new Option("ランダム", ""));
 for (const name of Object.keys(SAMPLES)) cpuSel.add(new Option(name, name));
 let chosen: EffectId[] = ["homing"];
+let chosenMelee: MeleeEffectId[] = ["tornado"];
+let stype: "ranged" | "melee" = "ranged";
+document.querySelectorAll<HTMLButtonElement>("[data-stype]").forEach((b) =>
+  b.addEventListener("click", () => {
+    stype = b.dataset.stype as "ranged" | "melee";
+    document.querySelectorAll("[data-stype]").forEach((o) => o.classList.toggle("on", o === b));
+    renderEffects();
+  }),
+);
 const effectsEl = document.getElementById("effects")!;
 const costInfo = document.getElementById("costInfo")!;
 function renderEffects() {
   effectsEl.innerHTML = "";
-  const used = specialCost(chosen);
+  const melee = stype === "melee";
+  const list: { id: string; name: string; cost: number }[] = melee ? MELEE_EFFECTS : EFFECTS;
+  const sel: string[] = melee ? chosenMelee : chosen;
+  const used = melee ? meleeCost(chosenMelee) : specialCost(chosen);
   costInfo.textContent = `${used} / ${SPECIAL_BUDGET} ポイント`;
-  for (const e of EFFECTS) {
-    const on = chosen.includes(e.id);
+  for (const e of list) {
+    const on = sel.includes(e.id);
     const fits = on || used + e.cost <= SPECIAL_BUDGET;
     const lab = document.createElement("label");
     lab.className = on ? "on" : fits ? "" : "off";
@@ -358,7 +371,8 @@ function renderEffects() {
     box.checked = on;
     box.disabled = !fits;
     box.addEventListener("change", () => {
-      chosen = box.checked ? [...chosen, e.id] : chosen.filter((x) => x !== e.id);
+      if (melee) chosenMelee = box.checked ? [...chosenMelee, e.id as MeleeEffectId] : chosenMelee.filter((x) => x !== e.id);
+      else chosen = box.checked ? [...chosen, e.id as EffectId] : chosen.filter((x) => x !== e.id);
       renderEffects();
     });
     const txt = document.createElement("span");
@@ -369,11 +383,17 @@ function renderEffects() {
 }
 renderEffects();
 
-// CPU の必殺技は予算内でランダムに組む
+// CPU の必殺技は型をランダムに選び、予算内でランダムに組む
 function randomSpecial(): EffectId[] {
   const pool = [...EFFECTS].sort(() => Math.random() - 0.5);
   const out: EffectId[] = [];
   for (const e of pool) if (specialCost([...out, e.id]) <= SPECIAL_BUDGET) out.push(e.id);
+  return out;
+}
+function randomMelee(): MeleeEffectId[] {
+  const pool = [...MELEE_EFFECTS].sort(() => Math.random() - 0.5);
+  const out: MeleeEffectId[] = [];
+  for (const e of pool) if (meleeCost([...out, e.id]) <= SPECIAL_BUDGET) out.push(e.id);
   return out;
 }
 
@@ -384,7 +404,11 @@ document.getElementById("startBattle")!.addEventListener("click", () => {
   const cpuName = cpuSel.value || names[Math.floor(Math.random() * names.length)];
   const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
   const player = buildCharacter("あなた", mine, chosen, params);
+  player.cfg.specialType = stype;
+  player.cfg.melee = chosenMelee;
   const cpu = buildCharacter(`CPU（${cpuName}）`, SAMPLES[cpuName](), randomSpecial(), params);
+  cpu.cfg.specialType = Math.random() < 0.5 ? "melee" : "ranged";
+  cpu.cfg.melee = randomMelee();
   startBattle({
     player,
     cpu,

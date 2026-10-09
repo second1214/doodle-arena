@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { aiInput, createAi } from "../src/sim/ai";
 import { composeSpecial, EFFECTS, type EffectId } from "../src/sim/special";
+import { composeMelee, MELEE_EFFECTS } from "../src/sim/melee";
 import { createWorld, hashWorld, MATCH_TICKS, MAX_PROJECTILES, step, type FighterConfig, type World } from "../src/sim/world";
 
 const cfg = (name: string, special: EffectId[], extra: Partial<FighterConfig> = {}): FighterConfig => ({
@@ -50,4 +51,24 @@ describe("戦闘シミュレーション", () => {
       });
     }
   }, 120_000); // 255通り×1試合ずつ回すので長め
+
+  it("近接型: 全効果の組み合わせで数値が壊れず、必ず決着する", () => {
+    const ids = MELEE_EFFECTS.map((e) => e.id);
+    for (let mask = 1; mask < 1 << ids.length; mask++) {
+      const m = ids.filter((_, i) => mask & (1 << i));
+      const w = runAiMatch(
+        cfg("A", [], { specialType: "melee", melee: m }),
+        cfg("B", [], { specialType: "melee", melee: m, hasFeet: mask % 2 === 0, hasHands: mask % 3 !== 0 }),
+        mask,
+        (w) => {
+          for (const f of w.fighters) expect(Number.isFinite(f.x) && Number.isFinite(f.z) && Number.isFinite(f.hp)).toBe(true);
+        },
+      );
+      expect(w.winner).not.toBe(-1);
+    }
+  }, 300_000);
+
+  it("近接型: 効果の適用結果は選んだ順番に依らない", () => {
+    expect(composeMelee(["tornado", "grab", "giantHands"])).toEqual(composeMelee(["giantHands", "grab", "tornado"]));
+  });
 });
