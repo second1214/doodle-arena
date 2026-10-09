@@ -16,6 +16,8 @@ export interface ProjSpec {
   wobble: number; // 横揺れの振れ幅（単位/秒）
   meteor: boolean; // 打ち上げ→落下
   restrainTicks: number; // 当たった相手を動けなくする時間
+  grind: boolean; // 当たっている間は減速して削り続ける（多段ヒット）
+  tags: EffectId[]; // 付いている効果（見た目用）
 }
 
 type Phase = "mul" | "add" | "motion" | "behavior";
@@ -41,23 +43,27 @@ export const BASE_SPEC: ProjSpec = {
   wobble: 0,
   meteor: false,
   restrainTicks: 0,
+  grind: false,
+  tags: [],
 };
 
+// コストはバランス検証（ボット対戦）の結果を反映: 強すぎた豆粒・見えない・高速を上げ、弱かった追尾・打ち上げを下げた
 export const EFFECTS: EffectDef[] = [
-  { id: "invisible", name: "見えない弾", cost: 8, phase: "behavior", apply: (s) => { s.visible = false; } },
+  { id: "invisible", name: "見えない弾", cost: 11, phase: "behavior", apply: (s) => { s.visible = false; } },
   { id: "giant", name: "巨大", cost: 6, phase: "mul", apply: (s) => { s.size *= 3; s.speed *= 0.75; } },
-  { id: "multi", name: "多段ヒット", cost: 7, phase: "add", apply: (s) => { s.hits += 3; s.damage *= 0.45; } },
-  { id: "restrain", name: "拘束", cost: 8, phase: "behavior", apply: (s) => { s.restrainTicks += 45; } },
-  { id: "tiny", name: "豆粒（高威力）", cost: 6, phase: "mul", apply: (s) => { s.size *= 0.35; s.damage *= 2.2; } },
-  { id: "fast", name: "高速", cost: 5, phase: "mul", apply: (s) => { s.speed *= 2.2; } },
-  { id: "homing", name: "ゆらゆら追尾", cost: 7, phase: "motion", apply: (s) => { s.homing += 2.2; s.wobble += 4; } },
-  { id: "meteor", name: "打ち上げ→落下", cost: 7, phase: "motion", apply: (s) => { s.meteor = true; } },
+  { id: "multi", name: "多段ヒット", cost: 7, phase: "add", apply: (s) => { s.hits += 7; s.damage *= 0.3; s.hitInterval = 3; s.grind = true; } },
+  { id: "restrain", name: "拘束", cost: 7, phase: "behavior", apply: (s) => { s.restrainTicks += 90; } },
+  { id: "tiny", name: "豆粒（高威力）", cost: 12, phase: "mul", apply: (s) => { s.size *= 0.35; s.damage *= 2.2; } },
+  { id: "fast", name: "高速", cost: 9, phase: "mul", apply: (s) => { s.speed *= 2.2; } },
+  { id: "homing", name: "ゆらゆら追尾", cost: 5, phase: "motion", apply: (s) => { s.homing += 2.2; s.wobble += 4; } },
+  { id: "meteor", name: "打ち上げ→落下", cost: 5, phase: "motion", apply: (s) => { s.meteor = true; } },
 ];
 
 export function composeSpecial(ids: EffectId[]): ProjSpec {
   const s: ProjSpec = { ...BASE_SPEC };
   const chosen = EFFECTS.filter((e) => ids.includes(e.id));
   for (const phase of PHASE_ORDER) for (const e of chosen) if (e.phase === phase) e.apply(s);
+  s.tags = chosen.map((e) => e.id);
   return s;
 }
 

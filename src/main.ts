@@ -2,6 +2,7 @@ import { CANVAS_SIZE, DEFAULT_PARAMS, detect, type DetectParams, type DetectResu
 import { cutParts, drawStroke } from "./parts";
 import { SAMPLES } from "./samples";
 import { startBattle } from "./battle/battle";
+import { Sfx } from "./battle/audio";
 import { buildCharacter } from "./battle/character";
 import { EFFECTS, specialCost, type EffectId } from "./sim/special";
 
@@ -367,7 +368,9 @@ function randomSpecial(): EffectId[] {
   return out;
 }
 
+const sfx = new Sfx();
 document.getElementById("startBattle")!.addEventListener("click", () => {
+  sfx.unlock(); // 効果音はボタン操作の中でしか有効にできない
   const names = Object.keys(SAMPLES);
   const cpuName = cpuSel.value || names[Math.floor(Math.random() * names.length)];
   const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
@@ -378,6 +381,7 @@ document.getElementById("startBattle")!.addEventListener("click", () => {
     cpu,
     spectate: (document.getElementById("spectate") as HTMLInputElement).checked,
     seed: (Math.random() * 0xffffffff) >>> 0,
+    sfx,
     onExit: () => {},
   });
 });

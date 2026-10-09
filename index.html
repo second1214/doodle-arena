@@ -114,6 +114,35 @@
       .pop.big { font-size: 32px; color: #ffd43b; }
       .pop.guard { font-size: 16px; color: #bfe9ff; -webkit-text-stroke-color: #08324d; }
       .pop.ko { font-size: 64px; color: #ffd43b; -webkit-text-stroke: 3px #7a1f00; }
+      .b-bar { position: relative; }
+      .b-bar span { position: absolute; top: -1px; left: 6px; font-size: 10px; font-weight: 800; color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,.6); line-height: 14px; font-variant-numeric: tabular-nums; }
+      .b-side.right .b-bar span { left: auto; right: 6px; }
+      .b-bar.thin.low i { background: #e03131 !important; animation: blink .4s steps(2) infinite; }
+      @keyframes blink { 50% { opacity: .35; } }
+      .b-charge { display: flex; gap: 3px; margin-top: 4px; }
+      .b-side.right .b-charge { justify-content: flex-end; }
+      .b-charge i { width: 14px; height: 6px; border-radius: 3px; background: rgba(0,0,0,.18); }
+      .b-charge i.on { background: #7048e8; }
+      .b-side:first-child .b-charge i.on { background: #ff7a1a; }
+      .b-charge.full i { animation: blink .5s steps(2) infinite; }
+      .b-btn.low { filter: grayscale(1) brightness(.85); }
+      .b-btn.special.ready { box-shadow: 0 0 0 4px #ffd43b, 0 0 22px 6px rgba(255, 212, 59, .8); animation: throb .6s ease-in-out infinite alternate; }
+      @keyframes throb { to { transform: scale(1.08); } }
+      .b-count { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; font-size: 96px; font-weight: 900; color: #fff; -webkit-text-stroke: 4px #1a1a1a; paint-order: stroke; pointer-events: none; }
+      .b-count.go { color: #ffd43b; }
+      .b-count.pop-in { animation: popin .35s ease-out; }
+      @keyframes popin { from { transform: scale(2.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+      .b-mute { position: absolute; z-index: 3; top: calc(env(safe-area-inset-top, 0px) + 50px); left: 50%; transform: translateX(-50%); height: 26px; min-height: 0; padding: 0 10px; border-radius: 13px; background: rgba(255,255,255,.75); color: #222; border: none; font-size: 11px; font-weight: 700; }
+      .b-stats { border-collapse: collapse; margin: 0 auto; font-size: 14px; background: rgba(0,0,0,.35); border-radius: 10px; }
+      .b-stats td, .b-stats th { padding: 4px 10px; font-variant-numeric: tabular-nums; }
+      .b-stats th { font-weight: 400; color: #ddd; font-size: 12px; }
+      .b-stats td.nm { font-weight: 700; font-size: 12px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .pop.special { font-size: 30px; color: #ff7a1a; -webkit-text-stroke: 2px #1a1a1a; }
+      .pop.ready { font-size: 22px; color: #ffd43b; -webkit-text-stroke: 2px #4a2a00; }
+      .pop.combo { font-size: 20px; color: #74c0fc; -webkit-text-stroke: 2px #0b2a4a; }
+      .pop.bind { font-size: 22px; color: #ffd43b; -webkit-text-stroke: 2px #1a1a1a; }
+      .pop.thud { font-size: 30px; color: #fff; -webkit-text-stroke: 2.5px #5a3b12; }
+      .pop.thud.big { font-size: 52px; }
       .b-close { position: absolute; z-index: 3; top: calc(env(safe-area-inset-top, 0px) + 8px); right: 10px; width: 36px; height: 36px; min-height: 0; padding: 0; border-radius: 50%; background: rgba(255,255,255,.8); color: #222; border: none; font-size: 20px; }
     </style>
   </head>

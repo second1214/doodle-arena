@@ -5,6 +5,8 @@ import { CANVAS_SIZE } from "../detect";
 import { ARENA_RADIUS, type BattleEvent, type Fighter, type World } from "../sim/world";
 import type { CharacterBuild } from "./character";
 import { arcTexture, glowTexture, Particles, Popups, ringTexture, sparkTexture, starTexture, type Flash } from "./fx";
+import { ProjectileVisual, SpecialTextures } from "./specialfx";
+import { specialCharge } from "../sim/world";
 
 const TILT = -0.26; // カメラ側へ約15°後傾
 const PROJ_COLORS = [0xff7a1a, 0x9b5cff];
@@ -21,6 +23,7 @@ class FighterVisual {
   guard: THREE.Mesh;
   rootRing: THREE.Mesh;
   swing: THREE.Mesh;
+  aura: THREE.Sprite;
   limbs: LimbVisual[] = [];
   materials: THREE.MeshBasicMaterial[] = [];
   flipCur = 1;
@@ -28,7 +31,7 @@ class FighterVisual {
   squash = 0; // 被弾時のつぶれ
   koT = 0;
 
-  constructor(build: CharacterBuild, teamColor: number, tex: { arc: THREE.Texture; ring: THREE.Texture }, disposables: { dispose(): void }[]) {
+  constructor(build: CharacterBuild, teamColor: number, tex: { arc: THREE.Texture; ring: THREE.Texture; glow: THREE.Texture }, disposables: { dispose(): void }[]) {
     const { parts, res, scale: k, originX } = build;
     const b = parts.bounds;
     const pad = 4;
@@ -106,7 +109,15 @@ class FighterVisual {
     this.swing.visible = false;
     disposables.push(shadowGeo, shadowMat, guardGeo, guardMat, ringGeo, ringMat, swingGeo, swingMat);
 
+    // 必殺技を撃てる状態のオーラ
+    const auraMat = new THREE.SpriteMaterial({ map: tex.glow, color: teamColor, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    this.aura = new THREE.Sprite(auraMat);
+    this.aura.position.set(0, 0.95, -0.05);
+    this.aura.visible = false;
+    disposables.push(auraMat);
+
     this.body.rotation.x = TILT;
+    this.root.add(this.aura);
     this.flip.add(this.swing);
     this.body.add(this.flip, this.guard);
     this.root.add(this.shadow, this.rootRing, this.body);
@@ -161,6 +172,12 @@ class FighterVisual {
       this.guard.rotation.z += dt * 1.5;
       (this.guard.material as THREE.MeshBasicMaterial).opacity = 0.25 + Math.sin(t * 10) * 0.08;
     }
+    this.aura.visible = f.charge >= specialCharge && f.hp > 0;
+    if (this.aura.visible) {
+      const k = 1 + Math.sin(t * 9) * 0.12;
+      this.aura.scale.set(2.6 * k, 3.2 * k, 1);
+      (this.aura.material as THREE.SpriteMaterial).opacity = 0.75 + Math.sin(t * 13) * 0.2;
+    }
     this.rootRing.visible = f.rooted > 0;
     if (this.rootRing.visible) {
       this.rootRing.rotation.z += dt * 4;
@@ -179,12 +196,10 @@ export class BattleScene {
   private particles: Particles; // 光（加算）
   private sparks: Particles; // 火花・砂ぼこり（通常合成・黒縁）
   private popups: Popups;
-  private projGeo = new THREE.SphereGeometry(1, 20, 14);
-  private projMats = PROJ_COLORS.map((c) => new THREE.MeshBasicMaterial({ color: new THREE.Color(c).lerp(new THREE.Color(0xffffff), 0.35) }));
-  private haloMats: THREE.SpriteMaterial[];
+  private specialTex = new SpecialTextures(["#ff9a3c", "#b07cff"]);
   private shadowGeo = new THREE.CircleGeometry(1, 24);
-  private shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.2, depthWrite: false });
-  private proj = new Map<number, { ball: THREE.Mesh; halo: THREE.Sprite; shadow: THREE.Mesh }>();
+  private proj = new Map<number, ProjectileVisual>();
+  private combo = new Map<number, number>(); // 多段ヒットの連続数（弾ごと）
   private flashes: Flash[] = [];
   private flashGeo = new THREE.PlaneGeometry(1, 1);
   private disposables: { dispose(): void }[] = [];
@@ -194,8 +209,9 @@ export class BattleScene {
   private camDist = 12;
   private camInit = false;
   private koZoom = 0;
+  private lookY = 0.4;
 
-  constructor(private container: HTMLElement, builds: [CharacterBuild, CharacterBuild]) {
+  constructor(private container: HTMLElement, builds: [CharacterBuild, CharacterBuild], private viewer: number) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -225,8 +241,7 @@ export class BattleScene {
     this.particles = new Particles(this.tex.glow, true);
     this.sparks = new Particles(this.tex.spark, false);
     this.scene.add(this.sparks.points, this.particles.points);
-    this.haloMats = PROJ_COLORS.map((c) => new THREE.SpriteMaterial({ map: this.tex.glow, color: c, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-    this.disposables.push(this.projGeo, ...this.projMats, ...this.haloMats, this.shadowGeo, this.shadowMat, this.flashGeo, this.particles, this.sparks,
+    this.disposables.push(this.specialTex, this.shadowGeo, this.flashGeo, this.particles, this.sparks,
       this.tex.glow, this.tex.star, this.tex.ring, this.tex.arc, this.tex.spark);
     this.resize();
   }
@@ -249,6 +264,11 @@ export class BattleScene {
     const hHalf = Math.atan(Math.tan(vHalf) * this.camera.aspect);
     const need = Math.max(2.4, sep / 2 + 1.8);
     let dist = Math.max(6, need / Math.tan(hHalf));
+    // 打ち上げ弾が高く上がっている間は引いて、落ちてくるところまで見せる
+    let high = 0;
+    for (const p of w.projectiles) if (p.spec.meteor && (p.spec.visible || p.owner === this.viewer)) high = Math.max(high, p.h + p.spec.size);
+    dist += high * 0.9;
+    this.lookY += ((high > 1.5 ? high * 0.45 : 0.4) - this.lookY) * 0.08;
     if (w.winner !== -1) {
       this.koZoom = Math.min(1, this.koZoom + dt * 1.5);
       dist *= 1 - 0.3 * this.koZoom;
@@ -258,7 +278,7 @@ export class BattleScene {
     this.camDist += (dist - this.camDist) * 0.06;
     const dir = new THREE.Vector3(0, 15, 12).normalize();
     this.camera.position.copy(this.camTarget).addScaledVector(dir, this.camDist);
-    this.camera.lookAt(this.camTarget.x, 0.4, this.camTarget.z + 0.9); // 2体を画面のやや上寄りに（下はボタンが重なるため）
+    this.camera.lookAt(this.camTarget.x, this.lookY, this.camTarget.z + 0.9); // 2体を画面のやや上寄りに（下はボタンが重なるため）
     // 画面揺れ
     if (this.shake > 0) {
       const s = this.shake * this.shake;
@@ -288,15 +308,24 @@ export class BattleScene {
     switch (e.kind) {
       case "hit": {
         const big = e.src === "special";
+        const tags = e.tags ?? [];
         const col = big ? PROJ_COLORS[1 - e.target] : HIT_COLOR;
-        this.addFlash(this.tex.star, 0xffffff, pos, 0.6, big ? 2.6 : 1.7, 0.2);
-        this.addFlash(this.tex.ring, col, pos, 0.3, big ? 3.2 : 1.8, 0.3);
-        this.sparks.emit({ count: big ? 30 : 14, x: e.x, y: pos.y, z: e.z, color: col, speed: big ? 9 : 7, spread: 0.55, dir: kick, life: 0.45, size: big ? 0.32 : 0.26, gravity: 9, drag: 2.5 });
+        const multi = tags.includes("multi");
+        const n = multi && e.pid ? (this.combo.get(e.pid) ?? 0) + 1 : 1;
+        if (multi && e.pid) this.combo.set(e.pid, n);
+        const scale = multi ? 0.7 : 1;
+        this.addFlash(this.tex.star, 0xffffff, pos, 0.6 * scale, (big ? 2.6 + e.size : 1.7) * scale, 0.2);
+        this.addFlash(this.tex.ring, col, pos, 0.3, (big ? 3.2 : 1.8) * scale, 0.3);
+        this.sparks.emit({ count: big ? (multi ? 10 : 30) : 14, x: e.x, y: pos.y, z: e.z, color: col, speed: big ? 9 : 7, spread: 0.55, dir: kick, life: 0.45, size: big ? 0.32 : 0.26, gravity: 9, drag: 2.5 });
         this.particles.emit({ count: 8, x: e.x, y: pos.y, z: e.z, color: 0xffffff, speed: 3, life: 0.25, size: 0.6, grow: -1.5 });
-        if (big) this.addFlash(this.tex.ring, col, new THREE.Vector3(e.x, 0.05, e.z), 0.5, 4 + e.size * 3, 0.45, true);
-        this.shake = Math.max(this.shake, big ? 0.55 : 0.32);
+        if (big && !multi) this.addFlash(this.tex.ring, col, new THREE.Vector3(e.x, 0.05, e.z), 0.5, 4 + e.size * 3, 0.45, true);
+        if (tags.includes("tiny") && big) this.addFlash(this.tex.glow, 0xffffff, pos, 0.5, 4, 0.15); // 豆粒は鋭く光る
+        this.shake = Math.max(this.shake, big ? (multi ? 0.3 : 0.55 + e.size * 0.2) : 0.32);
         this.fighters[e.target].squash = 1;
-        this.popups.add(String(Math.max(1, Math.round(e.amount))), pos.clone().setY(pos.y + 0.9), big ? "big" : "");
+        const top = pos.clone().setY(pos.y + 0.9);
+        this.popups.add(String(Math.max(1, Math.round(e.amount))), top.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.6, 0, 0)), big ? "big" : "");
+        if (multi && n >= 2) this.popups.add(`${n} HIT!`, top.clone().setY(top.y + 0.7), "combo");
+        if (e.restrained) this.popups.add("拘束!", top.clone().setY(top.y + 0.5), "bind");
         break;
       }
       case "guard": {
@@ -309,17 +338,39 @@ export class BattleScene {
       case "shoot": {
         const col = PROJ_COLORS[e.target];
         const p = new THREE.Vector3(e.x + e.dx * 0.8, 1, e.z + e.dz * 0.8);
-        this.addFlash(this.tex.glow, col, p, 0.5, 2.5 + e.size * 2, 0.25);
-        this.addFlash(this.tex.ring, col, new THREE.Vector3(e.x, 0.05, e.z), 0.4, 3, 0.4, true);
-        this.particles.emit({ count: 24, x: p.x, y: 1, z: p.z, color: col, speed: 5, spread: 0.5, dir: [e.dx, 0.2, e.dz], life: 0.4, size: 0.3 });
+        this.addFlash(this.tex.glow, col, p, 0.5, 3 + e.size * 2, 0.3);
+        this.addFlash(this.tex.star, 0xffffff, p, 0.4, 1.8 + e.size, 0.18);
+        this.addFlash(this.tex.ring, col, new THREE.Vector3(e.x, 0.05, e.z), 0.4, 4, 0.45, true);
+        // 集中線のように放射状に散る
+        this.particles.emit({ count: 30, x: p.x, y: 1, z: p.z, color: col, speed: 8, spread: 1, life: 0.35, size: 0.25, drag: 5 });
+        this.sparks.emit({ count: 16, x: p.x, y: 1, z: p.z, color: 0xffffff, speed: 6, spread: 0.6, dir: [e.dx, 0.3, e.dz], life: 0.4, size: 0.22 });
+        this.shake = Math.max(this.shake, 0.35);
+        this.fighters[e.target].squash = 0.6;
+        const invisible = (e.tags ?? []).includes("invisible");
+        this.popups.add(invisible ? "必殺…？" : "必殺!", new THREE.Vector3(e.x, 2.7, e.z), "special");
+        break;
+      }
+      case "ready": {
+        const col = PROJ_COLORS[e.target];
+        this.addFlash(this.tex.glow, col, new THREE.Vector3(e.x, 1, e.z), 1, 4, 0.4);
+        this.addFlash(this.tex.ring, col, new THREE.Vector3(e.x, 0.05, e.z), 0.5, 3.5, 0.5, true);
+        this.particles.emit({ count: 30, x: e.x, y: 0.2, z: e.z, color: col, speed: 2, dir: [0, 1, 0], spread: 0.4, up: 3, life: 0.8, size: 0.3 });
+        this.popups.add("必殺OK!", new THREE.Vector3(e.x, 2.6, e.z), "ready");
         break;
       }
       case "land": {
+        // 打ち上げ弾の着地: 大きさに比例して衝撃を大きく
         const col = PROJ_COLORS[e.target];
-        this.addFlash(this.tex.ring, col, new THREE.Vector3(e.x, 0.06, e.z), 0.5, 5 + e.size * 4, 0.5, true);
-        this.addFlash(this.tex.glow, 0xffffff, new THREE.Vector3(e.x, 0.4, e.z), 1, 3 + e.size * 3, 0.2);
-        this.sparks.emit({ count: 36, x: e.x, y: 0.1, z: e.z, color: 0xd9c7a0, speed: 6, spread: 1, dir: [0, 1, 0], up: 3, life: 0.7, size: 0.4, gravity: 6, drag: 2 });
-        this.shake = Math.max(this.shake, 0.6);
+        const k = 1 + e.size * 1.5;
+        this.addFlash(this.tex.ring, col, new THREE.Vector3(e.x, 0.06, e.z), 0.5, (4 + e.size * 4) * 1.2, 0.6, true);
+        this.addFlash(this.tex.ring, 0xffffff, new THREE.Vector3(e.x, 0.07, e.z), 0.3, (2.5 + e.size * 3) * 1.2, 0.4, true);
+        this.addFlash(this.tex.glow, 0xffffff, new THREE.Vector3(e.x, 0.4, e.z), 1, 3 + e.size * 4, 0.25);
+        this.addFlash(this.tex.star, 0xffffff, new THREE.Vector3(e.x, 0.6 + e.size, e.z), 0.5, 2 + e.size * 2, 0.25);
+        this.sparks.emit({ count: Math.round(16 * k), x: e.x, y: 0.1, z: e.z, color: 0xd9c7a0, speed: 6 * k, spread: 1, dir: [0, 1, 0], up: 3, life: 0.7, size: 0.3 + e.size * 0.1, gravity: 6, drag: 2 });
+        this.sparks.emit({ count: Math.round(8 * k), x: e.x, y: 0.2, z: e.z, color: 0x8c6d46, speed: 4 * k, spread: 1, up: 6, life: 0.9, size: 0.2, gravity: 14, drag: 0.5 }); // 土くれ
+        this.particles.emit({ count: 20, x: e.x, y: 0.3, z: e.z, color: 0xff6a00, speed: 5 * k, spread: 1, life: 0.5, size: 0.5 });
+        this.shake = Math.min(1.2, Math.max(this.shake, 0.5 + e.size * 0.5));
+        this.popups.add("ドスン!", new THREE.Vector3(e.x, 1.2 + e.size * 1.5, e.z), e.size > 0.6 ? "thud big" : "thud");
         break;
       }
       case "ko": {
@@ -353,34 +404,26 @@ export class BattleScene {
       alive.add(p.id);
       let v = this.proj.get(p.id);
       if (!v) {
-        v = {
-          ball: new THREE.Mesh(this.projGeo, this.projMats[p.owner]),
-          halo: new THREE.Sprite(this.haloMats[p.owner]),
-          shadow: new THREE.Mesh(this.shadowGeo, this.shadowMat),
-        };
-        v.shadow.rotation.x = -Math.PI / 2;
-        this.scene.add(v.ball, v.halo, v.shadow);
+        v = new ProjectileVisual(p, PROJ_COLORS[p.owner], this.specialTex, this.tex.glow, this.shadowGeo, p.owner === this.viewer);
+        this.scene.add(v.group);
         this.proj.set(p.id, v);
       }
-      const vis = p.spec.visible;
-      v.ball.visible = v.halo.visible = v.shadow.visible = vis;
-      const pulse = 1 + Math.sin(t * 20 + p.id) * 0.1;
-      v.ball.position.set(p.x, p.h, p.z);
-      v.ball.scale.setScalar(p.spec.size);
-      v.halo.position.set(p.x, p.h, p.z);
-      v.halo.scale.setScalar(p.spec.size * 4.5 * pulse);
-      v.shadow.position.set(p.x, 0.015, p.z);
-      v.shadow.scale.setScalar(p.spec.size * Math.max(0.4, 1 - p.h / 12));
-      if (vis) {
-        const n = Math.min(4, 1 + Math.round(p.spec.size * 2));
-        this.particles.emit({ count: n, x: p.x, y: p.h, z: p.z, color: PROJ_COLORS[p.owner], speed: 0.6, life: 0.35, size: p.spec.size * 1.6, grow: -p.spec.size * 3 });
-      }
+      v.update(p, t, this.camera, this.particles, this.sparks);
     }
     for (const [id, v] of this.proj) {
       if (alive.has(id)) continue;
-      this.scene.remove(v.ball, v.halo, v.shadow);
+      this.scene.remove(v.group);
+      v.dispose();
       this.proj.delete(id);
+      this.combo.delete(id);
     }
+    // オーラの粒子
+    w.fighters.forEach((f, i) => {
+      if (f.charge >= specialCharge && f.hp > 0 && Math.random() < 0.6) {
+        const a = Math.random() * Math.PI * 2;
+        this.particles.emit({ count: 1, x: f.x + Math.cos(a) * 0.55, y: 0.1, z: f.z + Math.sin(a) * 0.4, color: PROJ_COLORS[i], speed: 0.3, up: 2.2, life: 0.7, size: 0.28, drag: 0.5 });
+      }
+    });
 
     this.flashes = this.flashes.filter((f) => {
       f.life -= dt;
@@ -407,6 +450,7 @@ export class BattleScene {
   dispose() {
     for (const d of this.disposables) d.dispose();
     for (const f of this.flashes) (f.mesh.material as THREE.Material).dispose();
+    for (const v of this.proj.values()) v.dispose();
     this.popups.clear();
     this.renderer.dispose();
     this.renderer.domElement.remove();
