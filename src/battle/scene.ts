@@ -15,7 +15,7 @@ const GUARD_COLOR = 0x5cc8ff;
 
 interface LimbVisual { pivot: THREE.Object3D; kind: "hand" | "foot"; nth: number; length: number }
 
-class FighterVisual {
+export class FighterVisual {
   root = new THREE.Group();
   body = new THREE.Group(); // 傾き・上下
   flip = new THREE.Group(); // 左右反転

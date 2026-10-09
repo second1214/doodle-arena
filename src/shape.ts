@@ -158,6 +158,26 @@ export function describeShape(sh: ReturnType<typeof fighterShape>): string[] {
   return out;
 }
 
+// 子ども向けの短い言葉＋絵文字（キャラタブ用。数値は出さない）
+export function kidTraits(sh: ReturnType<typeof fighterShape>): [string, string][] {
+  const t = sh.traits;
+  const out: [string, string][] = [];
+  if (!sh.hasFeet) out.push(["🛞", "ころがって うごく"]);
+  else if (t.walk >= 1.15) out.push(["🏃", "足が はやい"]);
+  else if (t.walk <= 0.87) out.push(["🐢", "足が おそい"]);
+  else out.push(["🚶", "ふつうの 足"]);
+  if (!sh.hasHands) out.push(["💥", "体あたりで こうげき"]);
+  else {
+    if (sh.reach >= 0.7) out.push(["🤜", "手が ながい"]);
+    else if (sh.reach <= 0.3) out.push(["✊", "手が みじかい"]);
+    if (t.hits > 1) out.push(["👐", `手が いっぱい（${t.hits}れんだ）`]);
+  }
+  if (t.knockTaken >= 1.15) out.push(["🪶", "かるくて とばされやすい"]);
+  else if (t.knockTaken <= 0.87) out.push(["🪨", "おもくて どっしり"]);
+  if (t.radius >= 1.15) out.push(["📦", "からだが 大きい"]);
+  return out;
+}
+
 // 当たり判定の地図（描いた線と塗りの部分だけが体。空白は素通り）。DOM 非依存で、同じ絵なら必ず同じ結果。
 // 座標は見た目と同じ: 左右 u は絵の重心からの距離、高さ v は足元からの高さ（どちらも戦闘の単位）。
 export interface Hurt {

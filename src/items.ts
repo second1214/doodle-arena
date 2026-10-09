@@ -46,6 +46,14 @@ export function kindInfo(kind: PartKind): KindInfo {
   return STAT_KINDS[kind as StatKind];
 }
 
+// 見た目用のアイコン（子どもにも分かるように）
+const KIND_ICON: Record<string, string> = {
+  "r:invisible": "👻", "r:giant": "🪨", "r:multi": "💫", "r:restrain": "⛓️", "r:tiny": "🫘", "r:fast": "⚡", "r:homing": "🐝", "r:meteor": "☄️",
+  "m:giantHands": "🖐️", "m:rubber": "🥊", "m:tornado": "🌪️", "m:dash": "💨", "m:slam": "🔨", "m:grab": "🤲", "m:wobble": "😵‍💫", "m:legbind": "🦶", "m:crumple": "📄",
+  power: "💪", pspeed: "🏹", duration: "⏳", windup: "⏩", charge: "🔋",
+};
+export const kindIcon = (kind: PartKind) => KIND_ICON[kind] ?? "✨";
+
 export const ALL_KINDS: PartKind[] = [
   ...EFFECTS.map((e) => `r:${e.id}` as PartKind),
   ...MELEE_EFFECTS.map((e) => `m:${e.id}` as PartKind),

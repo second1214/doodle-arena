@@ -119,6 +119,49 @@
       .b-reward .drop { display: grid; gap: 4px; margin-top: 4px; }
       .b-reward .pc { background: rgba(255,255,255,.92); color: #2d2640; border-radius: 10px; text-align: left; min-width: 240px; }
       .b-reward .pc small { color: #6a6280; }
+      /* キャラタブ: 子どもでも分かる大きなカードと絵文字 */
+      .kid { display: grid; gap: 12px; }
+      .kcard { background: var(--panel); border: 2px solid var(--line); border-radius: 20px; padding: 12px 14px; box-shadow: var(--shadow); display: grid; gap: 8px; }
+      .kh { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 18px; }
+      .kn { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 15px; flex: none; }
+      .ksub { color: var(--muted); font-size: 12px; }
+      input.text.big { font-size: 20px; font-weight: 700; min-height: 52px; border-radius: 14px; border-width: 2px; }
+      .badges { display: flex; flex-wrap: wrap; gap: 8px; }
+      .badges span { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; background: var(--bg); border: 2px solid var(--line); font-weight: 700; font-size: 15px; }
+      .badges b { font-size: 20px; }
+      .pcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+      .pcards button { display: grid; justify-items: center; gap: 2px; padding: 10px 6px; border-radius: 16px; min-height: 96px; }
+      .pcards button b { font-size: 30px; line-height: 1.1; }
+      .pcards button span { font-weight: 800; }
+      .pcards button small { color: var(--muted); font-size: 11px; line-height: 1.3; }
+      .pcards button.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); box-shadow: 0 0 0 2px var(--accent); }
+      .seg.big button { min-height: 52px; font-size: 16px; font-weight: 800; border-radius: 16px; }
+      .meter { display: flex; align-items: center; gap: 10px; font-weight: 800; }
+      .meter-bar { flex: 1; height: 14px; border-radius: 7px; background: var(--line); overflow: hidden; }
+      .meter-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #69db7c, #ffd43b); border-radius: 7px; transition: width .2s; }
+      .meter-bar i.full { background: linear-gradient(90deg, #ffa94d, #ff6b6b); }
+      .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+      .tgrid > .empty { grid-column: 1 / -1; color: var(--muted); font-size: 13px; }
+      .ptile { position: relative; display: grid; justify-items: center; gap: 2px; padding: 8px 6px 6px; min-height: 108px; border-radius: 16px; border: 3px solid var(--rc); background: var(--panel); }
+      .ptile .rk { position: absolute; top: -2px; left: -2px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 12px 0 10px 0; background: var(--rc); color: #fff; font-weight: 900; font-size: 14px; }
+      .ptile .ic { font-size: 32px; line-height: 1.15; }
+      .ptile .nm { font-weight: 800; font-size: 13px; text-align: center; line-height: 1.2; }
+      .ptile .pw { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.2; }
+      .ptile .ct { position: absolute; top: 4px; right: 6px; font-size: 12px; font-weight: 800; color: var(--muted); }
+      .ptile.off { opacity: .45; }
+      .ptile:disabled { opacity: .35; }
+      .kidhint { font-weight: 800; font-size: 14px; margin-top: 4px; }
+      .savebar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .savebar button { margin-top: 0; min-height: 56px; font-size: 17px; font-weight: 800; border-radius: 999px; }
+      .rgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+      .rgrid > div { display: grid; justify-items: center; gap: 4px; padding: 6px; border-radius: 14px; border: 2px solid var(--line); background: var(--panel); }
+      .rgrid > div.on { border-color: var(--accent); }
+      .rgrid img { width: 72px; height: 72px; border-radius: 12px; background: #fff; border: 1px solid var(--line); }
+      .rgrid .nm { font-weight: 800; font-size: 13px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .rgrid .row { margin: 0; gap: 4px; justify-content: center; }
+      .rgrid button { min-height: 32px; padding: 2px 10px; font-size: 12px; border-radius: 999px; }
+      .rgrid > .empty { grid-column: 1 / -1; border: 0; background: none; color: var(--muted); font-size: 13px; }
+      #preview3d { width: 100%; aspect-ratio: 1; border-radius: 16px; overflow: hidden; touch-action: none; background: #f3ecff; }
       textarea.text.code { font-family: ui-monospace, monospace; font-size: 11px; width: 100%; resize: vertical; }
       .filebtn { display: inline-flex; align-items: center; border: 2px solid var(--line); border-radius: 14px; padding: 8px 12px; min-height: 42px; background: var(--panel); box-shadow: var(--shadow); cursor: pointer; }
       .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
@@ -340,38 +383,38 @@
       <button data-view="anim">動かす</button>
       <button data-view="char">キャラ</button>
     </div>
-    <section id="charSetup" hidden>
-      <div class="field">
-        <label class="label" for="charName">名前</label>
-        <input id="charName" class="text" maxlength="16" placeholder="キャラの名前" />
+    <section id="charSetup" class="kid" hidden>
+      <div class="kcard">
+        <label class="kh" for="charName"><span class="kn">1</span>なまえ</label>
+        <input id="charName" class="text big" maxlength="16" placeholder="なまえをつけよう" />
       </div>
-      <div class="field">
-        <div class="label">絵の形で決まる特徴</div>
-        <ul id="myTraits" class="traits"></ul>
+      <div class="kcard">
+        <div class="kh"><span class="kn">2</span>からだのとくちょう</div>
+        <div id="myTraits" class="badges"></div>
+        <div class="ksub">描いた絵のかたちで決まるよ。強さはメイン画面の「スキルツリー」で育てよう。</div>
       </div>
-      <div class="note">強さ（攻撃・体力など）はメイン画面の「スキルツリー」で育てます。全部のキャラに共通です。</div>
-      <div class="field">
-        <label class="label" for="personality">性格（CPU が動かすときの戦い方）</label>
-        <select id="personality"></select>
-        <div class="note" id="personalityDesc"></div>
+      <div class="kcard">
+        <div class="kh"><span class="kn">3</span>たたかいかた</div>
+        <div id="persCards" class="pcards" role="radiogroup" aria-label="たたかいかた"></div>
+        <div class="ksub">コンピューターがこのキャラを動かすときの動きかた</div>
       </div>
-      <div class="field">
-        <div class="label">必殺技 <span id="costInfo" class="cost"></span></div>
-        <div class="seg" role="radiogroup" aria-label="必殺技の型">
-          <button type="button" data-stype="ranged" class="on">遠距離（弾）</button>
-          <button type="button" data-stype="melee">近接</button>
+      <div class="kcard">
+        <div class="kh"><span class="kn">4</span>ひっさつわざ</div>
+        <div class="seg big" role="radiogroup" aria-label="ひっさつわざのかた">
+          <button type="button" data-stype="ranged" class="on">🎯 とおくから</button>
+          <button type="button" data-stype="melee">👊 ちかくで</button>
         </div>
-        <div id="effects" class="pfield"></div>
-        <div class="note">パーツは手に入れるたびに威力とコストが違います。同じパーツを重ねて付けると効果も重なります。矛盾した組み合わせも付けられます。</div>
+        <div class="meter"><div class="meter-bar"><i id="costBar"></i></div><span id="costInfo"></span></div>
+        <div id="effects"></div>
       </div>
-      <div class="row">
-        <button id="saveChar" class="primary inline">保存</button>
-        <button id="newChar">新しいキャラ</button>
+      <div class="savebar">
+        <button id="saveChar" class="primary">💾 ほぞんする</button>
+        <button id="newChar">✏️ あたらしく</button>
       </div>
       <div class="note" id="saveMsg"></div>
-      <div class="field">
-        <div class="label">保存したキャラ</div>
-        <ul id="roster" class="roster"></ul>
+      <div class="kcard">
+        <div class="kh"><span class="kn">★</span>ほぞんした キャラ</div>
+        <div id="roster" class="rgrid"></div>
       </div>
     </section>
     <section id="battleSetup" hidden>
@@ -390,6 +433,7 @@
     </section>
     <div class="stage">
       <canvas id="view" width="512" height="512"></canvas>
+      <div id="preview3d" hidden></div>
     </div>
     <div class="result" id="result"></div>
     <div class="legend" id="legend" hidden>

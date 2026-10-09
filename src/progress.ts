@@ -20,7 +20,7 @@ export interface StoryProgress {
 }
 
 // 次のレベルまでに必要な経験値
-export const expToNext = (level: number) => 60 + 20 * level;
+export const expToNext = (level: number) => 80 + 25 * level; // 2026-10-09 少し緩和（旧 60+20×Lv）
 
 function read<T>(key: string): T | null {
   try {

@@ -26,10 +26,12 @@ describe("経験値とレベル", () => {
     expect(r1).toMatchObject({ exp: 52, firstClear: true });
     expect(loadProfile()).toMatchObject({ level: 1, exp: 52, points: 0 });
     const r2 = applyStageResult(1, "1-1", false, true);
-    expect(r2.exp).toBe(26); // 2回目は半分 → 78 で Lv2（必要80）にはまだ
+    expect(r2.exp).toBe(26); // 2回目は半分 → 78 で Lv2（必要105）にはまだ
     const r3 = applyStageResult(2, "1-2", false, false);
     expect(r3.exp).toBe(16); // 負けは 1/4
-    expect(loadProfile()).toMatchObject({ level: 2, exp: 52 + 26 + 16 - expToNext(1), points: 1 });
+    expect(loadProfile()).toMatchObject({ level: 1, exp: 94, points: 0 }); // 94 < 105
+    applyStageResult(3, "1-3", false, true); // +76 → 170 で Lv2
+    expect(loadProfile()).toMatchObject({ level: 2, exp: 170 - expToNext(1), points: 1 });
   });
   it("ボスの初撃破はポイント +1（2回目以降は無し）", () => {
     const r = applyStageResult(6, "1-6", true, true);

@@ -4,10 +4,11 @@ import { SAMPLES } from "./samples";
 import { startBattle } from "./battle/battle";
 import { Sfx } from "./battle/audio";
 import { buildCharacter } from "./battle/character";
-import { describeShape, fighterShape } from "./shape";
+import { Preview3D } from "./battle/preview";
+import { fighterShape, kidTraits } from "./shape";
 import { PERSONAS } from "./sim/ai";
 import { sumBoost, type Boost } from "./sim/stats";
-import { ALL_KINDS, buildSpecial, equipCosts, extraText, fitsType, kindInfo, mainText, makePart, RARITY_INFO, rarityIndex, SPECIAL_BUDGET, type BuiltSpecial, type Part, type PartKind } from "./items";
+import { ALL_KINDS, buildSpecial, equipCosts, extraText, fitsType, kindIcon, kindInfo, mainText, makePart, RARITY_INFO, rarityIndex, SPECIAL_BUDGET, type BuiltSpecial, type Part, type PartKind } from "./items";
 import { combinable, combine, COMBINE_COUNT, dismantle, dropParts, INVENTORY_CAP, loadInventory, migrateToParts, reroll, rerollCost, type DropResult } from "./inventory";
 import { autoTree, boostOf, BRANCHES, canTake, nodeById, randomTree, SMALL_TIERS, spentOf, TREE_TOTAL } from "./tree";
 import type { Personality } from "./sim/world";
@@ -44,8 +45,6 @@ let committedLen = -1;
 let view: View = "draw";
 let current: Stroke | null = null;
 let detected: { res: DetectResult; parts: HTMLCanvasElement[] } | null = null;
-let animStart = 0;
-let animLoop = false;
 
 function load(): Stroke[] {
   try {
@@ -148,48 +147,32 @@ function render() {
     return;
   }
 
-  // 動かす: 紙人形アニメ（手足を関節で回転）＋左右移動と向き反転
-  const t = (performance.now() - animStart) / 1000;
-  const hasFeet = res.limbs.some((l) => l.kind === "foot");
-  const walkX = Math.sin(t * 0.6) * 90;
-  const flip = Math.max(-1, Math.min(1, Math.cos(t * 0.6) * 6)); // 向き変更時に横反転を補間
-  const bob = hasFeet ? Math.abs(Math.sin(t * 8)) * -8 : 0;
-  const cx = res.centroid[0] * s;
+  // 動かす: 立体プレビュー（Preview3D）が描くので、ここでは何もしない
+}
 
-  ctx.fillStyle = "rgba(0,0,0,0.12)";
-  ctx.beginPath();
-  ctx.ellipse(CANVAS_SIZE / 2 + walkX, CANVAS_SIZE - 40, 90, 16, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.save();
-  ctx.translate(CANVAS_SIZE / 2 + walkX, bob);
-  ctx.scale(flip * 0.8, 0.8);
-  ctx.translate(-cx, 40);
-  const drawLimb = (k: number) => {
-    const l = res.limbs[k];
-    const sameKind = res.limbs.slice(0, k).filter((m) => m.kind === l.kind).length;
-    const ang = l.kind === "foot"
-      ? Math.sin(t * 8 + sameKind * Math.PI) * 0.35
-      : Math.sin(t * 5 + sameKind * 1.7) * 0.45;
-    ctx.save();
-    ctx.translate(l.pivot[0] * s, l.pivot[1] * s);
-    ctx.rotate(ang);
-    ctx.translate(-l.pivot[0] * s, -l.pivot[1] * s);
-    ctx.drawImage(parts[k + 1], 0, 0);
-    ctx.restore();
-  };
-  res.limbs.forEach((l, k) => l.kind === "foot" && drawLimb(k));
-  ctx.drawImage(parts[0], 0, 0);
-  res.limbs.forEach((l, k) => l.kind === "hand" && drawLimb(k));
-  ctx.restore();
-  if (!animLoop) {
-    animLoop = true;
-    requestAnimationFrame(() => { animLoop = false; render(); });
+// 「動かす」: 戦闘と同じ膨らませた立体で動かす
+const previewEl = document.getElementById("preview3d")!;
+let preview: Preview3D | null = null;
+function stopPreview() {
+  preview?.dispose();
+  preview = null;
+}
+function startPreview() {
+  stopPreview();
+  const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
+  try {
+    preview = new Preview3D(previewEl, buildCharacter(editor.name || "あなた", mine, [], params));
+    if (!resultEl.textContent!.includes("なぞる")) resultEl.textContent += "　👆 指でなぞると くるっと 回せるよ";
+  } catch {
+    resultEl.textContent = "立体の表示に失敗しました（この端末では 3D が使えない可能性があります）";
   }
 }
 
 function setView(v: View) {
   view = v;
+  canvas.hidden = v === "anim";
+  previewEl.hidden = v !== "anim";
+  if (v !== "anim") stopPreview();
   document.querySelectorAll<HTMLButtonElement>(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
   drawTools.hidden = v !== "draw";
   legendEl.hidden = v !== "detect";
@@ -198,7 +181,7 @@ function setView(v: View) {
   battleSetup.hidden = v !== "battle";
   charSetup.hidden = v !== "char";
   if (v === "char") {
-    resultEl.textContent = strokes.length ? "" : "絵がまだ無いので、特徴は「棒人間」で表示しています（描くタブで描いてください）";
+    resultEl.textContent = strokes.length ? "" : "まだ絵が ないので「棒人間」で 見せているよ（「描く」で 描いてね）";
     renderTraits();
     renderRoster();
     return;
@@ -213,7 +196,7 @@ function setView(v: View) {
     resultEl.textContent = "";
   } else {
     runDetect();
-    animStart = performance.now();
+    if (v === "anim") startPreview();
   }
   render();
 }
@@ -363,6 +346,7 @@ function scheduleRedetect() {
   redetectTimer = window.setTimeout(() => {
     runDetect();
     if (view === "detect") render();
+    if (view === "anim") startPreview();
   }, 120);
 }
 document.getElementById("resetParams")!.addEventListener("click", () => {
@@ -399,21 +383,42 @@ function renderTraits() {
   const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
   const traitsEl = document.getElementById("myTraits")!;
   traitsEl.innerHTML = "";
-  for (const line of describeShape(fighterShape(detect(mine, params)))) {
-    const li = document.createElement("li");
-    li.textContent = line;
-    traitsEl.appendChild(li);
+  for (const [icon, text] of kidTraits(fighterShape(detect(mine, params)))) {
+    const b = document.createElement("span");
+    const i = document.createElement("b");
+    i.textContent = icon;
+    b.append(i, text);
+    traitsEl.appendChild(b);
   }
 }
 
-// 性格
-const persSel = document.getElementById("personality") as HTMLSelectElement;
-const persDesc = document.getElementById("personalityDesc")!;
-for (const [k, p] of Object.entries(PERSONAS)) persSel.add(new Option(p.label, k));
-persSel.addEventListener("change", () => { editor.personality = persSel.value as Personality; syncPersonality(); persistDraft(); });
+// たたかいかた（性格）: 絵文字の大きなカードから選ぶ
+const KID_PERSONA: Record<Personality, [string, string, string]> = {
+  aggressive: ["🔥", "ぐいぐい", "どんどん前に出て なぐる"],
+  cautious: ["🛡️", "しんちょう", "まもって はんげき"],
+  sniper: ["🎯", "とおくから", "なぐったら はなれて ひっさつ"],
+  tricky: ["🌀", "トリッキー", "よこに ゆさぶって かわす"],
+};
+const persCards = document.getElementById("persCards")!;
+for (const k of Object.keys(PERSONAS) as Personality[]) {
+  const [icon, name, desc] = KID_PERSONA[k];
+  const b = document.createElement("button");
+  b.type = "button";
+  b.dataset.pers = k;
+  b.setAttribute("role", "radio");
+  b.innerHTML = `<b></b><span></span><small></small>`;
+  b.querySelector("b")!.textContent = icon;
+  b.querySelector("span")!.textContent = name;
+  b.querySelector("small")!.textContent = desc;
+  b.addEventListener("click", () => { editor.personality = k; syncPersonality(); persistDraft(); });
+  persCards.appendChild(b);
+}
 function syncPersonality() {
-  persSel.value = editor.personality;
-  persDesc.textContent = PERSONAS[editor.personality].desc;
+  persCards.querySelectorAll<HTMLButtonElement>("button").forEach((b) => {
+    const on = b.dataset.pers === editor.personality;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-checked", String(on));
+  });
 }
 
 // 必殺技: 持っているパーツを付け外しして組む（予算内）
@@ -437,7 +442,7 @@ function partChip(p: Part, cost = p.cost, note = ""): HTMLElement {
   rk.textContent = p.rarity;
   const nm = document.createElement("span");
   nm.className = "pn";
-  nm.textContent = kindInfo(p.kind).name;
+  nm.textContent = `${kindIcon(p.kind)} ${kindInfo(p.kind).name}`;
   const sub = document.createElement("small");
   sub.textContent = [mainText(p), ...p.extras.map(extraText)].join("・") + (note ? `（${note}）` : "");
   const c = document.createElement("span");
@@ -446,6 +451,22 @@ function partChip(p: Part, cost = p.cost, note = ""): HTMLElement {
   c.title = "装備コスト";
   el.append(rk, nm, sub, c);
   return el;
+}
+// 子ども向けの大きなパーツの札（キャラタブ用）
+function partTile(p: Part, cost: number, note = ""): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "ptile";
+  b.style.setProperty("--rc", RARITY_INFO[p.rarity].color);
+  const name = kindInfo(p.kind).name;
+  b.innerHTML = `<span class="rk"></span><span class="ct"></span><span class="ic"></span><span class="nm"></span><span class="pw"></span>`;
+  b.querySelector(".rk")!.textContent = p.rarity;
+  b.querySelector(".ct")!.textContent = `${cost}`;
+  b.querySelector(".ic")!.textContent = kindIcon(p.kind);
+  b.querySelector(".nm")!.textContent = name;
+  b.querySelector(".pw")!.textContent = note || mainText(p) + (p.extras.length ? ` ＋${p.extras.length}` : "");
+  b.title = `${name}・${[mainText(p), ...p.extras.map(extraText)].join("・")}・コスト${cost}`;
+  return b;
 }
 const partsById = (ids: string[]): Part[] => {
   const inv = loadInventory();
@@ -478,42 +499,41 @@ function renderEffects() {
   const active = withinBudget(mine, type);
   const costs = equipCosts(active);
   const used = costs.reduce((a, c) => a + c, 0);
-  costInfo.textContent = `${used} / ${SPECIAL_BUDGET} ポイント`;
+  costInfo.textContent = `${used} / ${SPECIAL_BUDGET}`;
+  const bar = document.getElementById("costBar")!;
+  bar.style.width = `${Math.min(100, (100 * used) / SPECIAL_BUDGET)}%`;
+  bar.classList.toggle("full", used >= SPECIAL_BUDGET);
   effectsEl.innerHTML = "";
-  const head = (t: string) => { const h = document.createElement("div"); h.className = "plabel"; h.textContent = t; effectsEl.appendChild(h); };
-  const list = () => { const ul = document.createElement("div"); ul.className = "plist"; effectsEl.appendChild(ul); return ul; };
+  const head = (t: string) => { const h = document.createElement("div"); h.className = "kidhint"; h.textContent = t; effectsEl.appendChild(h); };
+  const grid = (empty: string) => { const g = document.createElement("div"); g.className = "tgrid"; effectsEl.appendChild(g); const e = document.createElement("div"); e.className = "empty"; e.textContent = empty; g.appendChild(e); return g; };
 
-  head("付けているパーツ（タップで外す）");
-  const on = list();
-  if (!mine.length) on.textContent = "まだ何も付けていません（効果なしの基本の必殺になります）";
+  head("つけている パーツ（タップで はずす）");
+  const on = grid(mine.length ? "" : "まだ なにも つけていないよ。下から えらんでね");
+  if (mine.length) on.innerHTML = "";
   for (const p of mine) {
     const k = active.indexOf(p);
-    const b = document.createElement("button");
-    b.type = "button";
-    b.appendChild(partChip(p, k >= 0 ? costs[k] : p.cost, !fitsType(p, type) ? "この型では効かない" : k < 0 ? "予算オーバーで効かない" : ""));
-    if (k < 0) b.classList.add("off");
-    b.addEventListener("click", () => { editor.parts = editor.parts.filter((id) => id !== p.id); renderEffects(); persistDraft(); });
-    on.appendChild(b);
+    const t = partTile(p, k >= 0 ? costs[k] : p.cost, !fitsType(p, type) ? "このかたでは つかえない" : k < 0 ? "コストが たりない" : "");
+    if (k < 0) t.classList.add("off");
+    t.addEventListener("click", () => { editor.parts = editor.parts.filter((id) => id !== p.id); renderEffects(); persistDraft(); });
+    on.appendChild(t);
   }
-  const sum = document.createElement("div");
-  sum.className = "note";
-  sum.textContent = specialSummary(buildSpecial(active, type), type);
-  effectsEl.appendChild(sum);
 
-  head("持っているパーツ（タップで付ける）");
-  const have = list();
+  head("もっている パーツ（タップで つける）");
   const cand = inv.parts.filter((p) => fitsType(p, type) && !editor.parts.includes(p.id))
     .sort((a, b) => rarityIndex(b.rarity) - rarityIndex(a.rarity) || kindInfo(a.kind).name.localeCompare(kindInfo(b.kind).name));
-  if (!cand.length) have.textContent = "付けられるパーツがありません。ストーリーで勝つと手に入ります。";
+  const have = grid(cand.length ? "" : "つけられる パーツが ないよ。ストーリーで かつと もらえる！");
+  if (cand.length) have.innerHTML = "";
   for (const p of cand) {
     const add = equipCosts([...active, p]).at(-1)!;
-    const b = document.createElement("button");
-    b.type = "button";
-    b.disabled = used + add > SPECIAL_BUDGET;
-    b.appendChild(partChip(p, add));
-    b.addEventListener("click", () => { editor.parts = [...editor.parts, p.id]; renderEffects(); persistDraft(); });
-    have.appendChild(b);
+    const t = partTile(p, add);
+    t.disabled = used + add > SPECIAL_BUDGET;
+    t.addEventListener("click", () => { editor.parts = [...editor.parts, p.id]; renderEffects(); persistDraft(); });
+    have.appendChild(t);
   }
+  const note = document.createElement("div");
+  note.className = "ksub";
+  note.textContent = `右上の数字は「コスト」。ぜんぶで ${SPECIAL_BUDGET} まで つけられるよ。おなじパーツを かさねると こうかも かさなる！（いまの ひっさつ: ${specialSummary(buildSpecial(active, type), type)}）`;
+  effectsEl.appendChild(note);
 }
 
 function syncEditor() {
@@ -526,25 +546,25 @@ syncEditor();
 // 保存・新規・一覧
 const saveMsg = document.getElementById("saveMsg")!;
 document.getElementById("saveChar")!.addEventListener("click", () => {
-  if (!strokes.length) { saveMsg.textContent = "絵が描かれていません。「描く」タブで描いてから保存してください。"; return; }
+  if (!strokes.length) { saveMsg.textContent = "まだ絵が ないよ。「描く」で 描いてから ほぞんしてね"; return; }
   const id = editId ?? normalize({}).id;
   const ok = saveCharacter({ ...editor, id, name: editor.name || "名無し", strokes: strokes.map((s) => ({ ...s, points: [...s.points] })) });
   editId = id;
   persistDraft();
-  saveMsg.textContent = ok ? `「${editor.name || "名無し"}」を保存しました。` : "保存できませんでした（ブラウザの設定で保存が禁止されている可能性があります）。";
+  saveMsg.textContent = ok ? `「${editor.name || "名無し"}」を ほぞんしたよ！` : "ほぞんできなかった…（ブラウザの設定で保存が禁止されているかもしれません）";
   renderRoster();
 });
 const newBtn = document.getElementById("newChar")!;
 let newArmed = 0;
 newBtn.addEventListener("click", () => {
   if (strokes.length && !newArmed) {
-    newBtn.textContent = "もう一度押すと絵を消して新規";
-    newArmed = window.setTimeout(() => { newArmed = 0; newBtn.textContent = "新しいキャラ"; }, 2500);
+    newBtn.textContent = "もういちど おすと 絵が きえるよ";
+    newArmed = window.setTimeout(() => { newArmed = 0; newBtn.textContent = "✏️ あたらしく"; }, 2500);
     return;
   }
   clearTimeout(newArmed);
   newArmed = 0;
-  newBtn.textContent = "新しいキャラ";
+  newBtn.textContent = "✏️ あたらしく";
   editId = null;
   Object.assign(editor, normalize({ name: "", parts: starterParts() }));
   editor.name = "";
@@ -554,7 +574,7 @@ newBtn.addEventListener("click", () => {
   renderTraits();
   renderRoster();
   persistDraft();
-  saveMsg.textContent = "新しいキャラを作ります。「描く」タブで絵を描いてください。";
+  saveMsg.textContent = "あたらしい キャラを つくろう！「描く」で 絵を 描いてね";
 });
 
 function loadIntoEditor(c: CharacterData) {
@@ -566,7 +586,7 @@ function loadIntoEditor(c: CharacterData) {
   renderTraits();
   renderRoster();
   persistDraft();
-  saveMsg.textContent = `「${c.name}」を読み込みました。`;
+  saveMsg.textContent = `「${c.name}」を よびだしたよ`;
 }
 
 const rosterEl = document.getElementById("roster")!;
@@ -574,39 +594,39 @@ function renderRoster() {
   const list = loadRoster();
   rosterEl.innerHTML = "";
   if (!list.length) {
-    const li = document.createElement("li");
-    li.textContent = "まだありません。描いて「保存」を押すとここに並びます。";
-    rosterEl.appendChild(li);
+    const e = document.createElement("div");
+    e.className = "empty";
+    e.textContent = "まだ ないよ。絵を描いて「ほぞんする」を おすと ここに ならぶ";
+    rosterEl.appendChild(e);
     return;
   }
   for (const c of list) {
-    const li = document.createElement("li");
-    li.classList.toggle("on", c.id === editId);
+    const card = document.createElement("div");
+    card.classList.toggle("on", c.id === editId);
     const img = document.createElement("img");
     if (c.thumb) img.src = c.thumb;
     img.alt = "";
     const nm = document.createElement("span");
     nm.className = "nm";
     nm.textContent = c.name;
-    const sub = document.createElement("span");
-    sub.className = "sub";
-    sub.textContent = `${PERSONAS[c.personality].label}・${c.specialType === "melee" ? "近接" : "遠距離"}必殺`;
-    nm.appendChild(sub);
+    const row = document.createElement("div");
+    row.className = "row";
     const edit = document.createElement("button");
-    edit.textContent = "編集";
+    edit.textContent = "なおす";
     edit.addEventListener("click", () => loadIntoEditor(c));
     const del = document.createElement("button");
-    del.textContent = "削除";
+    del.textContent = "けす";
     let armed = 0;
     del.addEventListener("click", () => {
-      if (!armed) { del.textContent = "本当に削除"; armed = window.setTimeout(() => { armed = 0; del.textContent = "削除"; }, 2500); return; }
+      if (!armed) { del.textContent = "ほんとに？"; armed = window.setTimeout(() => { armed = 0; del.textContent = "けす"; }, 2500); return; }
       clearTimeout(armed);
       deleteCharacter(c.id);
       if (editId === c.id) editId = null;
       renderRoster();
     });
-    li.append(img, nm, edit, del);
-    rosterEl.appendChild(li);
+    row.append(edit, del);
+    card.append(img, nm, row);
+    rosterEl.appendChild(card);
   }
 }
 
@@ -725,6 +745,7 @@ function show(s: Screen) {
   topbar.hidden = s === "home";
   screenTitle.textContent = SCREEN_TITLES[s];
   makeTabs.hidden = s !== "make";
+  if (s !== "make") stopPreview();
   if (s === "home") renderProfile();
   else if (s === "story") renderStory();
   else if (s === "tree") renderTree();
