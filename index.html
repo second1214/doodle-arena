@@ -75,6 +75,8 @@
       .menu .big.story { grid-column: span 2; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); box-shadow: 0 4px 0 #d9573a; }
       .menu .big.story small { color: inherit; opacity: .85; }
       .menu .big:disabled { opacity: .5; }
+      .credit { text-align: center; color: var(--muted); font-size: 11px; margin-top: 18px; }
+      .credit a { color: inherit; }
       .chapter { margin-top: 14px; }
       .chapter h2 { font-size: 16px; margin: 0 0 8px; }
       .stages { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -275,6 +277,7 @@
         <button class="big" data-go="parts"><b>必殺パーツ</b><small>持ち物・分解・合成</small></button>
         <button class="big" data-go="transfer"><b>引き継ぎ</b><small>データの書き出し・読み込み</small></button>
       </div>
+      <p class="credit">3D表示に <a href="./third-party-licenses.txt" target="_blank" rel="noopener">three.js</a>（MIT License）を使っています。</p>
     </section>
     <section id="storyScreen" hidden>
       <div class="field">
