@@ -80,5 +80,7 @@ export class Sfx {
   whiff() { this.noise(0.15, 0.3, 3000, 0.5); }
   crumple() { for (let k = 0; k < 6; k++) this.noise(0.04, 0.6, 2500 + k * 300, 3, k * 0.03); }
   wah() { this.tone("triangle", 400, 200, 0.3, 0.25); this.tone("triangle", 300, 450, 0.3, 0.2, 0.25); }
+  shove() { this.noise(0.1, 0.8, 500, 0.7); this.tone("sine", 120, 70, 0.15, 0.6); }
+  dodge() { this.noise(0.18, 0.35, 5000, 0.4); this.tone("sine", 900, 1500, 0.12, 0.08); }
   beep(high = false) { this.tone("square", high ? 1046 : 523, high ? 1046 : 523, high ? 0.35 : 0.12, 0.2); }
 }

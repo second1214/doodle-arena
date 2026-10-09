@@ -25,6 +25,12 @@ const KNOCK_DECAY = 0.82;
 const MELEE_KNOCK = 7, TACKLE_KNOCK = 9;
 const MELEE_STUN = 9, GUARD_STUN = 4, SPECIAL_STUN = 12;
 const HITSTOP_LIGHT = 2, HITSTOP_HEAVY = 4;
+const GUARD_HEAL = 0.3; // 防御成功: 防いだ分の3割を回復（1回最大2）
+const GUARD_HEAL_MAX = 2;
+// 突き飛ばし: スタミナを使わない。ダメージなし。防御の上からでも押し、少しの間防御できなくする
+const SHOVE_WINDUP = 3, SHOVE_ACTIVE = 2, SHOVE_RECOVER = 9, SHOVE_COOLDOWN = 30, SHOVE_KNOCK = 11;
+// 回避: 入力方向へ素早く移動し、その間は当たらない。方向が無ければ後ろへ
+const DODGE_COST = 22, DODGE_TICKS = 8, DODGE_RECOVER = 5, DODGE_SPEED = 13;
 const MOVE_SPEED = 4;
 const SPECIAL_CHARGE = 5; // 通常攻撃を何回当てたら必殺技を撃てるか（防御された攻撃も数える）
 const SHOOT_SLOW = 15; // 必殺技を撃った直後に足が遅くなる tick
@@ -55,6 +61,8 @@ export interface Input {
   attack: boolean; // 押した瞬間
   guard: boolean; // 押している間
   special: boolean; // 押した瞬間
+  shove?: boolean; // 突き飛ばし（押した瞬間・スタミナ消費なし）
+  dodge?: boolean; // 回避（押した瞬間・スタミナ消費）
 }
 
 export const NO_INPUT: Input = { mx: 0, mz: 0, attack: false, guard: false, special: false };
@@ -92,6 +100,11 @@ export interface Fighter {
   legbind: number; // 足封じ
   crumple: number; // 紙くしゃくしゃ（操作不能で転がる）
   feetNow: boolean; // 今この瞬間に足が使えるか（足封じで反転する）
+  shoveT: number; // 突き飛ばしの残り tick（0 で無し）
+  shoveCd: number;
+  dodgeT: number; // 回避の残り tick（この間は無敵）
+  dodgeRec: number; // 回避後の硬直
+  dodgeX: number; dodgeZ: number;
 }
 
 export interface MeleeState {
@@ -133,7 +146,7 @@ export interface World {
 }
 
 export interface BattleEvent {
-  kind: "hit" | "guard" | "shoot" | "land" | "ko" | "ready" | "recoil" | "mstart" | "mactive" | "grab" | "whiff" | "slam" | "status";
+  kind: "hit" | "guard" | "shoot" | "land" | "ko" | "ready" | "recoil" | "mstart" | "mactive" | "grab" | "whiff" | "slam" | "status" | "shove" | "dodge" | "evade";
   x: number; z: number; h: number;
   amount: number;
   src: "melee" | "special";
@@ -144,6 +157,7 @@ export interface BattleEvent {
   tags?: (EffectId | MeleeEffectId)[]; // 必殺技の効果（見た目用）
   restrained?: boolean;
   status?: "wobble" | "legbind" | "crumple";
+  heal?: number; // 防御成功で回復した量
 }
 
 const idleMelee = (): MeleeState => ({ phase: "none", t: 0, hitsDone: 0, rehit: 0, spin: 0, dashLeft: 0, dirX: 1, dirZ: 0, grabbed: false, slamR: 0, slamHit: false, extraRecover: 0 });
@@ -157,6 +171,7 @@ function makeFighter(cfg: FighterConfig, x: number): Fighter {
     kx: 0, kz: 0, stun: 0, guardStun: false, regenDelay: 0, preSpeed: 0, swingHits: 0,
     mspec: composeMelee(cfg.melee ?? []), ms: idleMelee(),
     wobble: 0, dizzy: 0, legbind: 0, crumple: 0, feetNow: cfg.hasFeet,
+    shoveT: 0, shoveCd: 0, dodgeT: 0, dodgeRec: 0, dodgeX: 0, dodgeZ: 0,
   };
 }
 
@@ -184,6 +199,7 @@ export const maxHp = MAX_HP;
 export const maxStamina = MAX_STAMINA;
 export const specialCharge = SPECIAL_CHARGE;
 export const attackCost = ATTACK_COST;
+export const dodgeCost = DODGE_COST;
 
 interface Hit {
   amount: number;
@@ -203,11 +219,19 @@ interface Hit {
 
 function damage(w: World, ti: number, hit: Hit) {
   const target = w.fighters[ti];
+  if (target.dodgeT > 0) {
+    // 回避中は当たらない
+    w.events.push({ kind: "evade", x: target.x, z: target.z, h: 1.5, amount: 0, src: hit.src, target: ti, dx: 0, dz: 0, size: 0 });
+    return;
+  }
   const guarded = target.guarding && !hit.ignoreGuard;
   const rolling = !target.feetNow && Math.hypot(target.vx, target.vz) > MOVE_SPEED * 0.5;
   const dmg = hit.amount * (guarded ? 1 - (rolling ? tr(target.cfg).rollGuardCut : GUARD_CUT) : 1);
   const wasAlive = target.hp > 0;
   target.hp = Math.max(0, target.hp - dmg);
+  // 防御成功で少し回復（防いだ分の一部）
+  const heal = guarded && target.hp > 0 ? Math.min(GUARD_HEAL_MAX, (hit.amount - dmg) * GUARD_HEAL) : 0;
+  if (heal > 0) target.hp = Math.min(MAX_HP, target.hp + heal);
   target.hitFlash = 6;
   const k = hit.knock * tr(target.cfg).knockTaken * (guarded ? 0.3 : 1);
   target.kx += hit.dx * k; target.kz += hit.dz * k;
@@ -233,7 +257,7 @@ function damage(w: World, ti: number, hit: Hit) {
   w.hitstop = Math.max(w.hitstop, hit.src === "special" || dmg >= 8 ? HITSTOP_HEAVY : HITSTOP_LIGHT);
   const restrained = !guarded && (hit.restrain ?? 0) > 0;
   if (restrained) target.rooted = Math.max(target.rooted, hit.restrain!);
-  w.events.push({ kind: guarded ? "guard" : "hit", x: hit.x, z: hit.z, h: hit.h, amount: dmg, src: hit.src, target: ti, dx: hit.dx, dz: hit.dz, size: hit.size, pid: hit.pid, tags: hit.tags, restrained });
+  w.events.push({ kind: guarded ? "guard" : "hit", x: hit.x, z: hit.z, h: hit.h, amount: dmg, src: hit.src, target: ti, dx: hit.dx, dz: hit.dz, size: hit.size, pid: hit.pid, tags: hit.tags, restrained, heal });
   // 通常攻撃が当たるたびに攻撃側の必殺技ゲージが溜まる（防御されても溜まる）
   if (hit.src === "melee" && hit.firstOfSwing) {
     const atk = w.fighters[1 - ti];
@@ -242,7 +266,7 @@ function damage(w: World, ti: number, hit: Hit) {
     }
   }
   if (wasAlive && target.hp <= 0) {
-    w.hitstop = 10;
+    w.hitstop = 8;
     w.events.push({ kind: "ko", x: target.x, z: target.z, h: 1, amount: 0, src: hit.src, target: ti, dx: hit.dx, dz: hit.dz, size: 0 });
   }
 }
@@ -264,6 +288,8 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
   if (me.wobble > 0) me.wobble--;
   if (me.dizzy > 0) me.dizzy--;
   if (me.legbind > 0) me.legbind--;
+  if (me.shoveCd > 0) me.shoveCd--;
+  if (me.dodgeRec > 0) me.dodgeRec--;
   me.feetNow = me.legbind > 0 ? !me.cfg.hasFeet : me.cfg.hasFeet; // 足封じ: 足なしキャラには逆に足が生える
   const stunned = me.stun > 0;
   if (stunned) me.stun--;
@@ -296,7 +322,19 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
 
   const rooted = me.rooted > 0 || stunned;
   if (me.rooted > 0) me.rooted--;
-  const busy = me.attack !== "none" || me.ms.phase !== "none";
+
+  // 回避中: 入力方向へ素早く移動（無敵）。他の行動はできない
+  if (me.dodgeT > 0) {
+    me.dodgeT--;
+    const sp = DODGE_SPEED * (0.4 + 0.6 * (me.dodgeT / DODGE_TICKS));
+    me.vx = me.dodgeX * sp; me.vz = me.dodgeZ * sp;
+    me.guarding = false;
+    me.moving = true;
+    if (me.dodgeT === 0) me.dodgeRec = DODGE_RECOVER;
+    return;
+  }
+
+  const busy = me.attack !== "none" || me.ms.phase !== "none" || me.shoveT > 0 || me.dodgeRec > 0;
 
   // 防御
   me.guarding = me.rooted === 0 && (!stunned || me.guardStun) && inp.guard && me.guardBroken === 0 && !busy;
@@ -317,7 +355,7 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
   if (rooted || me.attack === "active" || me.attack === "windup") speed *= rooted ? 0 : 0.3;
   const mp = me.ms.phase;
   if (mp === "windup") speed *= 0.3;
-  else if (mp === "active") speed *= me.mspec.spinTicks > 0 ? 0.5 : 0;
+  else if (mp === "active") speed *= me.mspec.spinTicks > 0 ? 0.75 : 0;
   else if (mp === "recover") speed = 0; // 近接必殺の戻りは無防備
   const tvx = mx * speed, tvz = mz * speed;
   if (me.feetNow) { me.vx = tvx; me.vz = tvz; }
@@ -363,6 +401,44 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
       }]);
       me.swingHits++;
       me.attackHit = true;
+    }
+  }
+
+  // 回避（スタミナ消費）: 入力方向へ。方向が無ければ相手と反対へ
+  if (inp.dodge && !rooted && !busy && me.stamina >= DODGE_COST) {
+    let dx = inp.mx, dz = inp.mz;
+    const l = Math.hypot(dx, dz);
+    if (l < 0.2) { dx = -me.fx; dz = -me.fz; } else { dx /= l; dz /= l; }
+    me.stamina -= DODGE_COST;
+    me.regenDelay = REGEN_DELAY;
+    me.dodgeT = DODGE_TICKS; me.dodgeX = dx; me.dodgeZ = dz;
+    me.guarding = false;
+    w.events.push({ kind: "dodge", x: me.x, z: me.z, h: 1, amount: 0, src: "melee", target: i, dx, dz, size: 0 });
+    return;
+  }
+
+  // 突き飛ばし（スタミナ消費なし・ダメージなし）
+  if (inp.shove && !rooted && !busy && me.shoveCd === 0) {
+    me.shoveT = SHOVE_WINDUP + SHOVE_ACTIVE + SHOVE_RECOVER;
+    me.shoveCd = SHOVE_COOLDOWN;
+    me.guarding = false;
+  }
+  if (me.shoveT > 0) {
+    me.shoveT--;
+    const elapsed = SHOVE_WINDUP + SHOVE_ACTIVE + SHOVE_RECOVER - me.shoveT;
+    if (elapsed === SHOVE_WINDUP + 1) {
+      const range = rad(me.cfg) + rad(op.cfg) + 0.4 + (me.cfg.hasHands ? me.cfg.reach * 0.5 : 0);
+      if (dist <= range && op.dodgeT === 0) {
+        const k = SHOVE_KNOCK * tr(op.cfg).knockTaken;
+        op.kx += me.fx * k; op.kz += me.fz * k;
+        op.stun = Math.max(op.stun, 6);
+        op.guardStun = false;
+        if (op.guarding) { op.guarding = false; op.guardBroken = Math.max(op.guardBroken, 12); } // 防御を崩す
+        if (op.attack !== "none") { op.attack = "none"; op.attackT = 0; }
+        if (op.ms.phase === "windup") op.ms = idleMelee();
+        w.hitstop = Math.max(w.hitstop, HITSTOP_LIGHT);
+        w.events.push({ kind: "shove", x: (me.x + op.x) / 2, z: (me.z + op.z) / 2, h: 1, amount: 0, src: "melee", target: 1 - i, dx: me.fx, dz: me.fz, size: 0 });
+      }
     }
   }
 
@@ -452,7 +528,9 @@ function stepMelee(w: World, i: 0 | 1, dist: number) {
       const facing = s.spinTicks > 0 ? 1 : fx * ms.dirX + fz * ms.dirZ;
       if (dist <= reach && Math.acos(Math.max(-1, Math.min(1, facing))) <= s.arc) {
         const per = s.hits > 1 ? (s.damage * 1.3) / s.hits : s.damage;
-        hitWith(w, i, op.x, op.z, fx, fz, per, s.knock / Math.sqrt(s.hits), false);
+        // 竜巻は吹き飛ばさず渦に引き込む（2発目以降も当たり続ける）
+        if (s.spinTicks > 0) hitWith(w, i, op.x, op.z, -fx, -fz, per, 1.5, false);
+        else hitWith(w, i, op.x, op.z, fx, fz, per, s.knock / Math.sqrt(s.hits), false);
         ms.hitsDone++;
         ms.rehit = s.hitInterval;
       }
@@ -525,7 +603,7 @@ function stepProjectile(w: World, p: Projectile): boolean {
 
   // 当たり判定（地面の円＋高さ）
   const near = Math.hypot(target.x - p.x, target.z - p.z) <= s.size + rad(target.cfg);
-  if (near && p.age > PROJ_ARM && p.h - s.size <= BODY_HEIGHT && p.h + s.size >= 0 && p.rehit === 0) {
+  if (near && target.dodgeT === 0 && p.age > PROJ_ARM && p.h - s.size <= BODY_HEIGHT && p.h + s.size >= 0 && p.rehit === 0) {
     // 吹き飛ぶ向き: 落下弾は着弾点から外向き、それ以外は弾の進行方向
     let kdx = p.dx, kdz = p.dz;
     if (s.meteor) {
@@ -549,8 +627,8 @@ function stepProjectile(w: World, p: Projectile): boolean {
 }
 
 export function step(w: World, inputs: [Input, Input]) {
+  w.events = []; // 決着後も必ず空にする（前の tick のイベントを繰り返し配らない）
   if (w.winner !== -1) return;
-  w.events = [];
   if (w.hitstop > 0) { w.hitstop--; return; } // ヒットストップ中は全体が止まる（試合時間も進まない）
   w.tick++;
   // 処理順で先手が有利にならないよう、tick ごとに順番を入れ替える
@@ -590,7 +668,7 @@ export function hashWorld(w: World): string {
   const r = (v: number) => Math.round(v * 1000);
   return JSON.stringify([
     w.tick, w.winner, w.rng.state(),
-    w.fighters.map((f) => [r(f.x), r(f.z), r(f.hp), r(f.stamina), f.attack, f.rooted, f.stun, f.charge, f.ms.phase, f.wobble, f.legbind, f.crumple]),
+    w.fighters.map((f) => [r(f.x), r(f.z), r(f.hp), r(f.stamina), f.attack, f.rooted, f.stun, f.charge, f.ms.phase, f.wobble, f.legbind, f.crumple, f.shoveT, f.dodgeT]),
     w.projectiles.map((p) => [p.id, r(p.x), r(p.z), r(p.h), p.hitsLeft]),
   ]);
 }

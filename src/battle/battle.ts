@@ -1,6 +1,6 @@
 // 戦闘画面（全画面）。入力（仮想スティック・ボタン・キーボード）→ 固定ステップの戦闘計算 → 3D 表示＋効果音。
 import { aiInput, createAi } from "../sim/ai";
-import { attackCostOf, DT, MATCH_TICKS, createWorld, maxHp, maxStamina, specialCharge, step, TICK_HZ, type BattleEvent, type Input, type World } from "../sim/world";
+import { attackCostOf, dodgeCost, DT, MATCH_TICKS, createWorld, maxHp, maxStamina, specialCharge, step, TICK_HZ, type BattleEvent, type Input, type World } from "../sim/world";
 import type { Sfx } from "./audio";
 import type { CharacterBuild } from "./character";
 import { BattleScene } from "./scene";
@@ -28,6 +28,8 @@ const HTML = `
     <div class="b-stick"><div class="b-knob"></div></div>
     <div class="b-buttons">
       <button class="b-btn special" data-act="special">必殺</button>
+      <button class="b-btn dodge" data-act="dodge">回避</button>
+      <button class="b-btn shove" data-act="shove">突き<br>飛ばし</button>
       <button class="b-btn guard" data-act="guard">防御</button>
       <button class="b-btn attack" data-act="attack">攻撃</button>
     </div>
@@ -70,7 +72,7 @@ export function startBattle(opts: BattleOptions) {
 
   // --- 入力 ---
   const held = { guard: false };
-  const pressed = { attack: false, special: false };
+  const pressed = { attack: false, special: false, shove: false, dodge: false };
   const stick = { x: 0, z: 0 };
   const keys = new Set<string>();
 
@@ -108,7 +110,7 @@ export function startBattle(opts: BattleOptions) {
       b.setPointerCapture(e.pointerId);
       b.classList.add("down");
       if (act === "guard") held.guard = true;
-      else pressed[act as "attack" | "special"] = true;
+      else pressed[act as "attack" | "special" | "shove" | "dodge"] = true;
     });
     const up = () => {
       b.classList.remove("down");
@@ -118,12 +120,18 @@ export function startBattle(opts: BattleOptions) {
     b.addEventListener("pointercancel", up);
   });
 
+  // 戦闘開始ボタンにフォーカスが残っていると、スペース（回避）で押し直されて戦闘が重なるので外す
+  (document.activeElement as HTMLElement | null)?.blur();
+  const GAME_KEYS = new Set(["w", "a", "s", "d", "j", "k", "l", "h", "i", " ", "arrowup", "arrowdown", "arrowleft", "arrowright"]);
   const onKey = (e: KeyboardEvent) => {
     const k = e.key.toLowerCase();
+    if (GAME_KEYS.has(k)) e.preventDefault(); // ページのスクロールやボタンの押下に使わせない
     if (e.type === "keydown") {
       if (!keys.has(k)) {
         if (k === "j") pressed.attack = true;
         if (k === "l") pressed.special = true;
+        if (k === "h") pressed.shove = true;
+        if (k === " " || k === "i") pressed.dodge = true;
       }
       keys.add(k);
     } else keys.delete(k);
@@ -137,8 +145,8 @@ export function startBattle(opts: BattleOptions) {
     if (keys.has("d") || keys.has("arrowright")) mx += 1;
     if (keys.has("w") || keys.has("arrowup")) mz -= 1;
     if (keys.has("s") || keys.has("arrowdown")) mz += 1;
-    const inp: Input = { mx, mz, attack: pressed.attack, guard: held.guard || keys.has("k"), special: pressed.special };
-    pressed.attack = pressed.special = false;
+    const inp: Input = { mx, mz, attack: pressed.attack, guard: held.guard || keys.has("k"), special: pressed.special, shove: pressed.shove, dodge: pressed.dodge };
+    pressed.attack = pressed.special = pressed.shove = pressed.dodge = false;
     return inp;
   };
 
@@ -150,6 +158,8 @@ export function startBattle(opts: BattleOptions) {
   const timeEl = q("[data-time]");
   const specialBtn = q(".b-btn.special");
   const attackBtn = q(".b-btn.attack");
+  const dodgeBtn = q(".b-btn.dodge");
+  const shoveBtn = q(".b-btn.shove");
   const resultEl = q(".b-result");
   const countEl = q(".b-count");
   const updateHud = () => {
@@ -168,6 +178,8 @@ export function startBattle(opts: BattleOptions) {
     specialBtn.classList.toggle("ready", ready);
     specialBtn.style.setProperty("--cd", String(1 - me.charge / specialCharge));
     attackBtn.classList.toggle("low", me.stamina < attackCostOf(me.cfg)); // スタミナ不足で攻撃できない
+    dodgeBtn.classList.toggle("low", me.stamina < dodgeCost);
+    shoveBtn.classList.toggle("low", me.shoveCd > 0);
   };
 
   // --- 効果音と戦績 ---
@@ -198,6 +210,9 @@ export function startBattle(opts: BattleOptions) {
         break;
       }
       case "grab": sfx.grab(); break;
+      case "shove": sfx.shove(); break;
+      case "dodge": sfx.dodge(); break;
+      case "evade": sfx.whiff(); break;
       case "whiff": sfx.whiff(); break;
       case "slam": sfx.land(1); break;
       case "status": if (e.status === "crumple") sfx.crumple(); else if (e.status === "wobble") sfx.wah(); else sfx.bind(); break;

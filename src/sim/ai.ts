@@ -1,6 +1,6 @@
 // CPU の操作。性格ごとに行動の重みを変える（試作では「猛攻」のみ）。
 // 反応の遅れ・迷いはシード固定の乱数で決めるので、同じシードなら同じ試合になる。
-import { attackCostOf, meleeRange, meleeSpecialRange, specialCharge, type Input, type World } from "./world";
+import { attackCostOf, dodgeCost, meleeRange, meleeSpecialRange, specialCharge, type Input, type World } from "./world";
 
 export type Personality = "aggressive";
 
@@ -8,16 +8,18 @@ export interface AiState {
   hold: Input;
   wait: number;
   strafe: number;
+  backoff: number; // 攻撃の後しばらく距離を取る（張り付き防止）
 }
 
 export function createAi(): AiState {
-  return { hold: { mx: 0, mz: 0, attack: false, guard: false, special: false }, wait: 0, strafe: 1 };
+  return { hold: { mx: 0, mz: 0, attack: false, guard: false, special: false }, wait: 0, strafe: 1, backoff: 0 };
 }
 
 export function aiInput(w: World, i: 0 | 1, ai: AiState, _p: Personality = "aggressive"): Input {
   const rng = w.rng;
   // 押した瞬間だけ有効な入力は毎 tick 消す
-  const out: Input = { ...ai.hold, attack: false, special: false };
+  const out: Input = { ...ai.hold, attack: false, special: false, shove: false, dodge: false };
+  if (ai.backoff > 0) ai.backoff--;
   if (ai.wait > 0) { ai.wait--; return out; }
   const me = w.fighters[i];
   // 反応の間（グニャグニャ中は鈍る）
@@ -44,10 +46,16 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState, _p: Personality = "aggr
   // 相手が近接必殺を構えている / 撃てる状態で近い → 下がるか守る
   const opMeleeThreat = op.cfg.specialType === "melee" && (op.ms.phase === "windup" || (op.charge >= specialCharge && dist < meleeSpecialRange(op.cfg, op.mspec, me.cfg) + 0.5));
 
-  let mx = 0, mz = 0, guard = false, attack = false, special = false;
+  let mx = 0, mz = 0, guard = false, attack = false, special = false, shove = false, dodge = false;
+  const canDodge = me.stamina >= dodgeCost + 10;
 
   if (threat && rng.next() < 0.7) {
-    if (threat.spec.meteor) {
+    if (canDodge && rng.next() < 0.35) {
+      // 回避ボタンで弾の進行方向の横へ
+      const side = (me.x - threat.x) * -threat.dz + (me.z - threat.z) * threat.dx >= 0 ? 1 : -1;
+      mx = -threat.dz * side; mz = threat.dx * side;
+      dodge = true;
+    } else if (threat.spec.meteor) {
       // 落下地点から離れる
       const ex = me.x - threat.tx, ez = me.z - threat.tz, el = Math.hypot(ex, ez) || 1;
       mx = ex / el; mz = ez / el;
@@ -61,8 +69,11 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState, _p: Personality = "aggr
   } else if (opWinding && rng.next() < 0.35) {
     guard = me.stamina > 10;
   } else if (opMeleeThreat && rng.next() < 0.4) {
-    if (rng.next() < 0.5) guard = me.stamina > 10;
+    if (op.ms.phase === "windup" && canDodge && rng.next() < 0.5) dodge = true; // 後ろへ回避
+    else if (rng.next() < 0.5) guard = me.stamina > 10;
     else { mx = -ux; mz = -uz; }
+  } else if (op.guarding && dist < reach + 0.3 && me.shoveCd === 0 && rng.next() < 0.5) {
+    shove = true; // 守りを固める相手は突き飛ばして崩す
   } else if (ready && melee) {
     // 近接型: 届く距離まで寄ってから撃つ（突進や地面たたきは少し遠めでも撃つ）
     const want = me.mspec.dash > 0 ? mReach + 3 : me.mspec.slam ? 4 : mReach;
@@ -70,6 +81,11 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState, _p: Personality = "aggr
     else { mx = ux; mz = uz; }
   } else if (ready && (dist > 2.5 ? rng.next() < 0.6 : rng.next() < 0.2)) {
     special = true;
+  } else if (ai.backoff > 0) {
+    // 攻撃の後は少し下がって横に回る（張り付かない）
+    if (rng.next() < 0.15) ai.strafe = -ai.strafe;
+    const away = dist < reach + 1.5 ? -0.8 : 0.1;
+    mx = ux * away - uz * 0.7 * ai.strafe; mz = uz * away + ux * 0.7 * ai.strafe;
   } else if (dist > reach * 0.9) {
     // 逃げる相手には少し先を狙って回り込む
     const lead = op.vx * ux + op.vz * uz > 0.5 ? 0.6 : 0;
@@ -79,7 +95,10 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState, _p: Personality = "aggr
     const closing = me.vx * ux + me.vz * uz;
     if (!me.cfg.hasFeet && dist < reach + 1.5 && closing > 3) { mx = -mx * 0.5; mz = -mz * 0.5; }
   } else {
-    if (me.stamina >= attackCostOf(me.cfg) && rng.next() < 0.75) attack = true;
+    if (me.stamina >= attackCostOf(me.cfg) && rng.next() < 0.75) {
+      attack = true;
+      if (rng.next() < 0.6) ai.backoff = 12 + Math.floor(rng.next() * 25);
+    } else if (me.stamina < attackCostOf(me.cfg)) ai.backoff = 20 + Math.floor(rng.next() * 20); // 息切れしたら下がる
     if (rng.next() < 0.1) ai.strafe = -ai.strafe;
     mx = -uz * 0.5 * ai.strafe; mz = ux * 0.5 * ai.strafe;
     // 手が長いなら、相手の手が届かない間合いを保つ
@@ -87,5 +106,5 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState, _p: Personality = "aggr
     if (reach > opReach + 0.3 && dist < opReach + 0.2) { mx -= ux * 0.8; mz -= uz * 0.8; }
   }
   ai.hold = { mx, mz, attack: false, guard, special: false };
-  return { mx, mz, attack, guard, special };
+  return { mx, mz, attack, guard, special, shove, dodge };
 }

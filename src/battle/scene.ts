@@ -2,7 +2,7 @@
 // 演出（火花・閃光・衝撃波・画面揺れ・ダメージ数字・KO）は見た目専用で、戦闘計算には影響しない。
 import * as THREE from "three";
 import { CANVAS_SIZE } from "../detect";
-import { ARENA_RADIUS, type BattleEvent, type Fighter, type World } from "../sim/world";
+import { ARENA_RADIUS, BODY_RADIUS, meleeSpecialRange, type BattleEvent, type Fighter, type World } from "../sim/world";
 import type { CharacterBuild } from "./character";
 import { arcTexture, glowTexture, Particles, Popups, ringTexture, sparkTexture, starTexture, type Flash } from "./fx";
 import { ProjectileVisual, SpecialTextures } from "./specialfx";
@@ -35,6 +35,11 @@ class FighterVisual {
   dizzy: THREE.Sprite; // 頭の上の「@_@」
   limbScale = 1;
   crumpleK = 0;
+  rangeRing: THREE.Mesh; // 竜巻の届く範囲（見た目と当たり判定を一致させる）
+
+  setGhost(on: boolean) {
+    for (const m of this.materials) { m.transparent = on; m.opacity = on ? 0.45 : 1; }
+  }
 
   constructor(build: CharacterBuild, teamColor: number, tex: { arc: THREE.Texture; ring: THREE.Texture; glow: THREE.Texture }, disposables: { dispose(): void }[]) {
     const { parts, res, scale: k, originX } = build;
@@ -137,8 +142,16 @@ class FighterVisual {
     this.aura.visible = false;
     disposables.push(auraMat);
 
+    const rrGeo = new THREE.RingGeometry(0.96, 1, 64);
+    const rrMat = new THREE.MeshBasicMaterial({ color: teamColor, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide });
+    this.rangeRing = new THREE.Mesh(rrGeo, rrMat);
+    this.rangeRing.rotation.x = -Math.PI / 2;
+    this.rangeRing.position.y = 0.025;
+    this.rangeRing.visible = false;
+    disposables.push(rrGeo, rrMat);
+
     this.body.rotation.x = TILT;
-    this.root.add(this.aura, this.dizzy);
+    this.root.add(this.aura, this.dizzy, this.rangeRing);
     this.flip.add(this.swing);
     this.spin.position.y = center.y;
     this.flip.position.y = -center.y;
@@ -147,6 +160,7 @@ class FighterVisual {
     this.root.add(this.shadow, this.rootRing, this.body);
   }
 
+  meleeReach = 0; // 近接必殺の届く中心間距離（相手の体の分を含む）
   update(f: Fighter, t: number, dt: number) {
     this.root.position.set(f.x, 0, f.z);
     if (f.fx > 0.08) this.flipTarget = 1;
@@ -236,8 +250,11 @@ class FighterVisual {
       l.pivot.scale.setScalar(sc);
       if (inMelee && l.kind === "hand") l.pivot.rotation.z = ms.phase === "windup" ? 0.9 : -1.5; // 構え→振り抜き
     });
-    // 竜巻: 紙人形が縦軸で回る（真横で一瞬「線」になる）
-    this.spin.rotation.y = ms.phase === "active" && sp.spinTicks > 0 ? ms.spin : 0;
+    // 竜巻: 紙人形が縦軸で回る（真横で一瞬「線」になる）。届く範囲を地面に輪で示す
+    const spinning = ms.phase === "active" && sp.spinTicks > 0;
+    this.spin.rotation.y = spinning ? ms.spin : 0;
+    this.rangeRing.visible = spinning && this.meleeReach > 0;
+    if (this.rangeRing.visible) this.rangeRing.scale.setScalar(this.meleeReach - BODY_RADIUS);
     // 地面たたき: 構えで跳ぶ
     if (sp.slam && ms.phase === "windup") this.body.position.y = Math.sin(Math.min(1, ms.t / sp.windup) * Math.PI) * 1.2;
     // 紙くしゃくしゃ: 縮んで玉になり転がる
@@ -352,7 +369,7 @@ export class BattleScene {
     this.lookY += ((high > 1.5 ? high * 0.45 : 0.4) - this.lookY) * 0.08;
     if (w.winner !== -1) {
       this.koZoom = Math.min(1, this.koZoom + dt * 1.5);
-      dist *= 1 - 0.3 * this.koZoom;
+      dist *= 1 - 0.15 * this.koZoom;
     } else this.koZoom = 0;
     if (!this.camInit) { this.camTarget.copy(mid); this.camDist = dist; this.camInit = true; }
     this.camTarget.lerp(mid, 0.12);
@@ -429,6 +446,7 @@ export class BattleScene {
         this.sparks.emit({ count: 12, x: e.x, y: pos.y, z: e.z, color: GUARD_COLOR, speed: 5, spread: 0.7, dir: [-e.dx, 0.3, -e.dz], life: 0.35, size: 0.22, drag: 4 });
         this.shake = Math.max(this.shake, 0.15);
         this.popups.add("ガード", pos.clone().setY(pos.y + 0.9), "guard");
+        if (e.heal && e.heal > 0.05) this.popups.add(`+${e.heal.toFixed(1)}`, pos.clone().setY(pos.y + 1.4), "heal");
         break;
       }
       case "shoot": {
@@ -486,6 +504,21 @@ export class BattleScene {
         if (e.status === "crumple") this.sparks.emit({ count: 14, x: e.x, y: 1, z: e.z, color: 0xffffff, speed: 4, spread: 1, life: 0.4, size: 0.25 });
         break;
       }
+      case "shove": {
+        this.addFlash(this.tex.ring, 0xffffff, new THREE.Vector3(e.x, 1, e.z), 0.4, 1.8, 0.2);
+        this.sparks.emit({ count: 8, x: e.x, y: 1, z: e.z, color: 0xffffff, speed: 5, spread: 0.5, dir: [e.dx, 0.2, e.dz], life: 0.3, size: 0.22 });
+        this.fighters[e.target].squash = 0.6;
+        this.shake = Math.max(this.shake, 0.2);
+        this.popups.add("ドンッ", new THREE.Vector3(e.x, 2.2, e.z), "guard");
+        break;
+      }
+      case "dodge": {
+        this.sparks.emit({ count: 6, x: e.x, y: 0.1, z: e.z, color: 0xd8c7a0, speed: 2, dir: [-e.dx, 0.4, -e.dz], spread: 0.5, life: 0.4, size: 0.3 });
+        break;
+      }
+      case "evade":
+        this.popups.add("回避!", new THREE.Vector3(e.x, 2.3, e.z), "evade");
+        break;
       case "recoil": {
         // 体当たりの反動: 自分も赤く光って少し跳ね返る
         this.fighters[e.target].squash = 0.7;
@@ -517,11 +550,12 @@ export class BattleScene {
         break;
       }
       case "ko": {
-        this.addFlash(this.tex.star, 0xffffff, pos, 1, 6, 0.4);
-        this.addFlash(this.tex.ring, 0xffd43b, new THREE.Vector3(e.x, 0.06, e.z), 1, 9, 0.8, true);
-        this.sparks.emit({ count: 60, x: e.x, y: 1, z: e.z, color: 0xffd43b, speed: 10, spread: 1, life: 0.9, size: 0.3, gravity: 5, drag: 1.5 });
-        this.shake = 1;
-        this.popups.add("KO!", pos.clone().setY(2.6), "ko");
+        // 決着: 何が起きたか分かるよう控えめに（閃光1つ・衝撃波1つ・「KO!」）
+        this.addFlash(this.tex.star, 0xffffff, pos, 0.6, 2.4, 0.25);
+        this.addFlash(this.tex.ring, 0xffd43b, new THREE.Vector3(e.x, 0.06, e.z), 0.6, 4, 0.5, true);
+        this.sparks.emit({ count: 16, x: e.x, y: 1, z: e.z, color: 0xffd43b, speed: 6, spread: 0.8, dir: [e.dx, 0.5, e.dz], life: 0.6, size: 0.26, gravity: 6, drag: 2 });
+        this.shake = Math.max(this.shake, 0.4);
+        this.popups.add("KO!", pos.clone().setY(2.8), "ko");
         break;
       }
     }
@@ -533,6 +567,7 @@ export class BattleScene {
     for (const e of events) this.onEvent(e);
     this.updateCamera(w, dt);
     w.fighters.forEach((f, i) => {
+      this.fighters[i].meleeReach = meleeSpecialRange(f.cfg, f.mspec, w.fighters[1 - i].cfg);
       this.fighters[i].update(f, t, dt);
       // 吹き飛び中の砂ぼこり・のけぞり中の星
       if (Math.hypot(f.kx, f.kz) > 2) this.sparks.emit({ count: 2, x: f.x, y: 0.1, z: f.z, color: 0xd8c7a0, speed: 1, up: 1, life: 0.5, size: 0.3, grow: 0.5 });
@@ -560,6 +595,11 @@ export class BattleScene {
       this.proj.delete(id);
       this.combo.delete(id);
     }
+    // 回避の残像
+    w.fighters.forEach((f, i) => {
+      if (f.dodgeT > 0) this.particles.emit({ count: 2, x: f.x, y: 0.9, z: f.z, color: PROJ_COLORS[i], speed: 0.2, life: 0.25, size: 1.1, grow: -3 });
+      this.fighters[i].setGhost(f.dodgeT > 0);
+    });
     // 近接必殺の粒子（竜巻の渦・突進の残像）
     w.fighters.forEach((f, i) => {
       if (f.ms.phase !== "active") return;
