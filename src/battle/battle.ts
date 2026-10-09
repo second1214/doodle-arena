@@ -13,6 +13,7 @@ export interface BattleOptions {
   sfx: Sfx;
   onExit: () => void;
   cpuLevel?: AiLevel; // 相手 CPU の強さ（ストーリー）
+  cpuLine?: string; // 相手の登場のひとこと（吹き出し）
   exitLabel?: string; // 結果画面の「戻る」ボタンの文言
   // 決着のたびに呼ぶ（winner: 0=自分 1=相手 2=引き分け）。返した HTML を結果画面に足す（経験値など）
   onResult?: (winner: number) => string;
@@ -67,6 +68,16 @@ export function startBattle(opts: BattleOptions) {
   let stats = [newStats(), newStats()];
   const scene = new BattleScene(q(".b-view"), [opts.player, opts.cpu], opts.spectate ? -1 : 0);
   if (opts.exitLabel) q(".b-result-buttons [data-exit]").textContent = opts.exitLabel;
+  // 相手のひとこと（始まりに少しだけ出す）
+  const say = () => {
+    if (!opts.cpuLine) return;
+    const b = document.createElement("div");
+    b.className = "b-say";
+    b.textContent = `「${opts.cpuLine}」`;
+    el.appendChild(b);
+    setTimeout(() => b.remove(), 2600);
+  };
+  say();
   q("[data-n='0']").textContent = opts.player.cfg.name;
   q("[data-n='1']").textContent = opts.cpu.cfg.name;
   if (opts.spectate) q(".b-controls").classList.add("spectate");
@@ -319,6 +330,7 @@ export function startBattle(opts: BattleOptions) {
     scene.reset();
     resultEl.hidden = true;
     beginCountdown(performance.now());
+    say();
   });
   return { close: exit }; // 端末の「戻る」で閉じるとき用
 }

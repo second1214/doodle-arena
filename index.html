@@ -162,6 +162,19 @@
       .rgrid button { min-height: 32px; padding: 2px 10px; font-size: 12px; border-radius: 999px; }
       .rgrid > .empty { grid-column: 1 / -1; border: 0; background: none; color: var(--muted); font-size: 13px; }
       #preview3d { width: 100%; aspect-ratio: 1; border-radius: 16px; overflow: hidden; touch-action: none; background: #f3ecff; }
+      .cpick { display: grid; grid-template-columns: 64px 1fr; gap: 4px 10px; align-items: center; background: var(--panel); border: 2px solid var(--accent); border-radius: 16px; padding: 8px 10px; }
+      .cpick img, .cpick .dice { grid-row: span 2; width: 64px; height: 64px; border-radius: 12px; background: #fff; border: 1px solid var(--line); display: grid; place-items: center; font-size: 34px; }
+      .cpick b { font-size: 17px; }
+      .cpick small { color: var(--muted); font-size: 12px; }
+      .cgroup { font-weight: 800; font-size: 14px; margin: 10px 0 6px; color: var(--muted); }
+      .cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+      .cgrid button { display: grid; justify-items: center; gap: 2px; padding: 4px 2px 6px; border-radius: 14px; min-height: 0; font-size: 11px; font-weight: 700; }
+      .cgrid button img, .cgrid button .dice { width: 64px; height: 64px; border-radius: 10px; background: #fff; display: grid; place-items: center; font-size: 30px; }
+      .cgrid button.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+      .cgrid button:disabled img { filter: brightness(0) opacity(.25); }
+      .cgrid button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .b-say { position: absolute; z-index: 3; top: calc(env(safe-area-inset-top, 0px) + 92px); right: 12px; max-width: 70%; background: #fff; color: #2d2640; border: 3px solid #2d2640; border-radius: 16px; padding: 6px 12px; font-weight: 800; font-size: 15px; animation: popin .3s ease-out; pointer-events: none; }
+      .b-say::after { content: ""; position: absolute; top: -12px; right: 24px; border: 8px solid transparent; border-bottom-color: #2d2640; }
       textarea.text.code { font-family: ui-monospace, monospace; font-size: 11px; width: 100%; resize: vertical; }
       .filebtn { display: inline-flex; align-items: center; border: 2px solid var(--line); border-radius: 14px; padding: 8px 12px; min-height: 42px; background: var(--panel); box-shadow: var(--shadow); cursor: pointer; }
       .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
@@ -424,8 +437,9 @@
         <div class="note">「キャラを作る」で編集中のキャラで戦います。</div>
       </div>
       <div class="field">
-        <label class="label" for="cpuChar">相手</label>
-        <select id="cpuChar"></select>
+        <div class="label">あいて</div>
+        <div class="cpick" id="cpuPick" aria-live="polite"></div>
+        <div id="cpuGrid"></div>
       </div>
       <label class="check"><input type="checkbox" id="spectate" /> 観戦モード（自分のキャラも CPU が操作）</label>
       <button id="startBattle" class="primary">戦闘開始</button>

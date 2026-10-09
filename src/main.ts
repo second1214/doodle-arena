@@ -8,12 +8,13 @@ import { Preview3D } from "./battle/preview";
 import { fighterShape, kidTraits } from "./shape";
 import { PERSONAS } from "./sim/ai";
 import { sumBoost, type Boost } from "./sim/stats";
-import { ALL_KINDS, buildSpecial, equipCosts, extraText, fitsType, kindIcon, kindInfo, mainText, makePart, RARITY_INFO, rarityIndex, SPECIAL_BUDGET, type BuiltSpecial, type Part, type PartKind } from "./items";
+import { ALL_KINDS, buildSpecial, equipCosts, extraText, fitsType, hashStr, kindIcon, kindInfo, mainText, makePart, seededRnd, RARITY_INFO, rarityIndex, SPECIAL_BUDGET, type BuiltSpecial, type Part, type PartKind } from "./items";
 import { combinable, combine, COMBINE_COUNT, dismantle, dropParts, INVENTORY_CAP, loadInventory, migrateToParts, reroll, rerollCost, type DropResult } from "./inventory";
 import { autoTree, boostOf, BRANCHES, canTake, nodeById, randomTree, SMALL_TIERS, spentOf, TREE_TOTAL } from "./tree";
 import type { Personality } from "./sim/world";
 import { deleteCharacter, loadDraft, loadRoster, normalize, saveCharacter, saveDraft, thumbnail, writeRoster, type CharacterData } from "./roster";
 import { applyStageResult, expToNext, exportCode, importCode, LEVEL_CAP, loadProfile, loadStory, requestPersist, resetTree, takeNode, totalPoints, type Reward } from "./progress";
+import { CPU_CHARS, CPU_GROUPS, cpuCharById, type CpuChar } from "./cpuChars";
 import { ALL_STAGES, CHAPTERS, chapterOf, enemyParts, isUnlocked, UPCOMING, type Stage } from "./story";
 
 const STORAGE_KEY = "doodle-arena:proto1";
@@ -631,23 +632,73 @@ function renderRoster() {
 }
 
 // --- 戦う ---
-const cpuSel = document.getElementById("cpuChar") as HTMLSelectElement;
+// 相手選び: 絵のカードから選ぶ（CPU キャラ・倒したボス・自分の保存キャラ）。"" はおまかせ
+let cpuPick = "";
+const cpuThumbs = new Map<string, string>();
+function cpuThumb(id: string, strokesOf: () => Stroke[]) {
+  if (!cpuThumbs.has(id)) cpuThumbs.set(id, thumbnail(strokesOf()));
+  return cpuThumbs.get(id)!;
+}
+const cpuUnlocked = (c: CpuChar) => !c.bossStage || !!loadStory().cleared[c.bossStage];
 function refreshCpuOptions() {
-  const keep = cpuSel.value;
-  cpuSel.innerHTML = "";
-  cpuSel.add(new Option("ランダム（CPU が作ったキャラ）", ""));
-  const g1 = document.createElement("optgroup");
-  g1.label = "CPU が作ったキャラ";
-  for (const name of Object.keys(SAMPLES)) g1.appendChild(new Option(name, `sample:${name}`));
-  cpuSel.appendChild(g1);
+  const grid = document.getElementById("cpuGrid")!;
+  grid.innerHTML = "";
   const saved = loadRoster();
-  if (saved.length) {
-    const g2 = document.createElement("optgroup");
-    g2.label = "保存したキャラ";
-    for (const c of saved) g2.appendChild(new Option(c.name, `saved:${c.id}`));
-    cpuSel.appendChild(g2);
+  if (cpuPick.startsWith("saved:") && !saved.some((c) => `saved:${c.id}` === cpuPick)) cpuPick = "";
+  const card = (id: string, name: string, img: string | null, locked = false) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.classList.toggle("on", id === cpuPick);
+    b.disabled = locked;
+    const pic = img ? Object.assign(document.createElement("img"), { src: img, alt: "" }) : Object.assign(document.createElement("b"), { className: "dice", textContent: "🎲" });
+    const nm = document.createElement("span");
+    nm.textContent = locked ? "？？？" : name;
+    b.append(pic, nm);
+    b.addEventListener("click", () => { cpuPick = id; refreshCpuOptions(); });
+    return b;
+  };
+  const section = (title: string) => {
+    const h = document.createElement("div");
+    h.className = "cgroup";
+    h.textContent = title;
+    const g = document.createElement("div");
+    g.className = "cgrid";
+    grid.append(h, g);
+    return g;
+  };
+  section("おまかせ").appendChild(card("", "おまかせ", null));
+  for (const group of CPU_GROUPS) {
+    const list = CPU_CHARS.filter((c) => c.group === group);
+    if (!list.length) continue;
+    const g = section(group === "ボス" ? "ボス（ストーリーで たおすと えらべる）" : group);
+    for (const c of list) g.appendChild(card(c.id, c.name, cpuThumb(c.id, c.strokes), !cpuUnlocked(c)));
   }
-  cpuSel.value = [...cpuSel.options].some((o) => o.value === keep) ? keep : "";
+  if (saved.length) {
+    const g = section("じぶんの キャラ");
+    for (const c of saved) g.appendChild(card(`saved:${c.id}`, c.name, c.thumb ?? null));
+  }
+  // 選んだ相手の紹介
+  const pick = document.getElementById("cpuPick")!;
+  pick.innerHTML = "";
+  const c = cpuCharById(cpuPick);
+  const sv = saved.find((x) => `saved:${x.id}` === cpuPick);
+  const pic = c ? Object.assign(document.createElement("img"), { src: cpuThumb(c.id, c.strokes), alt: "" })
+    : sv?.thumb ? Object.assign(document.createElement("img"), { src: sv.thumb, alt: "" })
+    : Object.assign(document.createElement("span"), { className: "dice", textContent: "🎲" });
+  const nm = document.createElement("b");
+  const sub = document.createElement("small");
+  if (c) { nm.textContent = c.name; sub.textContent = `${c.intro}（${KID_PERSONA[c.personality][0]} ${KID_PERSONA[c.personality][1]}・${c.parts.map((k) => kindIcon(k)).join("")}）`; }
+  else if (sv) { nm.textContent = sv.name; sub.textContent = "じぶんで つくった キャラ"; }
+  else { nm.textContent = "おまかせ"; sub.textContent = "だれが でてくるかは おたのしみ"; }
+  pick.append(pic, nm, sub);
+}
+
+// CPU キャラを戦闘用に組み立てる（パーツは C 相当で、キャラごとに毎回同じ数値。強化は自分と同じポイント数を好みの枝に）
+function buildCpuChar(c: CpuChar) {
+  const b = buildCharacter(c.name, c.strokes(), [], DEFAULT_PARAMS);
+  const parts = c.parts.map((k, i) => makePart(k, "C", seededRnd(hashStr(`${c.id}#${i}`)), `${c.id}#${i}`));
+  applyData(b, c, parts, boostOf(autoTree(totalPoints(loadProfile()), c.prefer)));
+  return b;
 }
 
 // CPU の必殺技: C 相当のパーツをランダムに予算内で組む
@@ -695,19 +746,18 @@ document.getElementById("startBattle")!.addEventListener("click", () => {
   sfx.unlock(); // 効果音はボタン操作の中でしか有効にできない
   const player = buildPlayer("");
 
-  const names = Object.keys(SAMPLES);
-  const v = cpuSel.value || `sample:${names[Math.floor(Math.random() * names.length)]}`;
+  let v = cpuPick;
+  if (!v) { const pool = CPU_CHARS.filter(cpuUnlocked); v = pool[Math.floor(Math.random() * pool.length)].id; }
   let cpu: ReturnType<typeof buildCharacter>;
-  const saved = v.startsWith("saved:") ? loadRoster().find((c) => c.id === v.slice(6)) : undefined;
+  let cpuLine: string | undefined;
+  const saved = v.startsWith("saved:") ? loadRoster().find((c) => `saved:${c.id}` === v) : undefined;
   if (saved) {
     cpu = buildCharacter(saved.name, saved.strokes, [], params);
     applyData(cpu, saved, partsById(saved.parts), myBoost()); // 自分の保存キャラ同士 → 同じ強化
   } else {
-    const name = v.slice(7);
-    cpu = buildCharacter(`CPU（${name}）`, SAMPLES[name](), [], params);
-    const specialType = Math.random() < 0.5 ? "melee" : "ranged";
-    applyData(cpu, { personality: PERS_KEYS[Math.floor(Math.random() * PERS_KEYS.length)], specialType }, randomParts(specialType),
-      boostOf(randomTree(totalPoints(loadProfile())))); // CPU も自分と同じポイント数を、ランダムな枝に振る
+    const c = cpuCharById(v)!;
+    cpu = buildCpuChar(c);
+    cpuLine = c.catchphrase;
   }
   runBattle({
     player,
@@ -715,6 +765,7 @@ document.getElementById("startBattle")!.addEventListener("click", () => {
     spectate: (document.getElementById("spectate") as HTMLInputElement).checked,
     seed: (Math.random() * 0xffffffff) >>> 0,
     sfx,
+    cpuLine,
   });
 });
 
