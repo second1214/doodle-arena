@@ -1,6 +1,6 @@
 // CPU の操作。性格ごとに行動の重みを変える（試作では「猛攻」のみ）。
 // 反応の遅れ・迷いはシード固定の乱数で決めるので、同じシードなら同じ試合になる。
-import { meleeRange, specialCharge, type Input, type World } from "./world";
+import { attackCostOf, meleeRange, specialCharge, type Input, type World } from "./world";
 
 export type Personality = "aggressive";
 
@@ -26,7 +26,7 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState, _p: Personality = "aggr
   const dx = op.x - me.x, dz = op.z - me.z;
   const dist = Math.hypot(dx, dz) || 1;
   const ux = dx / dist, uz = dz / dist;
-  const reach = meleeRange(me.cfg);
+  const reach = meleeRange(me.cfg, op.cfg);
 
   // 見えている敵の弾で、自分に向かってくるもの（見えない弾には反応できない）
   const threat = w.projectiles.find((p) => {
@@ -36,7 +36,7 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState, _p: Personality = "aggr
     if (p.spec.meteor) return p.age >= 40 && Math.hypot(me.x - p.tx, me.z - p.tz) < p.spec.size + 1.5;
     return d < 4 + p.spec.size && rx * p.dx + rz * p.dz > 0;
   });
-  const opWinding = op.attack === "windup" && dist < meleeRange(op.cfg) + 0.6;
+  const opWinding = op.attack === "windup" && dist < meleeRange(op.cfg, me.cfg) + 0.6;
   const ready = me.charge >= specialCharge;
 
   let mx = 0, mz = 0, guard = false, attack = false, special = false;
@@ -62,10 +62,16 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState, _p: Personality = "aggr
     const lead = op.vx * ux + op.vz * uz > 0.5 ? 0.6 : 0;
     const tx = op.x + op.vx * lead - me.x, tz = op.z + op.vz * lead - me.z, tl = Math.hypot(tx, tz) || 1;
     mx = tx / tl; mz = tz / tl;
+    // 転がり型は慣性があるので、近づいたら早めにブレーキ（行き過ぎ防止）
+    const closing = me.vx * ux + me.vz * uz;
+    if (!me.cfg.hasFeet && dist < reach + 1.5 && closing > 3) { mx = -mx * 0.5; mz = -mz * 0.5; }
   } else {
-    if (me.stamina >= 28 && rng.next() < 0.75) attack = true;
+    if (me.stamina >= attackCostOf(me.cfg) && rng.next() < 0.75) attack = true;
     if (rng.next() < 0.1) ai.strafe = -ai.strafe;
     mx = -uz * 0.5 * ai.strafe; mz = ux * 0.5 * ai.strafe;
+    // 手が長いなら、相手の手が届かない間合いを保つ
+    const opReach = meleeRange(op.cfg, me.cfg);
+    if (reach > opReach + 0.3 && dist < opReach + 0.2) { mx -= ux * 0.8; mz -= uz * 0.8; }
   }
   ai.hold = { mx, mz, attack: false, guard, special: false };
   return { mx, mz, attack, guard, special };

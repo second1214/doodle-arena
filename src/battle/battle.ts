@@ -1,6 +1,6 @@
 // 戦闘画面（全画面）。入力（仮想スティック・ボタン・キーボード）→ 固定ステップの戦闘計算 → 3D 表示＋効果音。
 import { aiInput, createAi } from "../sim/ai";
-import { attackCost, DT, MATCH_TICKS, createWorld, maxHp, maxStamina, specialCharge, step, TICK_HZ, type BattleEvent, type Input, type World } from "../sim/world";
+import { attackCostOf, DT, MATCH_TICKS, createWorld, maxHp, maxStamina, specialCharge, step, TICK_HZ, type BattleEvent, type Input, type World } from "../sim/world";
 import type { Sfx } from "./audio";
 import type { CharacterBuild } from "./character";
 import { BattleScene } from "./scene";
@@ -157,7 +157,7 @@ export function startBattle(opts: BattleOptions) {
       hpEls[i].style.width = `${(f.hp / maxHp) * 100}%`;
       hpNums[i].textContent = `${Math.ceil(f.hp)}`;
       stEls[i].style.width = `${(f.stamina / maxStamina) * 100}%`;
-      stEls[i].parentElement!.classList.toggle("low", f.stamina < attackCost);
+      stEls[i].parentElement!.classList.toggle("low", f.stamina < attackCostOf(f.cfg));
       chEls[i].querySelectorAll("i").forEach((p, k) => p.classList.toggle("on", k < f.charge));
       chEls[i].classList.toggle("full", f.charge >= specialCharge);
     });
@@ -167,7 +167,7 @@ export function startBattle(opts: BattleOptions) {
     specialBtn.textContent = ready ? "必殺!" : `${me.charge}/${specialCharge}`;
     specialBtn.classList.toggle("ready", ready);
     specialBtn.style.setProperty("--cd", String(1 - me.charge / specialCharge));
-    attackBtn.classList.toggle("low", me.stamina < attackCost); // スタミナ不足で攻撃できない
+    attackBtn.classList.toggle("low", me.stamina < attackCostOf(me.cfg)); // スタミナ不足で攻撃できない
   };
 
   // --- 効果音と戦績 ---

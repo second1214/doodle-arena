@@ -19,6 +19,7 @@ class FighterVisual {
   root = new THREE.Group();
   body = new THREE.Group(); // 傾き・上下
   flip = new THREE.Group(); // 左右反転
+  spin = new THREE.Group(); // 転がり（絵の中心で回す）
   shadow: THREE.Mesh;
   guard: THREE.Mesh;
   rootRing: THREE.Mesh;
@@ -30,6 +31,7 @@ class FighterVisual {
   flipTarget = 1;
   squash = 0; // 被弾時のつぶれ
   koT = 0;
+  roll = 0; // 転がりの回転角
 
   constructor(build: CharacterBuild, teamColor: number, tex: { arc: THREE.Texture; ring: THREE.Texture; glow: THREE.Texture }, disposables: { dispose(): void }[]) {
     const { parts, res, scale: k, originX } = build;
@@ -119,7 +121,10 @@ class FighterVisual {
     this.body.rotation.x = TILT;
     this.root.add(this.aura);
     this.flip.add(this.swing);
-    this.body.add(this.flip, this.guard);
+    this.spin.position.y = center.y;
+    this.flip.position.y = -center.y;
+    this.spin.add(this.flip);
+    this.body.add(this.spin, this.guard);
     this.root.add(this.shadow, this.rootRing, this.body);
   }
 
@@ -130,13 +135,26 @@ class FighterVisual {
     this.flipCur += (this.flipTarget - this.flipCur) * 0.25; // 向き変更は横反転を補間（紙がくるっと返る）
     const sx = Math.abs(this.flipCur) < 0.02 ? 0.02 : this.flipCur;
 
-    // 被弾でつぶれて戻る
+    const T = f.cfg.traits;
+    const weight = T?.weight ?? 1;
+    // 被弾でつぶれて戻る（重いほど大きくつぶれる）
     this.squash = Math.max(0, this.squash - dt * 5);
-    const sq = Math.sin(this.squash * Math.PI) * 0.25;
+    const sq = Math.sin(this.squash * Math.PI) * 0.25 * Math.min(1.5, weight);
     this.flip.scale.set(sx * (1 + sq), 1 - sq, 1);
 
     const walking = f.moving && f.cfg.hasFeet && f.stun === 0;
-    this.body.position.y = walking ? Math.abs(Math.sin(t * 12)) * 0.08 : 0;
+    // 脚が長いほどゆったり大股、短足はちょこちょこ
+    const cadence = 15 - 5 * Math.min(1.6, T?.walk ?? 1);
+    this.body.position.y = walking ? Math.abs(Math.sin(t * cadence)) * 0.08 * Math.sqrt(weight) : 0;
+    // 足なしは転がる: 進んだ距離だけ回る。止まったら近い向きに起き上がる
+    const speed = Math.hypot(f.vx, f.vz);
+    if (!f.cfg.hasFeet && f.hp > 0) {
+      if (speed > 0.6) this.roll -= ((f.vx >= 0 ? 1 : -1) * speed * dt) / 0.9;
+      else {
+        const target = Math.round(this.roll / (Math.PI * 2)) * Math.PI * 2;
+        this.roll += (target - this.roll) * Math.min(1, dt * 6);
+      }
+    }
     // 被弾中は体を細かく震わせる（黒い線の絵でも当たったと分かる）
     this.body.position.x = f.hitFlash > 0 ? (Math.random() * 2 - 1) * 0.07 : 0;
     let lean = 0;
@@ -149,14 +167,22 @@ class FighterVisual {
       this.body.position.y = Math.sin(this.koT * Math.PI) * 0.6;
     }
     this.body.rotation.z = lean * this.flipTarget;
+    this.spin.rotation.z = this.roll;
+    // 軽いキャラは吹き飛ぶとき回る
+    if (f.cfg.hasFeet && Math.hypot(f.kx, f.kz) > 3 && weight < 0.85) this.body.rotation.z += Math.hypot(f.kx, f.kz) * 0.05 * (f.kx >= 0 ? -1 : 1);
 
     for (const l of this.limbs) {
       let a: number;
       if (f.hp <= 0) a = 0.6;
-      else if (l.kind === "foot") a = walking ? Math.sin(t * 12 + l.nth * Math.PI) * 0.45 : 0;
+      else if (l.kind === "foot") a = walking ? Math.sin(t * cadence + l.nth * Math.PI) * 0.45 : 0;
       else if (f.stun > 0 && !f.guardStun) a = Math.sin(t * 30 + l.nth) * 0.5;
       else if (f.attack === "windup") a = 0.8;
-      else if (f.attack === "active") a = -1.4;
+      else if (f.attack === "active") {
+        // 手が多いと順番に振る（連打）
+        const hits = T?.hits ?? 1;
+        const turn = hits > 1 ? Math.floor(f.attackT / 2) % hits : 0;
+        a = hits > 1 ? (l.nth % hits === turn ? -1.4 : 0.6) : -1.4;
+      }
       else if (f.guarding) a = -0.9;
       else a = Math.sin(t * 3 + l.nth * 1.7) * 0.15;
       l.pivot.rotation.z = a;
@@ -348,6 +374,13 @@ export class BattleScene {
         this.fighters[e.target].squash = 0.6;
         const invisible = (e.tags ?? []).includes("invisible");
         this.popups.add(invisible ? "必殺…？" : "必殺!", new THREE.Vector3(e.x, 2.7, e.z), "special");
+        break;
+      }
+      case "recoil": {
+        // 体当たりの反動: 自分も赤く光って少し跳ね返る
+        this.fighters[e.target].squash = 0.7;
+        this.sparks.emit({ count: 8, x: e.x, y: 1, z: e.z, color: 0xff6b6b, speed: 4, spread: 0.6, dir: [e.dx, 0.4, e.dz], life: 0.35, size: 0.22 });
+        this.popups.add(`反動 ${Math.max(1, Math.round(e.amount))}`, new THREE.Vector3(e.x, 2.3, e.z), "recoil");
         break;
       }
       case "ready": {

@@ -5,6 +5,7 @@ import { startBattle } from "./battle/battle";
 import { Sfx } from "./battle/audio";
 import { buildCharacter } from "./battle/character";
 import { EFFECTS, specialCost, type EffectId } from "./sim/special";
+import { describeShape, fighterShape } from "./shape";
 
 const STORAGE_KEY = "doodle-arena:proto1";
 const COLORS = ["#222222", "#e03131", "#1c7ed6", "#f2c200", "#2f9e44", "#ae3ec9", "#f08c00"];
@@ -178,6 +179,14 @@ function setView(v: View) {
   battleSetup.hidden = v !== "battle";
   if (v === "battle") {
     resultEl.textContent = strokes.length ? "" : "絵がまだ無いので、あなたのキャラは「棒人間」で戦います";
+    const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
+    const traitsEl = document.getElementById("myTraits")!;
+    traitsEl.innerHTML = "";
+    for (const line of describeShape(fighterShape(detect(mine, params)))) {
+      const li = document.createElement("li");
+      li.textContent = line;
+      traitsEl.appendChild(li);
+    }
     return;
   }
   if (v === "draw") {
