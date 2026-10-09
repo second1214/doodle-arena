@@ -11,33 +11,41 @@ export const DT = 1 / TICK_HZ;
 export const ARENA_RADIUS = 9;
 export const BODY_RADIUS = 0.6;
 export const BODY_HEIGHT = 1.8;
-export const MATCH_TICKS = 90 * TICK_HZ;
+export const MATCH_TICKS = 120 * TICK_HZ;
 export const MAX_PROJECTILES = 128; // エンジン保護（ゲーム上の制限ではない）
+
+// テンポ: 人が見てから反応できるよう、動作の長さを 1.6 倍・移動や弾を 0.75 倍にしている（ゆったりバトル）。
+// CPU の反応の間（ai.ts）は据え置き。値は CPU 同士の対戦実験で決めた（docs/SPEC.md §17）。
+const PACE = 1.6;
+const slow = (ticks: number) => Math.max(1, Math.round(ticks * PACE));
+const PROJ_PACE = 0.75; // 必殺の弾の速さ
+const WINDUP_PACE = 1.25; // 通常攻撃の構えはさらに長く（見てから防げる 0.27 秒前後）
 
 const MAX_HP = 100;
 const MAX_STAMINA = 100;
-const STAMINA_REGEN = 0.45;
-const REGEN_DELAY = 15; // 攻撃後しばらくスタミナが回復しない（連打防止）
+const STAMINA_REGEN = 0.315; // 行動が遅くなった分、回復も遅くして攻撃回数の釣り合いを保つ
+const REGEN_DELAY = slow(15); // 攻撃後しばらくスタミナが回復しない（連打防止）
 const GUARD_DRAIN = 0.3;
 const GUARD_CUT = 0.7; // 防御中は 7 割カット
 const ATTACK_COST = 28;
 // ノックバック: 初速（単位/秒）を tick ごとに減衰させる。のけぞり中は行動不能。
-const KNOCK_DECAY = 0.82;
-const MELEE_KNOCK = 7, TACKLE_KNOCK = 9;
-const MELEE_STUN = 9, GUARD_STUN = 4, SPECIAL_STUN = 12;
+const KNOCK_DECAY = 0.85; // ゆっくり滑る（距離はほぼ同じ）
+const MELEE_KNOCK = 7 * 0.85, TACKLE_KNOCK = 9 * 0.85;
+const MELEE_STUN = slow(9), GUARD_STUN = slow(4), SPECIAL_STUN = slow(12);
 const HITSTOP_LIGHT = 2, HITSTOP_HEAVY = 4;
 const GUARD_HEAL = 0.3; // 防御成功: 防いだ分の3割を回復（1回最大2）
 const GUARD_HEAL_MAX = 2;
 // 突き飛ばし: スタミナを使わない。ダメージなし。防御の上からでも押し、少しの間防御できなくする
-const SHOVE_WINDUP = 3, SHOVE_ACTIVE = 2, SHOVE_RECOVER = 9, SHOVE_COOLDOWN = 30, SHOVE_KNOCK = 11;
+const SHOVE_WINDUP = slow(3), SHOVE_ACTIVE = slow(2), SHOVE_RECOVER = slow(9), SHOVE_COOLDOWN = slow(30), SHOVE_KNOCK = 11 * 0.85;
 // 回避: 入力方向へ素早く移動し、その間は当たらない。方向が無ければ後ろへ
-const DODGE_COST = 22, DODGE_TICKS = 8, DODGE_RECOVER = 5, DODGE_SPEED = 13;
-const MOVE_SPEED = 4;
+const DODGE_COST = 22, DODGE_TICKS = slow(8), DODGE_RECOVER = slow(5), DODGE_SPEED = 13 * 0.75;
+const MOVE_SPEED = 3;
 const SPECIAL_CHARGE = 5; // 通常攻撃を何回当てたら必殺技を撃てるか（防御された攻撃も数える）
+const GUARD_CHARGE = 0.5; // 攻撃を防ぐたびに、防いだ側のゲージが溜まる量（攻撃1回につき1度）
 const SHOOT_SLOW = 15; // 必殺技を撃った直後に足が遅くなる tick
 const RETREAT_SPEED = 0.75; // 相手から離れる方向へ歩くときの速度倍率（逃げ撃ち対策）
 const PROJ_ARM = 3; // 必殺技の弾が出てから当たり始めるまでの tick（密着必中の防止）
-const ACTIVE = 4;
+const ACTIVE = slow(4);
 const PUNCH_DAMAGE = 5;
 const TACKLE_DAMAGE = 5;
 
@@ -105,7 +113,9 @@ export interface Fighter {
   attack: AttackPhase;
   attackT: number;
   attackHit: boolean;
-  charge: number; // 必殺技ゲージ（通常攻撃の命中数）
+  charge: number; // 必殺技ゲージ（通常攻撃の命中数＋防御成功×0.5）
+  specialSeq: number; // 必殺技を出した回数（防御でゲージを溜めるのを1回の必殺につき1度にする）
+  guardedSeq: number; // 最後にゲージを溜めた相手の必殺の番号
   shootSlow: number;
   rooted: number;
   hitFlash: number;
@@ -189,16 +199,19 @@ export interface BattleEvent {
 
 const idleMelee = (): MeleeState => ({ phase: "none", t: 0, hitsDone: 0, rehit: 0, spin: 0, dashLeft: 0, dirX: 1, dirZ: 0, grabbed: false, slamR: 0, slamHit: false, extraRecover: 0 });
 
+function paceProj(s: ProjSpec): ProjSpec { return { ...s, speed: s.speed * PROJ_PACE }; }
+function paceMelee(s: MeleeSpec): MeleeSpec { return { ...s, windup: slow(s.windup), active: slow(s.active), recover: slow(s.recover) }; }
+
 function makeFighter(cfg: FighterConfig, x: number): Fighter {
   const st = statEffects(cfg.stats);
   return {
     st, maxHp: st.maxHp, maxStamina: st.maxStamina,
-    cfg, spec: composeSpecial(cfg.special),
+    cfg, spec: paceProj(composeSpecial(cfg.special)),
     x, z: 0, vx: 0, vz: 0, fx: x < 0 ? 1 : -1, fz: 0,
     hp: st.maxHp, stamina: st.maxStamina, guarding: false, guardBroken: 0,
-    attack: "none", attackT: 0, attackHit: false, charge: 0, shootSlow: 0, rooted: 0, hitFlash: 0, moving: false,
+    attack: "none", attackT: 0, attackHit: false, charge: 0, specialSeq: 0, guardedSeq: 0, shootSlow: 0, rooted: 0, hitFlash: 0, moving: false,
     kx: 0, kz: 0, stun: 0, guardStun: false, regenDelay: 0, preSpeed: 0, swingHits: 0,
-    mspec: composeMelee(cfg.melee ?? []), ms: idleMelee(),
+    mspec: paceMelee(composeMelee(cfg.melee ?? [])), ms: idleMelee(),
     wobble: 0, dizzy: 0, legbind: 0, crumple: 0, feetNow: cfg.hasFeet,
     shoveT: 0, shoveCd: 0, dodgeT: 0, dodgeRec: 0, dodgeX: 0, dodgeZ: 0,
   };
@@ -218,8 +231,8 @@ export function meleeRange(cfg: FighterConfig, target?: FighterConfig): number {
 }
 
 // 手が長いほど振りかぶりと戻りが遅い（リーチと隙の引き換え）
-function windupTicks(cfg: FighterConfig) { return cfg.hasHands ? 3 + Math.round(cfg.reach * tr(cfg).windupPerReach) : 5; }
-function recoverTicks(cfg: FighterConfig) { return cfg.hasHands ? 6 + Math.round(cfg.reach * tr(cfg).windupPerReach) : 9; }
+function windupTicks(cfg: FighterConfig) { return Math.round(WINDUP_PACE * slow(cfg.hasHands ? 3 + Math.round(cfg.reach * tr(cfg).windupPerReach) : 5)); }
+function recoverTicks(cfg: FighterConfig) { return slow(cfg.hasHands ? 6 + Math.round(cfg.reach * tr(cfg).windupPerReach) : 9); }
 // 手が多いと 1回の攻撃で 2tick おきに複数回当たる
 function activeTicks(cfg: FighterConfig) { return ACTIVE + 2 * (tr(cfg).hits - 1); }
 export function attackCostOf(cfg: FighterConfig) { return ATTACK_COST * tr(cfg).cost; }
@@ -227,6 +240,7 @@ export function attackCostOf(cfg: FighterConfig) { return ATTACK_COST * tr(cfg).
 export const baseMaxHp = MAX_HP;
 export const baseMaxStamina = MAX_STAMINA;
 export const specialCharge = SPECIAL_CHARGE;
+export const guardCharge = GUARD_CHARGE;
 export const attackCost = ATTACK_COST;
 export const dodgeCost = DODGE_COST;
 
@@ -290,16 +304,27 @@ function damage(w: World, ti: number, hit: Hit) {
   if (restrained) target.rooted = Math.max(target.rooted, hit.restrain!);
   w.events.push({ kind: guarded ? "guard" : "hit", x: hit.x, z: hit.z, h: hit.h, amount: dmg, src: hit.src, target: ti, dx: hit.dx, dz: hit.dz, size: hit.size, pid: hit.pid, tags: hit.tags, restrained, heal });
   // 通常攻撃が当たるたびに攻撃側の必殺技ゲージが溜まる（防御されても溜まる）
-  if (hit.src === "melee" && hit.firstOfSwing) {
-    const atk = w.fighters[1 - ti];
-    if (atk.charge < SPECIAL_CHARGE && ++atk.charge === SPECIAL_CHARGE) {
-      w.events.push({ kind: "ready", x: atk.x, z: atk.z, h: 1, amount: 0, src: "melee", target: 1 - ti, dx: 0, dz: 0, size: 0 });
+  const atk = w.fighters[1 - ti];
+  if (hit.src === "melee" && hit.firstOfSwing) addCharge(w, 1 - ti, 1);
+  // 防御に成功すると防いだ側も少し溜まる（通常攻撃は1回の攻撃につき1度、必殺は1回の必殺につき1度）
+  if (guarded) {
+    if (hit.src === "melee" && hit.firstOfSwing) addCharge(w, ti, GUARD_CHARGE);
+    else if (hit.src === "special" && target.guardedSeq !== atk.specialSeq) {
+      target.guardedSeq = atk.specialSeq;
+      addCharge(w, ti, GUARD_CHARGE);
     }
   }
   if (wasAlive && target.hp <= 0) {
     w.hitstop = 8;
     w.events.push({ kind: "ko", x: target.x, z: target.z, h: 1, amount: 0, src: hit.src, target: ti, dx: hit.dx, dz: hit.dz, size: 0 });
   }
+}
+
+function addCharge(w: World, i: number, n: number) {
+  const f = w.fighters[i];
+  if (f.charge >= SPECIAL_CHARGE) return;
+  f.charge = Math.min(SPECIAL_CHARGE, f.charge + n);
+  if (f.charge === SPECIAL_CHARGE) w.events.push({ kind: "ready", x: f.x, z: f.z, h: 1, amount: 0, src: "melee", target: i, dx: 0, dz: 0, size: 0 });
 }
 
 // 同じ tick の通常攻撃は両者の行動処理が終わってから同時に当てる（同時に殴ったら相打ち）
@@ -494,6 +519,7 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
 
   // 必殺技: ゲージ満タンで、防御中・攻撃中でないとき
   const canSpecial = inp.special && !rooted && !me.guarding && !busy && me.charge >= SPECIAL_CHARGE;
+  if (canSpecial) me.specialSeq++;
   if (canSpecial && me.cfg.specialType === "melee") {
     me.charge = 0;
     me.ms = { ...idleMelee(), phase: "windup", dirX: me.fx, dirZ: me.fz };

@@ -168,7 +168,7 @@ export function startBattle(opts: BattleOptions) {
       hpNums[i].textContent = `${Math.ceil(f.hp)}`;
       stEls[i].style.width = `${(f.stamina / f.maxStamina) * 100}%`;
       stEls[i].parentElement!.classList.toggle("low", f.stamina < attackCostOf(f.cfg));
-      chEls[i].querySelectorAll("i").forEach((p, k) => p.classList.toggle("on", k < f.charge));
+      chEls[i].querySelectorAll("i").forEach((p, k) => { p.classList.toggle("on", k + 1 <= f.charge); p.classList.toggle("half", k < f.charge && k + 1 > f.charge); });
       chEls[i].classList.toggle("full", f.charge >= specialCharge);
     });
     timeEl.textContent = String(Math.ceil((MATCH_TICKS - world.tick) / TICK_HZ));
