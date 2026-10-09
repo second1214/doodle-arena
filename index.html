@@ -78,6 +78,22 @@
       .stages button:disabled { opacity: .6; }
       .stages button:disabled img { filter: brightness(0) opacity(.25); }
       .chapter.locked { color: var(--muted); }
+      .tree-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+      .tree-head b { font-size: 22px; color: var(--accent); }
+      #treeSvg { width: 100%; height: auto; display: block; margin-top: 4px; touch-action: manipulation; }
+      #treeSvg .lnk { stroke: var(--line); stroke-width: 5; stroke-linecap: round; }
+      #treeSvg .nd { stroke-width: 3; cursor: pointer; }
+      #treeSvg .nd.lock { fill: var(--panel); stroke: var(--line); }
+      #treeSvg .nd.can { fill: var(--panel); animation: glow 1.2s ease-in-out infinite alternate; }
+      #treeSvg .nd.sel { stroke: var(--ink) !important; stroke-width: 4; }
+      #treeSvg .hit { fill: transparent; cursor: pointer; }
+      #treeSvg text { font: 700 14px "M PLUS Rounded 1c", sans-serif; fill: var(--ink); text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
+      #treeSvg .core { fill: var(--accent); }
+      #treeSvg .core-t { fill: var(--accent-ink); font-size: 13px; }
+      @keyframes glow { to { stroke-width: 5; } }
+      .node-info { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 10px 12px; min-height: 64px; font-size: 14px; }
+      .node-info b { font-size: 16px; }
+      .node-info .row { margin-top: 6px; }
       textarea.text.code { font-family: ui-monospace, monospace; font-size: 11px; width: 100%; resize: vertical; }
       .filebtn { display: inline-flex; align-items: center; border: 2px solid var(--line); border-radius: 14px; padding: 8px 12px; min-height: 42px; background: var(--panel); box-shadow: var(--shadow); cursor: pointer; }
       .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
@@ -232,7 +248,7 @@
         <button class="big story" data-go="story"><b>ストーリー</b><small>敵を倒して強くなる</small></button>
         <button class="big" data-go="free"><b>自由バトル</b><small>好きな相手と戦う・観戦</small></button>
         <button class="big" data-go="make"><b>キャラを作る</b><small>描く・検知・動かす・設定</small></button>
-        <button class="big" disabled><b>スキルツリー</b><small>準備中</small></button>
+        <button class="big" data-go="tree"><b>スキルツリー</b><small id="treeHint">ポイントで強くなる</small></button>
         <button class="big" disabled><b>必殺パーツ</b><small>準備中</small></button>
         <button class="big" data-go="transfer"><b>引き継ぎ</b><small>データの書き出し・読み込み</small></button>
       </div>
@@ -243,6 +259,18 @@
         <select id="storyChar"></select>
       </div>
       <div id="chapters"></div>
+    </section>
+    <section id="treeScreen" hidden>
+      <div class="tree-head">
+        <div>スキルポイント <b id="tPoints">0</b><div class="note" id="tSpent"></div></div>
+        <button id="treeReset">振り直し</button>
+      </div>
+      <svg id="treeSvg" viewBox="-252 -248 504 496" role="group" aria-label="スキルツリー"></svg>
+      <div class="node-info" id="nodeInfo">丸をタップすると説明が出ます。中心から外へ順に取れます。先端の大きな丸は強い代わりに損もある大技です。</div>
+      <div class="field">
+        <div class="label">今の強化（全キャラ共通）</div>
+        <ul id="treeTotal" class="traits"></ul>
+      </div>
     </section>
     <section id="transferScreen" hidden>
       <div class="note">保存したキャラ・レベル・ストーリーの進み具合を1つの「引き継ぎコード」にまとめます。別の端末やブラウザで読み込むと、同じデータで続きを遊べます。ブラウザのデータは消えることがあるので、ときどき書き出しておくと安心です。</div>
@@ -281,10 +309,7 @@
         <div class="label">絵の形で決まる特徴</div>
         <ul id="myTraits" class="traits"></ul>
       </div>
-      <div class="field">
-        <div class="label">能力値 <span id="statInfo" class="cost"></span></div>
-        <div id="stats" class="stats"></div>
-      </div>
+      <div class="note">強さ（攻撃・体力など）はメイン画面の「スキルツリー」で育てます。全部のキャラに共通です。</div>
       <div class="field">
         <label class="label" for="personality">性格（CPU が動かすときの戦い方）</label>
         <select id="personality"></select>

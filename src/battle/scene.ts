@@ -7,7 +7,6 @@ import type { CharacterBuild } from "./character";
 import { arcTexture, glowTexture, Particles, Popups, ringTexture, sparkTexture, starTexture, type Flash } from "./fx";
 import { ProjectileVisual, SpecialTextures } from "./specialfx";
 import { inflateCanvas } from "./inflate";
-import { specialCharge } from "../sim/world";
 
 const TILT = -0.1; // 立体なので後傾は少しだけ
 const PROJ_COLORS = [0xff7a1a, 0x9b5cff];
@@ -238,7 +237,7 @@ class FighterVisual {
       this.guard.rotation.z += dt * 1.5;
       (this.guard.material as THREE.MeshBasicMaterial).opacity = 0.25 + Math.sin(t * 10) * 0.08;
     }
-    this.aura.visible = f.charge >= specialCharge && f.hp > 0;
+    this.aura.visible = f.charge >= f.st.chargeNeed && f.hp > 0;
     if (this.aura.visible) {
       const k = 1 + Math.sin(t * 9) * 0.12;
       this.aura.scale.set(2.6 * k, 3.2 * k, 1);
@@ -667,7 +666,7 @@ export class BattleScene {
 
     // オーラの粒子
     w.fighters.forEach((f, i) => {
-      if (f.charge >= specialCharge && f.hp > 0 && Math.random() < 0.6) {
+      if (f.charge >= f.st.chargeNeed && f.hp > 0 && Math.random() < 0.6) {
         const a = Math.random() * Math.PI * 2;
         this.particles.emit({ count: 1, x: f.x + Math.cos(a) * 0.55, y: 0.1, z: f.z + Math.sin(a) * 0.4, color: PROJ_COLORS[i], speed: 0.3, up: 2.2, life: 0.7, size: 0.28, drag: 0.5 });
       }

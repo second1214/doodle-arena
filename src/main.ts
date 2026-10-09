@@ -8,10 +8,11 @@ import { EFFECTS, specialCost, type EffectId } from "./sim/special";
 import { MELEE_EFFECTS, meleeCost, type MeleeEffectId } from "./sim/melee";
 import { describeShape, fighterShape } from "./shape";
 import { PERSONAS } from "./sim/ai";
-import { DEFAULT_STATS, STAT_BUDGET, STAT_KEYS, STAT_LABELS, STAT_MAX, statEffects, statTotal, type Stats } from "./sim/stats";
+import type { Boost } from "./sim/stats";
+import { autoTree, boostOf, BRANCHES, canTake, nodeById, randomTree, SMALL_TIERS, spentOf, TREE_TOTAL } from "./tree";
 import type { Personality } from "./sim/world";
 import { deleteCharacter, loadDraft, loadRoster, normalize, saveCharacter, saveDraft, thumbnail, type CharacterData } from "./roster";
-import { applyStageResult, expToNext, exportCode, importCode, LEVEL_CAP, loadProfile, loadStory, requestPersist, type Reward } from "./progress";
+import { applyStageResult, expToNext, exportCode, importCode, LEVEL_CAP, loadProfile, loadStory, requestPersist, resetTree, takeNode, totalPoints, type Reward } from "./progress";
 import { ALL_STAGES, CHAPTERS, isUnlocked, UPCOMING, type Stage } from "./story";
 
 const STORAGE_KEY = "doodle-arena:proto1";
@@ -392,54 +393,6 @@ function renderTraits() {
   }
 }
 
-// 能力値: 合計が予算を超えないようにスライダーを抑える
-const statsEl = document.getElementById("stats")!;
-const statInfo = document.getElementById("statInfo")!;
-const STAT_NOTE: Record<keyof Stats, (v: number) => string> = {
-  attack: (v) => `与えるダメージ ×${statEffects({ ...DEFAULT_STATS, attack: v }).dealt.toFixed(2)}`,
-  defense: (v) => `受けるダメージ ×${statEffects({ ...DEFAULT_STATS, defense: v }).taken.toFixed(2)}`,
-  speed: (v) => `移動 ×${statEffects({ ...DEFAULT_STATS, speed: v }).speed.toFixed(2)}`,
-  hp: (v) => `体力 ${statEffects({ ...DEFAULT_STATS, hp: v }).maxHp}`,
-  stamina: (v) => `スタミナ ${statEffects({ ...DEFAULT_STATS, stamina: v }).maxStamina}・回復 ×${statEffects({ ...DEFAULT_STATS, stamina: v }).regen.toFixed(2)}`,
-};
-const statInputs: Partial<Record<keyof Stats, { input: HTMLInputElement; val: HTMLElement; note: HTMLElement }>> = {};
-for (const k of STAT_KEYS) {
-  const row = document.createElement("div");
-  row.className = "stat";
-  const lab = document.createElement("label");
-  lab.textContent = STAT_LABELS[k];
-  lab.htmlFor = `stat-${k}`;
-  const input = document.createElement("input");
-  input.type = "range"; input.min = "0"; input.max = String(STAT_MAX); input.step = "1"; input.id = `stat-${k}`;
-  const val = document.createElement("b");
-  const note = document.createElement("small");
-  input.addEventListener("input", () => {
-    // 予算を超える分は、ほかの能力値（高いものから）を1ずつ下げて捻出する
-    editor.stats[k] = Number(input.value);
-    let over = statTotal(editor.stats) - STAT_BUDGET;
-    while (over > 0) {
-      const donor = STAT_KEYS.filter((o) => o !== k && editor.stats[o] > 0).sort((a, b) => editor.stats[b] - editor.stats[a])[0];
-      if (!donor) { editor.stats[k] -= over; break; }
-      editor.stats[donor]--;
-      over--;
-    }
-    syncStats();
-    persistDraft();
-  });
-  row.append(lab, input, val, note);
-  statsEl.appendChild(row);
-  statInputs[k] = { input, val, note };
-}
-function syncStats() {
-  for (const k of STAT_KEYS) {
-    const r = statInputs[k]!;
-    r.input.value = String(editor.stats[k]);
-    r.val.textContent = String(editor.stats[k]);
-    r.note.textContent = STAT_NOTE[k](editor.stats[k]);
-  }
-  statInfo.textContent = `残り ${STAT_BUDGET - statTotal(editor.stats)} / ${STAT_BUDGET} ポイント`;
-}
-
 // 性格
 const persSel = document.getElementById("personality") as HTMLSelectElement;
 const persDesc = document.getElementById("personalityDesc")!;
@@ -492,7 +445,6 @@ function renderEffects() {
 
 function syncEditor() {
   nameInput.value = editor.name === "名無し" ? "" : editor.name;
-  syncStats();
   syncPersonality();
   renderEffects();
 }
@@ -618,19 +570,11 @@ function randomMelee(): MeleeEffectId[] {
   for (const e of pool) if (meleeCost([...out, e.id]) <= SPECIAL_BUDGET) out.push(e.id);
   return out;
 }
-// CPU が作ったキャラ: 能力値と性格もランダム
-function randomStats(): Stats {
-  const st: Stats = { attack: 0, defense: 0, speed: 0, hp: 0, stamina: 0 };
-  for (let n = 0; n < STAT_BUDGET; ) {
-    const k = STAT_KEYS[Math.floor(Math.random() * STAT_KEYS.length)];
-    if (st[k] < STAT_MAX) { st[k]++; n++; }
-  }
-  return st;
-}
 const PERS_KEYS = Object.keys(PERSONAS) as Personality[];
 
-function applyData(build: ReturnType<typeof buildCharacter>, c: CharacterData) {
-  build.cfg.stats = c.stats;
+// boost: スキルツリーの強化（プレイヤーのキャラは自分のツリー、敵は敵用のツリー）
+function applyData(build: ReturnType<typeof buildCharacter>, c: Pick<CharacterData, "personality" | "specialType" | "special" | "melee">, boost: Partial<Boost>) {
+  build.cfg.boost = boost;
   build.cfg.personality = c.personality;
   build.cfg.specialType = c.specialType;
   build.cfg.special = c.special;
@@ -638,16 +582,19 @@ function applyData(build: ReturnType<typeof buildCharacter>, c: CharacterData) {
 }
 
 // 自分のキャラ: "" = 編集中のキャラ（絵が無ければ棒人間）/ "saved:id" = 保存したキャラ
+// 自分の強化はプレイヤー共通のスキルツリー（どのキャラで戦っても同じ）
+const myBoost = () => boostOf(loadProfile().nodes);
+
 function buildPlayer(choice: string) {
   const saved = choice.startsWith("saved:") ? loadRoster().find((c) => c.id === choice.slice(6)) : undefined;
   if (saved) {
     const b = buildCharacter(saved.name, saved.strokes, saved.special, params);
-    applyData(b, saved);
+    applyData(b, saved, myBoost());
     return b;
   }
   const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
   const b = buildCharacter(editor.name || "あなた", mine, editor.special, params);
-  applyData(b, editor);
+  applyData(b, editor, myBoost());
   return b;
 }
 
@@ -662,14 +609,14 @@ document.getElementById("startBattle")!.addEventListener("click", () => {
   const saved = v.startsWith("saved:") ? loadRoster().find((c) => c.id === v.slice(6)) : undefined;
   if (saved) {
     cpu = buildCharacter(saved.name, saved.strokes, saved.special, params);
-    applyData(cpu, saved);
+    applyData(cpu, saved, myBoost()); // 自分の保存キャラ同士 → 同じ強化
   } else {
     const name = v.slice(7);
     cpu = buildCharacter(`CPU（${name}）`, SAMPLES[name](), randomSpecial(), params);
     applyData(cpu, normalize({
-      name, stats: randomStats(), personality: PERS_KEYS[Math.floor(Math.random() * PERS_KEYS.length)],
+      name, personality: PERS_KEYS[Math.floor(Math.random() * PERS_KEYS.length)],
       specialType: Math.random() < 0.5 ? "melee" : "ranged", special: cpu.cfg.special, melee: randomMelee(),
-    }));
+    }), boostOf(randomTree(totalPoints(loadProfile())))); // CPU も自分と同じポイント数を、ランダムな枝に振る
   }
   runBattle({
     player,
@@ -681,8 +628,9 @@ document.getElementById("startBattle")!.addEventListener("click", () => {
 });
 
 // --- 画面の移動（メイン ⇄ 各画面）。端末やブラウザの「戻る」でも1つ前に戻る ---
-type Screen = "home" | "story" | "make" | "free" | "transfer";
-const SCREEN_TITLES: Record<Screen, string> = { home: "", story: "ストーリー", make: "キャラを作る", free: "自由バトル", transfer: "引き継ぎ" };
+type Screen = "home" | "story" | "make" | "free" | "transfer" | "tree";
+const SCREEN_TITLES: Record<Screen, string> = { home: "", story: "ストーリー", make: "キャラを作る", free: "自由バトル", transfer: "引き継ぎ", tree: "スキルツリー" };
+const treeEl = document.getElementById("treeScreen")!;
 const homeEl = document.getElementById("home")!;
 const storyEl = document.getElementById("storyScreen")!;
 const transferEl = document.getElementById("transferScreen")!;
@@ -699,12 +647,14 @@ function show(s: Screen) {
   homeEl.hidden = s !== "home";
   storyEl.hidden = s !== "story";
   transferEl.hidden = s !== "transfer";
+  treeEl.hidden = s !== "tree";
   workspaceEl.hidden = s !== "make" && s !== "free";
   topbar.hidden = s === "home";
   screenTitle.textContent = SCREEN_TITLES[s];
   makeTabs.hidden = s !== "make";
   if (s === "home") renderProfile();
   else if (s === "story") renderStory();
+  else if (s === "tree") renderTree();
   else if (s === "make") setView(view === "battle" ? "draw" : view);
   else if (s === "free") setView("battle");
   window.scrollTo(0, 0);
@@ -754,7 +704,137 @@ function renderProfile() {
   (document.getElementById("pExpBar") as HTMLElement).style.width = max ? "100%" : `${((100 * p.exp) / need).toFixed(1)}%`;
   document.getElementById("pExp")!.textContent = max ? "最大レベル" : `経験値 ${p.exp} / ${need}（次のレベルまで ${need - p.exp}）`;
   document.getElementById("pPoints")!.textContent = String(p.points);
+  document.getElementById("treeHint")!.textContent = p.points > 0 ? `ポイント ${p.points} を使えます` : "ポイントで強くなる";
 }
+
+// --- スキルツリー: 中心から7本の枝。丸をタップ → 説明 → 取得 ---
+const SVG_NS = "http://www.w3.org/2000/svg";
+const treeSvg = document.getElementById("treeSvg") as unknown as SVGSVGElement;
+const nodeInfo = document.getElementById("nodeInfo")!;
+let selectedNode: string | null = null;
+
+// 強化の合計を読める文にする
+const pct = (v: number) => `${v > 0 ? "+" : "−"}${Math.round(Math.abs(v) * 100)}%`;
+const num = (v: number) => `${v > 0 ? "+" : "−"}${Math.abs(v)}`;
+const BOOST_TEXT: [keyof Boost, (v: number) => string][] = [
+  ["dealt", (v) => `与えるダメージ ${pct(v)}`],
+  ["taken", (v) => `受けるダメージ ${pct(-v)}`],
+  ["hp", (v) => `体力 ${num(v)}`],
+  ["stamina", (v) => `最大スタミナ ${num(v)}`],
+  ["regen", (v) => `スタミナ回復 ${pct(v)}`],
+  ["speed", (v) => `移動の速さ ${pct(v)}`],
+  ["special", (v) => `必殺の威力 ${pct(v)}`],
+  ["chargeNeed", (v) => `必殺に必要な命中 ${num(v)}回`],
+  ["punch", (v) => `通常攻撃の威力 ${pct(v)}`],
+  ["windup", (v) => `通常攻撃の構え ${num(v)}コマ（遅くなる）`],
+  ["dodgeCost", (v) => `回避のスタミナ ${num(v)}`],
+  ["guardCut", (v) => `防御で減らす割合 ${pct(v)}`],
+  ["guardMove", (v) => `防御中の移動 ${pct(v / 0.5)}`],
+  ["knock", (v) => `吹き飛ばされやすさ ${pct(v)}`],
+  ["guardCharge", (v) => `防御成功で溜まるゲージ ${num(v)}`],
+  ["guardDrain", (v) => `防御中のスタミナ消費 ${pct(v)}`],
+];
+function boostLines(b: Partial<Boost>): string[] {
+  return BOOST_TEXT.filter(([k]) => Math.abs(b[k] ?? 0) > 1e-9).map(([k, f]) => f(+(b[k]!).toFixed(4)));
+}
+
+function renderTree() {
+  const p = loadProfile();
+  document.getElementById("tPoints")!.textContent = String(p.points);
+  document.getElementById("tSpent")!.textContent = `使用 ${spentOf(p.nodes)} ／ 全部取るには ${TREE_TOTAL}`;
+  treeSvg.innerHTML = "";
+  const el = (tag: string, attrs: Record<string, string | number>, parent: Element = treeSvg) => {
+    const e = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
+    parent.appendChild(e);
+    return e;
+  };
+  const R = (tier: number) => (tier <= SMALL_TIERS ? 36 + tier * 25 : 36 + SMALL_TIERS * 25 + 34);
+  const links = el("g", {});
+  const nodes = el("g", {});
+  BRANCHES.forEach((br, k) => {
+    const ang = -Math.PI / 2 + (k * Math.PI * 2) / BRANCHES.length;
+    const at = (r: number) => [Math.cos(ang) * r, Math.sin(ang) * r];
+    let prev = [0, 0];
+    for (let t = 1; t <= SMALL_TIERS + 1; t++) {
+      const id = `${br.key}${t}`;
+      const n = nodeById(id)!;
+      const [x, y] = at(R(t));
+      const owned = p.nodes.includes(id);
+      const l = el("line", { x1: prev[0], y1: prev[1], x2: x, y2: y, class: "lnk" }, links);
+      if (owned) l.setAttribute("style", `stroke:${br.color}`);
+      prev = [x, y];
+      const can = canTake(id, p.nodes);
+      const r = n.big ? 17 : 10;
+      const c = el("circle", { cx: x, cy: y, r, class: `nd ${owned ? "own" : can ? "can" : "lock"}${selectedNode === id ? " sel" : ""}` }, nodes);
+      if (owned) c.setAttribute("style", `fill:${br.color};stroke:${br.color}`);
+      else if (can) c.setAttribute("style", `stroke:${br.color}`);
+      if (n.big) el("text", { x, y, style: owned ? "fill:#fff" : "" }, nodes).textContent = "★";
+      const hit = el("circle", { cx: x, cy: y, r: n.big ? 20 : 13, class: "hit", role: "button", tabindex: 0, "aria-label": `${n.name}（${n.desc}）${owned ? "取得済み" : ""}` }, nodes);
+      const pick = () => { selectedNode = id; renderTree(); };
+      hit.addEventListener("click", pick);
+      hit.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") pick(); });
+    }
+    const [lx, ly] = at(R(SMALL_TIERS + 1) + 30);
+    el("text", { x: lx, y: ly, style: `fill:${br.color}` }, nodes).textContent = br.label;
+  });
+  el("circle", { cx: 0, cy: 0, r: 26, class: "core" }, nodes);
+  el("text", { x: 0, y: 0, class: "core-t" }, nodes).textContent = `Lv${p.level}`;
+
+  // 選んだノードの説明
+  nodeInfo.innerHTML = "";
+  if (selectedNode) {
+    const n = nodeById(selectedNode)!;
+    const owned = p.nodes.includes(n.id);
+    const can = canTake(n.id, p.nodes);
+    const h = document.createElement("div");
+    h.innerHTML = `<b></b>　<span class="cost"></span><div></div>`;
+    h.querySelector("b")!.textContent = n.name;
+    h.querySelector(".cost")!.textContent = `${n.cost} ポイント${n.big ? "（大技）" : ""}`;
+    h.querySelector("div")!.textContent = n.desc;
+    nodeInfo.appendChild(h);
+    const row = document.createElement("div");
+    row.className = "row";
+    if (owned) row.textContent = "取得済み";
+    else if (!can) row.textContent = "1つ内側を先に取ってください";
+    else {
+      const btn = document.createElement("button");
+      btn.className = "primary inline";
+      btn.textContent = p.points >= n.cost ? "取得する" : `ポイントが足りません（あと ${n.cost - p.points}）`;
+      btn.disabled = p.points < n.cost;
+      btn.addEventListener("click", () => { if (takeNode(n.id)) renderTree(); });
+      row.appendChild(btn);
+    }
+    nodeInfo.appendChild(row);
+  } else {
+    nodeInfo.textContent = "丸をタップすると説明が出ます。中心から外へ順に取れます。先端の★は強い代わりに損もある大技です。";
+  }
+
+  const total = document.getElementById("treeTotal")!;
+  total.innerHTML = "";
+  const lines = boostLines(boostOf(p.nodes));
+  for (const t of lines.length ? lines : ["まだ何も取っていません（ストーリーで勝つとポイントがもらえます）"]) {
+    const li = document.createElement("li");
+    li.textContent = t;
+    total.appendChild(li);
+  }
+}
+const resetBtn = document.getElementById("treeReset")!;
+let resetArmed = 0;
+resetBtn.addEventListener("click", () => {
+  if (!loadProfile().nodes.length) return;
+  if (!resetArmed) {
+    resetBtn.textContent = "もう一度で全部戻す";
+    resetArmed = window.setTimeout(() => { resetArmed = 0; resetBtn.textContent = "振り直し"; }, 2500);
+    return;
+  }
+  clearTimeout(resetArmed);
+  resetArmed = 0;
+  resetBtn.textContent = "振り直し";
+  resetTree();
+  selectedNode = null;
+  renderTree();
+});
 
 // --- ストーリー ---
 const storyCharSel = document.getElementById("storyChar") as HTMLSelectElement;
@@ -817,7 +897,7 @@ function rewardHtml(r: Reward, stage: Stage): string {
   const p = loadProfile();
   let h = `<div class="exp">経験値 +${r.exp}</div>`;
   if (r.levelsUp) h += `<div class="up">レベルアップ！ Lv ${p.level}</div>`;
-  if (r.points) h += `<div>スキルポイント +${r.points}（スキルツリーは準備中・ためておけます）</div>`;
+  if (r.points) h += `<div>スキルポイント +${r.points}（メイン画面の「スキルツリー」で使えます）</div>`;
   if (r.firstClear) {
     const next = ALL_STAGES[ALL_STAGES.indexOf(stage) + 1];
     h += `<div>${next ? `次のステージ「${next.enemy}」が開きました` : "ここまでクリア！ 続きの章は準備中です"}</div>`;
@@ -829,8 +909,7 @@ function startStage(stage: Stage) {
   sfx.unlock();
   const player = buildPlayer(storyCharSel.value);
   const cpu = buildCharacter(stage.enemy, stage.strokes(), stage.special, DEFAULT_PARAMS);
-  // 敵の能力値は標準の総ポイントを超えることがあるので、整えずにそのまま使う
-  applyData(cpu, { stats: stage.stats, personality: stage.personality, specialType: stage.specialType, special: stage.special, melee: stage.melee } as CharacterData);
+  applyData(cpu, stage, boostOf(autoTree(stage.boostPoints, stage.prefer)));
   runBattle({
     player,
     cpu,

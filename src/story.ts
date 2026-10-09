@@ -5,7 +5,6 @@ import { SAMPLES } from "./samples";
 import type { AiLevel } from "./sim/ai";
 import type { EffectId } from "./sim/special";
 import type { MeleeEffectId } from "./sim/melee";
-import type { Stats } from "./sim/stats";
 import type { Personality } from "./sim/world";
 
 export interface Stage {
@@ -18,7 +17,8 @@ export interface Stage {
   specialType: "ranged" | "melee";
   special: EffectId[];
   melee: MeleeEffectId[];
-  stats: Stats;
+  boostPoints: number; // 敵の強化ポイント（スキルツリーを prefer の枝の順に取る）
+  prefer: string[];
   ai: AiLevel;
   boss?: boolean;
 }
@@ -29,8 +29,7 @@ export interface Chapter {
   stages: Stage[];
 }
 
-const S = (a: number, d: number, sp: number, hp: number, st: number): Stats => ({ attack: a, defense: d, speed: sp, hp, stamina: st });
-const EVEN = S(4, 4, 4, 4, 4);
+const EVEN = { boostPoints: 0, prefer: [] as string[] };
 
 const line = (pts: number[], width = 9, color = "#222222"): Stroke => ({ color, width, points: pts });
 function circle(cx: number, cy: number, r: number, width = 9, color = "#222222"): Stroke {
@@ -67,12 +66,12 @@ export const CHAPTERS: Chapter[] = [
     no: 1,
     title: "らくがき町",
     stages: [
-      { id: "1-1", no: 1, title: "はじめの一歩", enemy: "棒人間", strokes: SAMPLES["棒人間"], personality: "aggressive", specialType: "ranged", special: [], melee: [], stats: EVEN, ai: CH1_AI },
-      { id: "1-2", no: 2, title: "うねうね", enemy: "タコ", strokes: SAMPLES["タコ"], personality: "tricky", specialType: "ranged", special: [], melee: [], stats: EVEN, ai: CH1_AI },
-      { id: "1-3", no: 3, title: "突進してくる", enemy: "短足ずんぐり", strokes: SAMPLES["短足ずんぐり"], personality: "aggressive", specialType: "melee", special: [], melee: ["dash"], stats: EVEN, ai: CH1_AI },
-      { id: "1-4", no: 4, title: "トゲの雨", enemy: "トゲトゲ", strokes: SAMPLES["トゲトゲ"], personality: "sniper", specialType: "ranged", special: ["multi"], melee: [], stats: EVEN, ai: CH1_AI },
-      { id: "1-5", no: 5, title: "ころころ注意", enemy: "まんまる", strokes: SAMPLES["まんまる（塗りつぶし）"], personality: "cautious", specialType: "ranged", special: ["homing"], melee: [], stats: EVEN, ai: CH1_AI },
-      { id: "1-6", no: 6, title: "らくがき大王", enemy: "らくがき大王", strokes: KING, personality: "aggressive", specialType: "melee", special: [], melee: ["giantHands", "slam"], stats: S(5, 5, 4, 6, 4), ai: { wait: [8, 5], defend: 0.5 }, boss: true },
+      { id: "1-1", no: 1, title: "はじめの一歩", enemy: "棒人間", strokes: SAMPLES["棒人間"], personality: "aggressive", specialType: "ranged", special: [], melee: [], ...EVEN, ai: CH1_AI },
+      { id: "1-2", no: 2, title: "うねうね", enemy: "タコ", strokes: SAMPLES["タコ"], personality: "tricky", specialType: "ranged", special: [], melee: [], ...EVEN, ai: CH1_AI },
+      { id: "1-3", no: 3, title: "突進してくる", enemy: "短足ずんぐり", strokes: SAMPLES["短足ずんぐり"], personality: "aggressive", specialType: "melee", special: [], melee: ["dash"], ...EVEN, ai: CH1_AI },
+      { id: "1-4", no: 4, title: "トゲの雨", enemy: "トゲトゲ", strokes: SAMPLES["トゲトゲ"], personality: "sniper", specialType: "ranged", special: ["multi"], melee: [], ...EVEN, ai: CH1_AI },
+      { id: "1-5", no: 5, title: "ころころ注意", enemy: "まんまる", strokes: SAMPLES["まんまる（塗りつぶし）"], personality: "cautious", specialType: "ranged", special: ["homing"], melee: [], ...EVEN, ai: CH1_AI },
+      { id: "1-6", no: 6, title: "らくがき大王", enemy: "らくがき大王", strokes: KING, personality: "aggressive", specialType: "melee", special: [], melee: ["giantHands", "slam"], boostPoints: 4, prefer: ["atk", "hp"], ai: { wait: [8, 5], defend: 0.5 }, boss: true },
     ],
   },
 ];

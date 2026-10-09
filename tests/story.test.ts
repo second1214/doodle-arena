@@ -5,6 +5,7 @@ import { applyStageResult, expToNext, exportCode, importCode, loadProfile } from
 import { createWorld, step } from "../src/sim/world";
 import { aiInput, createAi } from "../src/sim/ai";
 import { fighterShape } from "../src/shape";
+import { autoTree, boostOf } from "../src/tree";
 
 // node には localStorage が無いので、最小の代わりを置く
 class MemStorage {
@@ -63,7 +64,7 @@ describe("ストーリーの敵", () => {
     for (const st of ALL_STAGES) {
       const res = detect(st.strokes(), DEFAULT_PARAMS);
       const shape = fighterShape(res);
-      const cfg = { name: st.enemy, reach: shape.reach, hasHands: shape.hasHands, hasFeet: shape.hasFeet, special: st.special, specialType: st.specialType, melee: st.melee, stats: st.stats, personality: st.personality, traits: shape.traits };
+      const cfg = { name: st.enemy, reach: shape.reach, hasHands: shape.hasHands, hasFeet: shape.hasFeet, special: st.special, specialType: st.specialType, melee: st.melee, boost: boostOf(autoTree(st.boostPoints, st.prefer)), personality: st.personality, traits: shape.traits };
       const w = createWorld({ name: "p", reach: 0.8, hasHands: true, hasFeet: true, special: [] }, cfg, 7);
       const ais = [createAi(), createAi(st.ai)];
       while (w.winner === -1) step(w, [aiInput(w, 0, ais[0]), aiInput(w, 1, ais[1])]);

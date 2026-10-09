@@ -1,6 +1,6 @@
 // CPU の操作。性格ごとに行動の重みを変える（猛攻 / 慎重 / 狙撃 / トリッキー）。
 // 反応の遅れ・迷いはシード固定の乱数で決めるので、同じシードなら同じ試合になる。
-import { attackCostOf, dodgeCost, meleeRange, meleeSpecialRange, specialCharge, type Input, type Personality, type World } from "./world";
+import { attackCostOf, meleeRange, meleeSpecialRange, type Input, type Personality, type World } from "./world";
 
 export type { Personality };
 
@@ -70,14 +70,14 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState): Input {
     return d < 4 + p.spec.size && rx * p.dx + rz * p.dz > 0;
   });
   const opWinding = op.attack === "windup" && dist < meleeRange(op.cfg, me.cfg) + 0.6;
-  const ready = me.charge >= specialCharge;
+  const ready = me.charge >= me.st.chargeNeed;
   const melee = me.cfg.specialType === "melee";
   const mReach = meleeSpecialRange(me.cfg, me.mspec, op.cfg);
   // 相手が近接必殺を構えている / 撃てる状態で近い → 下がるか守る
-  const opMeleeThreat = op.cfg.specialType === "melee" && (op.ms.phase === "windup" || (op.charge >= specialCharge && dist < meleeSpecialRange(op.cfg, op.mspec, me.cfg) + 0.5));
+  const opMeleeThreat = op.cfg.specialType === "melee" && (op.ms.phase === "windup" || (op.charge >= op.st.chargeNeed && dist < meleeSpecialRange(op.cfg, op.mspec, me.cfg) + 0.5));
 
   let mx = 0, mz = 0, guard = false, attack = false, special = false, shove = false, dodge = false;
-  const canDodge = me.stamina >= dodgeCost + 10;
+  const canDodge = me.stamina >= me.st.dodgeCost + 10;
 
   if (canDodge && rng.next() < P.feint) {
     // トリッキー: 意味もなく横へ跳ぶ

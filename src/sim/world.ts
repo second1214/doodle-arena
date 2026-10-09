@@ -4,7 +4,7 @@ import { Rng } from "./rng";
 import { composeSpecial, type EffectId, type ProjSpec } from "./special";
 import { DEFAULT_TRAITS, type Hurt, type Traits } from "../shape";
 import { composeMelee, type MeleeEffectId, type MeleeSpec } from "./melee";
-import { statEffects, type StatEffects, type Stats } from "./stats";
+import { BASE_CHARGE_NEED, BASE_DODGE_COST, statEffects, type Boost, type StatEffects } from "./stats";
 
 export const TICK_HZ = 30;
 export const DT = 1 / TICK_HZ;
@@ -26,7 +26,6 @@ const MAX_STAMINA = 100;
 const STAMINA_REGEN = 0.315; // 行動が遅くなった分、回復も遅くして攻撃回数の釣り合いを保つ
 const REGEN_DELAY = slow(15); // 攻撃後しばらくスタミナが回復しない（連打防止）
 const GUARD_DRAIN = 0.3;
-const GUARD_CUT = 0.7; // 防御中は 7 割カット
 const ATTACK_COST = 28;
 // ノックバック: 初速（単位/秒）を tick ごとに減衰させる。のけぞり中は行動不能。
 const KNOCK_DECAY = 0.85; // ゆっくり滑る（距離はほぼ同じ）
@@ -38,10 +37,10 @@ const GUARD_HEAL_MAX = 2;
 // 突き飛ばし: スタミナを使わない。ダメージなし。防御の上からでも押し、少しの間防御できなくする
 const SHOVE_WINDUP = slow(3), SHOVE_ACTIVE = slow(2), SHOVE_RECOVER = slow(9), SHOVE_COOLDOWN = slow(30), SHOVE_KNOCK = 11 * 0.85;
 // 回避: 入力方向へ素早く移動し、その間は当たらない。方向が無ければ後ろへ
-const DODGE_COST = 22, DODGE_TICKS = slow(8), DODGE_RECOVER = slow(5), DODGE_SPEED = 13 * 0.75;
+const DODGE_TICKS = slow(8), DODGE_RECOVER = slow(5), DODGE_SPEED = 13 * 0.75;
 const MOVE_SPEED = 3;
-const SPECIAL_CHARGE = 5; // 通常攻撃を何回当てたら必殺技を撃てるか（防御された攻撃も数える）
-const GUARD_CHARGE = 0.5; // 攻撃を防ぐたびに、防いだ側のゲージが溜まる量（攻撃1回につき1度）
+// 必殺に必要な命中数（標準5・防御された攻撃も数える）、防御で減らす割合（標準7割）、回避のスタミナ（標準22）、
+// 防御成功で防いだ側に溜まるゲージ（標準0.5・攻撃1回につき1度）は、強化で変わるのでキャラごとの st に持つ（stats.ts）
 const SHOOT_SLOW = 15; // 必殺技を撃った直後に足が遅くなる tick
 const RETREAT_SPEED = 0.75; // 相手から離れる方向へ歩くときの速度倍率（逃げ撃ち対策）
 const PROJ_ARM = 3; // 必殺技の弾が出てから当たり始めるまでの tick（密着必中の防止）
@@ -58,7 +57,7 @@ export interface FighterConfig {
   specialType?: "ranged" | "melee"; // 必殺技の型（既定は遠距離）
   melee?: MeleeEffectId[]; // 近接型の効果
   traits?: Traits; // 絵の形による性能（無ければ標準）
-  stats?: Stats; // 能力値の振り分け（無ければ標準）
+  boost?: Partial<Boost>; // スキルツリーの強化（無ければ標準）
   hurt?: Hurt; // 描いた部分だけの当たり判定（無ければ体の円）
   personality?: Personality; // CPU が動かすときの性格
 }
@@ -203,7 +202,7 @@ function paceProj(s: ProjSpec): ProjSpec { return { ...s, speed: s.speed * PROJ_
 function paceMelee(s: MeleeSpec): MeleeSpec { return { ...s, windup: slow(s.windup), active: slow(s.active), recover: slow(s.recover) }; }
 
 function makeFighter(cfg: FighterConfig, x: number): Fighter {
-  const st = statEffects(cfg.stats);
+  const st = statEffects(cfg.boost);
   return {
     st, maxHp: st.maxHp, maxStamina: st.maxStamina,
     cfg, spec: paceProj(composeSpecial(cfg.special)),
@@ -239,10 +238,9 @@ export function attackCostOf(cfg: FighterConfig) { return ATTACK_COST * tr(cfg).
 
 export const baseMaxHp = MAX_HP;
 export const baseMaxStamina = MAX_STAMINA;
-export const specialCharge = SPECIAL_CHARGE;
-export const guardCharge = GUARD_CHARGE;
+export const specialCharge = BASE_CHARGE_NEED; // 標準の値（実際はキャラごとの st.chargeNeed）
 export const attackCost = ATTACK_COST;
-export const dodgeCost = DODGE_COST;
+export const dodgeCost = BASE_DODGE_COST; // 標準の値（実際は st.dodgeCost）
 
 interface Hit {
   amount: number;
@@ -271,14 +269,14 @@ function damage(w: World, ti: number, hit: Hit) {
   const rolling = !target.feetNow && Math.hypot(target.vx, target.vz) > MOVE_SPEED * 0.5;
   const base = hit.amount * w.fighters[1 - ti].st.dealt * target.st.taken; // 能力値（攻撃力・防御力）
   hit = { ...hit, amount: base };
-  const dmg = base * (guarded ? 1 - (rolling ? tr(target.cfg).rollGuardCut : GUARD_CUT) : 1);
+  const dmg = base * (guarded ? 1 - (rolling ? tr(target.cfg).rollGuardCut : target.st.guardCut) : 1);
   const wasAlive = target.hp > 0;
   target.hp = Math.max(0, target.hp - dmg);
   // 防御成功で少し回復（防いだ分の一部）
   const heal = guarded && target.hp > 0 ? Math.min(GUARD_HEAL_MAX, (hit.amount - dmg) * GUARD_HEAL) : 0;
   if (heal > 0) target.hp = Math.min(target.maxHp, target.hp + heal);
   target.hitFlash = 6;
-  const k = hit.knock * tr(target.cfg).knockTaken * (guarded ? 0.3 : 1);
+  const k = hit.knock * tr(target.cfg).knockTaken * target.st.knockTaken * (guarded ? 0.3 : 1);
   target.kx += hit.dx * k; target.kz += hit.dz * k;
   target.stun = Math.max(target.stun, guarded ? GUARD_STUN : hit.stun);
   target.guardStun = guarded;
@@ -308,10 +306,10 @@ function damage(w: World, ti: number, hit: Hit) {
   if (hit.src === "melee" && hit.firstOfSwing) addCharge(w, 1 - ti, 1);
   // 防御に成功すると防いだ側も少し溜まる（通常攻撃は1回の攻撃につき1度、必殺は1回の必殺につき1度）
   if (guarded) {
-    if (hit.src === "melee" && hit.firstOfSwing) addCharge(w, ti, GUARD_CHARGE);
+    if (hit.src === "melee" && hit.firstOfSwing) addCharge(w, ti, target.st.guardCharge);
     else if (hit.src === "special" && target.guardedSeq !== atk.specialSeq) {
       target.guardedSeq = atk.specialSeq;
-      addCharge(w, ti, GUARD_CHARGE);
+      addCharge(w, ti, target.st.guardCharge);
     }
   }
   if (wasAlive && target.hp <= 0) {
@@ -322,9 +320,10 @@ function damage(w: World, ti: number, hit: Hit) {
 
 function addCharge(w: World, i: number, n: number) {
   const f = w.fighters[i];
-  if (f.charge >= SPECIAL_CHARGE) return;
-  f.charge = Math.min(SPECIAL_CHARGE, f.charge + n);
-  if (f.charge === SPECIAL_CHARGE) w.events.push({ kind: "ready", x: f.x, z: f.z, h: 1, amount: 0, src: "melee", target: i, dx: 0, dz: 0, size: 0 });
+  const need = f.st.chargeNeed;
+  if (f.charge >= need || n <= 0) return;
+  f.charge = Math.min(need, f.charge + n);
+  if (f.charge === need) w.events.push({ kind: "ready", x: f.x, z: f.z, h: 1, amount: 0, src: "melee", target: i, dx: 0, dz: 0, size: 0 });
 }
 
 // 同じ tick の通常攻撃は両者の行動処理が終わってから同時に当てる（同時に殴ったら相打ち）
@@ -395,7 +394,7 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
   // 防御
   me.guarding = me.rooted === 0 && (!stunned || me.guardStun) && inp.guard && me.guardBroken === 0 && !busy;
   if (me.guarding) {
-    me.stamina -= GUARD_DRAIN;
+    me.stamina -= GUARD_DRAIN * me.st.guardDrain;
     if (me.stamina <= 0) { me.stamina = 0; me.guarding = false; me.guardBroken = TICK_HZ; }
   } else if (me.regenDelay === 0 && !busy) {
     me.stamina = Math.min(me.maxStamina, me.stamina + STAMINA_REGEN * me.st.regen);
@@ -405,7 +404,7 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
   let mx = inp.mx, mz = inp.mz;
   const ml = Math.hypot(mx, mz);
   if (ml > 1) { mx /= ml; mz /= ml; }
-  let speed = MOVE_SPEED * me.st.speed * (me.feetNow ? tr(me.cfg).walk : tr(me.cfg).top) * (me.guarding ? 0.5 : 1);
+  let speed = MOVE_SPEED * me.st.speed * (me.feetNow ? tr(me.cfg).walk : tr(me.cfg).top) * (me.guarding ? me.st.guardMove : 1);
   if (me.shootSlow > 0) speed *= 0.3;
   if (mx * me.fx + mz * me.fz < -0.3) speed *= RETREAT_SPEED; // 相手から離れる向き
   if (rooted || me.attack === "active" || me.attack === "windup") speed *= rooted ? 0 : 0.3;
@@ -425,7 +424,7 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
   }
   if (me.attack !== "none") {
     me.attackT++;
-    if (me.attack === "windup" && me.attackT >= windupTicks(me.cfg)) { me.attack = "active"; me.attackT = 0; }
+    if (me.attack === "windup" && me.attackT >= windupTicks(me.cfg) + me.st.windup) { me.attack = "active"; me.attackT = 0; }
     else if (me.attack === "active" && me.attackT >= activeTicks(me.cfg)) { me.attack = "recover"; me.attackT = 0; }
     else if (me.attack === "recover" && me.attackT >= recoverTicks(me.cfg)) { me.attack = "none"; me.attackT = 0; }
   }
@@ -459,7 +458,7 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
     // 手が多いと 2tick おきに複数回当たる（合計威力は回数の 0.25 乗）
     if (me.swingHits < T.hits && me.attackT >= me.swingHits * 2 && touch) {
       const mom = 1 + T.momentum * Math.min(1, me.preSpeed / (MOVE_SPEED * T.top));
-      const total = (me.cfg.hasHands ? PUNCH_DAMAGE : TACKLE_DAMAGE) * T.dmg * Math.pow(T.hits, 0.25) * mom;
+      const total = (me.cfg.hasHands ? PUNCH_DAMAGE : TACKLE_DAMAGE) * T.dmg * Math.pow(T.hits, 0.25) * mom * me.st.punch;
       const amount = total / T.hits;
       if (T.selfDmg > 0) {
         const self = Math.min(me.hp - 1, amount * T.selfDmg); // 体当たりの反動（自滅はしない）
@@ -480,11 +479,11 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
   }
 
   // 回避（スタミナ消費）: 入力方向へ。方向が無ければ相手と反対へ
-  if (inp.dodge && !rooted && !busy && me.stamina >= DODGE_COST) {
+  if (inp.dodge && !rooted && !busy && me.stamina >= me.st.dodgeCost) {
     let dx = inp.mx, dz = inp.mz;
     const l = Math.hypot(dx, dz);
     if (l < 0.2) { dx = -me.fx; dz = -me.fz; } else { dx /= l; dz /= l; }
-    me.stamina -= DODGE_COST;
+    me.stamina -= me.st.dodgeCost;
     me.regenDelay = REGEN_DELAY;
     me.dodgeT = DODGE_TICKS; me.dodgeX = dx; me.dodgeZ = dz;
     me.guarding = false;
@@ -504,7 +503,7 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
     if (elapsed === SHOVE_WINDUP + 1) {
       const range = rad(me.cfg) + rad(op.cfg) + 0.4 + (me.cfg.hasHands ? me.cfg.reach * 0.5 : 0);
       if (dist <= range && op.dodgeT === 0) {
-        const k = SHOVE_KNOCK * tr(op.cfg).knockTaken;
+        const k = SHOVE_KNOCK * tr(op.cfg).knockTaken * op.st.knockTaken;
         op.kx += me.fx * k; op.kz += me.fz * k;
         op.stun = Math.max(op.stun, 6);
         op.guardStun = false;
@@ -518,7 +517,7 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
   }
 
   // 必殺技: ゲージ満タンで、防御中・攻撃中でないとき
-  const canSpecial = inp.special && !rooted && !me.guarding && !busy && me.charge >= SPECIAL_CHARGE;
+  const canSpecial = inp.special && !rooted && !me.guarding && !busy && me.charge >= me.st.chargeNeed;
   if (canSpecial) me.specialSeq++;
   if (canSpecial && me.cfg.specialType === "melee") {
     me.charge = 0;
@@ -629,7 +628,7 @@ function stepMelee(w: World, i: 0 | 1, dist: number) {
 function hitWith(w: World, i: number, x: number, z: number, dx: number, dz: number, amount: number, knock: number, ignoreGuard: boolean) {
   const s = w.fighters[i].mspec;
   damage(w, 1 - i, {
-    amount, src: "special", dx, dz, knock, stun: SPECIAL_STUN, x, z, h: 1, size: 0, tags: s.tags,
+    amount: amount * w.fighters[i].st.special, src: "special", dx, dz, knock, stun: SPECIAL_STUN, x, z, h: 1, size: 0, tags: s.tags,
     ignoreGuard, wobble: s.wobbleTicks, legbind: s.legbindTicks, crumple: s.crumpleTicks,
   });
 }
@@ -688,7 +687,7 @@ function stepProjectile(w: World, p: Projectile): boolean {
     }
     const restrain = s.restrainTicks > 0 && !target.guarding;
     damage(w, 1 - p.owner, {
-      amount: s.damage, src: "special", dx: kdx, dz: kdz,
+      amount: s.damage * w.fighters[p.owner].st.special, src: "special", dx: kdx, dz: kdz,
       knock: restrain || s.grind ? 0.5 : 4 + s.damage * 0.35 + s.size * 2, stun: SPECIAL_STUN,
       x: p.x, z: p.z, h: p.h, size: s.size, pid: p.id, tags: s.tags, restrain: s.restrainTicks,
     });

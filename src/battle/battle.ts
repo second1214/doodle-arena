@@ -1,6 +1,6 @@
 // 戦闘画面（全画面）。入力（仮想スティック・ボタン・キーボード）→ 固定ステップの戦闘計算 → 3D 表示＋効果音。
 import { aiInput, createAi, type AiLevel } from "../sim/ai";
-import { attackCostOf, dodgeCost, DT, MATCH_TICKS, createWorld, specialCharge, step, TICK_HZ, type BattleEvent, type Input, type World } from "../sim/world";
+import { attackCostOf, DT, MATCH_TICKS, createWorld, step, TICK_HZ, type BattleEvent, type Input, type World } from "../sim/world";
 import type { Sfx } from "./audio";
 import type { CharacterBuild } from "./character";
 import { BattleScene } from "./scene";
@@ -18,7 +18,7 @@ export interface BattleOptions {
   onResult?: (winner: number) => string;
 }
 
-const pips = (i: number) => `<div class="b-charge" data-ch="${i}">${"<i></i>".repeat(specialCharge)}</div>`;
+const pips = (i: number) => `<div class="b-charge" data-ch="${i}"></div>`; // 中身は必要な命中数ぶん（キャラごとに違う）
 
 const HTML = `
   <div class="b-hud">
@@ -161,6 +161,7 @@ export function startBattle(opts: BattleOptions) {
   const hpNums = [q("[data-hpn='0']"), q("[data-hpn='1']")];
   const stEls = [q("[data-st='0']"), q("[data-st='1']")];
   const chEls = [q("[data-ch='0']"), q("[data-ch='1']")];
+  chEls.forEach((c, i) => { c.innerHTML = "<i></i>".repeat(world.fighters[i].st.chargeNeed); });
   const timeEl = q("[data-time]");
   const specialBtn = q(".b-btn.special");
   const attackBtn = q(".b-btn.attack");
@@ -175,16 +176,17 @@ export function startBattle(opts: BattleOptions) {
       stEls[i].style.width = `${(f.stamina / f.maxStamina) * 100}%`;
       stEls[i].parentElement!.classList.toggle("low", f.stamina < attackCostOf(f.cfg));
       chEls[i].querySelectorAll("i").forEach((p, k) => { p.classList.toggle("on", k + 1 <= f.charge); p.classList.toggle("half", k < f.charge && k + 1 > f.charge); });
-      chEls[i].classList.toggle("full", f.charge >= specialCharge);
+      chEls[i].classList.toggle("full", f.charge >= f.st.chargeNeed);
     });
     timeEl.textContent = String(Math.ceil((MATCH_TICKS - world.tick) / TICK_HZ));
     const me = world.fighters[0];
-    const ready = me.charge >= specialCharge;
-    specialBtn.textContent = ready ? "必殺!" : `${me.charge}/${specialCharge}`;
+    const need = me.st.chargeNeed;
+    const ready = me.charge >= need;
+    specialBtn.textContent = ready ? "必殺!" : `${me.charge}/${need}`;
     specialBtn.classList.toggle("ready", ready);
-    specialBtn.style.setProperty("--cd", String(1 - me.charge / specialCharge));
+    specialBtn.style.setProperty("--cd", String(1 - me.charge / need));
     attackBtn.classList.toggle("low", me.stamina < attackCostOf(me.cfg)); // スタミナ不足で攻撃できない
-    dodgeBtn.classList.toggle("low", me.stamina < dodgeCost);
+    dodgeBtn.classList.toggle("low", me.stamina < me.st.dodgeCost);
     shoveBtn.classList.toggle("low", me.shoveCd > 0);
   };
 

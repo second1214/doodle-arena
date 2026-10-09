@@ -1,5 +1,6 @@
 // プレイヤーの成長（レベル・経験値・スキルポイント）とストーリーの進み具合。ブラウザ内に保存する。
 // 保存形式には版番号 v を付け、読み込み時に古い形から直す。
+import { canTake, isValidTree, nodeById, spentOf } from "./tree";
 const PROFILE_KEY = "doodle-arena:profile";
 const STORY_KEY = "doodle-arena:story";
 
@@ -10,6 +11,7 @@ export interface Profile {
   level: number;
   exp: number; // 今のレベルでたまった経験値
   points: number; // まだ使っていないスキルポイント
+  nodes: string[]; // スキルツリーで取ったノード（プレイヤー共通）
 }
 
 export interface StoryProgress {
@@ -40,7 +42,32 @@ function write(key: string, value: unknown): boolean {
 export function loadProfile(): Profile {
   const p = read<Partial<Profile>>(PROFILE_KEY);
   const num = (x: unknown, d: number) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : d);
-  return { v: 1, level: Math.min(LEVEL_CAP, Math.max(1, Math.floor(num(p?.level, 1)))), exp: num(p?.exp, 0), points: Math.floor(num(p?.points, 0)) };
+  const out: Profile = { v: 1, level: Math.min(LEVEL_CAP, Math.max(1, Math.floor(num(p?.level, 1)))), exp: num(p?.exp, 0), points: Math.floor(num(p?.points, 0)), nodes: [] };
+  const nodes = Array.isArray(p?.nodes) ? p.nodes.filter((x): x is string => typeof x === "string") : [];
+  // ツリーの形が変わって知らないノードや飛ばし取りがあれば、全部払い戻して振り直してもらう
+  if (isValidTree(nodes)) out.nodes = nodes;
+  else out.points += nodes.reduce((a, id) => a + (nodeById(id)?.cost ?? 1), 0);
+  return out;
+}
+
+// これまでにもらったスキルポイントの合計（使った分＋残り）
+export const totalPoints = (p: Profile) => p.points + spentOf(p.nodes);
+
+export function takeNode(id: string): boolean {
+  const p = loadProfile();
+  const n = nodeById(id);
+  if (!n || !canTake(id, p.nodes) || p.points < n.cost) return false;
+  p.nodes.push(id);
+  p.points -= n.cost;
+  return saveProfile(p);
+}
+
+// 振り直し（無料）: 全部払い戻す
+export function resetTree() {
+  const p = loadProfile();
+  p.points += spentOf(p.nodes);
+  p.nodes = [];
+  saveProfile(p);
 }
 export const saveProfile = (p: Profile) => write(PROFILE_KEY, p);
 
