@@ -10,7 +10,9 @@ import { describeShape, fighterShape } from "./shape";
 import { PERSONAS } from "./sim/ai";
 import { DEFAULT_STATS, STAT_BUDGET, STAT_KEYS, STAT_LABELS, STAT_MAX, statEffects, statTotal, type Stats } from "./sim/stats";
 import type { Personality } from "./sim/world";
-import { deleteCharacter, loadDraft, loadRoster, normalize, saveCharacter, saveDraft, type CharacterData } from "./roster";
+import { deleteCharacter, loadDraft, loadRoster, normalize, saveCharacter, saveDraft, thumbnail, type CharacterData } from "./roster";
+import { applyStageResult, expToNext, exportCode, importCode, LEVEL_CAP, loadProfile, loadStory, requestPersist, type Reward } from "./progress";
+import { ALL_STAGES, CHAPTERS, isUnlocked, UPCOMING, type Stage } from "./story";
 
 const STORAGE_KEY = "doodle-arena:proto1";
 const COLORS = ["#222222", "#e03131", "#1c7ed6", "#f2c200", "#2f9e44", "#ae3ec9", "#f08c00"];
@@ -635,12 +637,24 @@ function applyData(build: ReturnType<typeof buildCharacter>, c: CharacterData) {
   build.cfg.melee = c.melee;
 }
 
+// 自分のキャラ: "" = 編集中のキャラ（絵が無ければ棒人間）/ "saved:id" = 保存したキャラ
+function buildPlayer(choice: string) {
+  const saved = choice.startsWith("saved:") ? loadRoster().find((c) => c.id === choice.slice(6)) : undefined;
+  if (saved) {
+    const b = buildCharacter(saved.name, saved.strokes, saved.special, params);
+    applyData(b, saved);
+    return b;
+  }
+  const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
+  const b = buildCharacter(editor.name || "あなた", mine, editor.special, params);
+  applyData(b, editor);
+  return b;
+}
+
 const sfx = new Sfx();
 document.getElementById("startBattle")!.addEventListener("click", () => {
   sfx.unlock(); // 効果音はボタン操作の中でしか有効にできない
-  const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
-  const player = buildCharacter(editor.name || "あなた", mine, editor.special, params);
-  applyData(player, editor);
+  const player = buildPlayer("");
 
   const names = Object.keys(SAMPLES);
   const v = cpuSel.value || `sample:${names[Math.floor(Math.random() * names.length)]}`;
@@ -657,14 +671,237 @@ document.getElementById("startBattle")!.addEventListener("click", () => {
       specialType: Math.random() < 0.5 ? "melee" : "ranged", special: cpu.cfg.special, melee: randomMelee(),
     }));
   }
-  startBattle({
+  runBattle({
     player,
     cpu,
     spectate: (document.getElementById("spectate") as HTMLInputElement).checked,
     seed: (Math.random() * 0xffffffff) >>> 0,
     sfx,
-    onExit: () => {},
   });
 });
 
+// --- 画面の移動（メイン ⇄ 各画面）。端末やブラウザの「戻る」でも1つ前に戻る ---
+type Screen = "home" | "story" | "make" | "free" | "transfer";
+const SCREEN_TITLES: Record<Screen, string> = { home: "", story: "ストーリー", make: "キャラを作る", free: "自由バトル", transfer: "引き継ぎ" };
+const homeEl = document.getElementById("home")!;
+const storyEl = document.getElementById("storyScreen")!;
+const transferEl = document.getElementById("transferScreen")!;
+const workspaceEl = document.getElementById("workspace")!;
+const topbar = document.getElementById("topbar")!;
+const screenTitle = document.getElementById("screenTitle")!;
+const makeTabs = document.getElementById("makeTabs")!;
+let screen: Screen = "home";
+let pushed = 0; // 自分で積んだ履歴の数（0 なら「戻る」はメインへ）
+let battleHandle: { close: () => void } | null = null;
+
+function show(s: Screen) {
+  screen = s;
+  homeEl.hidden = s !== "home";
+  storyEl.hidden = s !== "story";
+  transferEl.hidden = s !== "transfer";
+  workspaceEl.hidden = s !== "make" && s !== "free";
+  topbar.hidden = s === "home";
+  screenTitle.textContent = SCREEN_TITLES[s];
+  makeTabs.hidden = s !== "make";
+  if (s === "home") renderProfile();
+  else if (s === "story") renderStory();
+  else if (s === "make") setView(view === "battle" ? "draw" : view);
+  else if (s === "free") setView("battle");
+  window.scrollTo(0, 0);
+}
+function go(s: Screen) {
+  try { history.pushState({ screen: s }, ""); pushed++; } catch { /* 履歴が使えない環境でも画面は切り替える */ }
+  show(s);
+}
+window.addEventListener("popstate", (e) => {
+  pushed = Math.max(0, pushed - 1);
+  if (battleHandle) {
+    // 戦闘中に「戻る」→ 戦闘を閉じる（閉じた後の画面は onExit が出す）
+    const h = battleHandle;
+    battleHandle = null;
+    h.close();
+    return;
+  }
+  show(((e.state as { screen?: Screen } | null)?.screen) ?? "home");
+});
+document.getElementById("backBtn")!.addEventListener("click", () => {
+  if (pushed > 0) history.back();
+  else show("home");
+});
+document.querySelectorAll<HTMLButtonElement>("[data-go]").forEach((b) => b.addEventListener("click", () => go(b.dataset.go as Screen)));
+
+// 戦闘も履歴に1つ積む（「戻る」で戦闘を閉じられるように）
+function runBattle(o: Omit<Parameters<typeof startBattle>[0], "onExit">) {
+  try { history.pushState({ screen, battle: true }, ""); pushed++; } catch { /* 無視 */ }
+  battleHandle = startBattle({
+    ...o,
+    onExit: () => {
+      if (battleHandle) {
+        battleHandle = null;
+        if (pushed > 0) { history.back(); return; } // popstate で今の画面を出し直す
+      }
+      show(screen);
+    },
+  });
+}
+
+// --- メイン画面: レベルと経験値 ---
+function renderProfile() {
+  const p = loadProfile();
+  document.getElementById("pLevel")!.textContent = String(p.level);
+  const need = expToNext(p.level);
+  const max = p.level >= LEVEL_CAP;
+  (document.getElementById("pExpBar") as HTMLElement).style.width = max ? "100%" : `${((100 * p.exp) / need).toFixed(1)}%`;
+  document.getElementById("pExp")!.textContent = max ? "最大レベル" : `経験値 ${p.exp} / ${need}（次のレベルまで ${need - p.exp}）`;
+  document.getElementById("pPoints")!.textContent = String(p.points);
+}
+
+// --- ストーリー ---
+const storyCharSel = document.getElementById("storyChar") as HTMLSelectElement;
+const chaptersEl = document.getElementById("chapters")!;
+const thumbs = new Map<string, string>();
+function refreshStoryChars() {
+  const keep = storyCharSel.value;
+  storyCharSel.innerHTML = "";
+  storyCharSel.add(new Option(`編集中のキャラ（${editor.name || (strokes.length ? "名無し" : "棒人間")}）`, ""));
+  for (const c of loadRoster()) storyCharSel.add(new Option(c.name, `saved:${c.id}`));
+  storyCharSel.value = [...storyCharSel.options].some((o) => o.value === keep) ? keep : "";
+}
+function renderStory() {
+  refreshStoryChars();
+  const { cleared } = loadStory();
+  chaptersEl.innerHTML = "";
+  for (const ch of CHAPTERS) {
+    const sec = document.createElement("div");
+    sec.className = "chapter";
+    const h = document.createElement("h2");
+    h.textContent = `第${ch.no}章　${ch.title}`;
+    const grid = document.createElement("div");
+    grid.className = "stages";
+    ch.stages.forEach((st, k) => {
+      const b = document.createElement("button");
+      b.className = st.boss ? "boss" : "";
+      b.disabled = !isUnlocked(st, cleared);
+      if (!thumbs.has(st.id)) thumbs.set(st.id, thumbnail(st.strokes()));
+      const img = document.createElement("img");
+      img.src = thumbs.get(st.id)!;
+      img.alt = "";
+      const no = document.createElement("span");
+      no.className = "no";
+      no.textContent = `${ch.no}-${k + 1}${st.boss ? " ボス" : ""}`;
+      const t = document.createElement("span");
+      t.textContent = b.disabled ? "？？？" : st.enemy;
+      b.append(img, no, t);
+      if (cleared[st.id]) {
+        const star = document.createElement("span");
+        star.className = "clear";
+        star.textContent = "★";
+        star.setAttribute("aria-label", "クリア済み");
+        b.appendChild(star);
+      }
+      b.addEventListener("click", () => startStage(st));
+      grid.appendChild(b);
+    });
+    sec.append(h, grid);
+    chaptersEl.appendChild(sec);
+  }
+  for (const t of UPCOMING) {
+    const sec = document.createElement("div");
+    sec.className = "chapter locked";
+    sec.innerHTML = `<h2>${t}　準備中</h2>`;
+    chaptersEl.appendChild(sec);
+  }
+}
+
+function rewardHtml(r: Reward, stage: Stage): string {
+  const p = loadProfile();
+  let h = `<div class="exp">経験値 +${r.exp}</div>`;
+  if (r.levelsUp) h += `<div class="up">レベルアップ！ Lv ${p.level}</div>`;
+  if (r.points) h += `<div>スキルポイント +${r.points}（スキルツリーは準備中・ためておけます）</div>`;
+  if (r.firstClear) {
+    const next = ALL_STAGES[ALL_STAGES.indexOf(stage) + 1];
+    h += `<div>${next ? `次のステージ「${next.enemy}」が開きました` : "ここまでクリア！ 続きの章は準備中です"}</div>`;
+  }
+  return h;
+}
+
+function startStage(stage: Stage) {
+  sfx.unlock();
+  const player = buildPlayer(storyCharSel.value);
+  const cpu = buildCharacter(stage.enemy, stage.strokes(), stage.special, DEFAULT_PARAMS);
+  // 敵の能力値は標準の総ポイントを超えることがあるので、整えずにそのまま使う
+  applyData(cpu, { stats: stage.stats, personality: stage.personality, specialType: stage.specialType, special: stage.special, melee: stage.melee } as CharacterData);
+  runBattle({
+    player,
+    cpu,
+    spectate: false,
+    seed: (Math.random() * 0xffffffff) >>> 0,
+    sfx,
+    cpuLevel: stage.ai,
+    exitLabel: "ステージ選択へ",
+    onResult: (winner) => rewardHtml(applyStageResult(stage.no, stage.id, !!stage.boss, winner === 0), stage),
+  });
+}
+
+// --- 引き継ぎ ---
+const transferMsg = document.getElementById("transferMsg")!;
+const exportArea = document.getElementById("exportCode") as HTMLTextAreaElement;
+const importArea = document.getElementById("importCode") as HTMLTextAreaElement;
+document.getElementById("exportBtn")!.addEventListener("click", async () => {
+  try {
+    exportArea.value = await exportCode();
+    exportArea.hidden = false;
+    document.getElementById("exportActions")!.hidden = false;
+    exportArea.select();
+    transferMsg.textContent = `引き継ぎコードを作りました（${exportArea.value.length.toLocaleString()} 文字）。コピーするかファイルに保存してください。`;
+  } catch {
+    transferMsg.textContent = "コードを作れませんでした。";
+  }
+});
+document.getElementById("copyCode")!.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(exportArea.value);
+    transferMsg.textContent = "コピーしました。";
+  } catch {
+    exportArea.select();
+    transferMsg.textContent = "自動でコピーできませんでした。選択された文字を長押しでコピーしてください。";
+  }
+});
+document.getElementById("downloadCode")!.addEventListener("click", () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([exportArea.value], { type: "text/plain" }));
+  a.download = `rakugaki-arena-${new Date().toISOString().slice(0, 10)}.txt`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+document.getElementById("importFile")!.addEventListener("change", async (e) => {
+  const f = (e.target as HTMLInputElement).files?.[0];
+  if (!f) return;
+  importArea.value = (await f.text()).trim();
+  transferMsg.textContent = "ファイルを読み込みました。「読み込む」を押すと入れ替わります。";
+});
+const importBtn = document.getElementById("importBtn")!;
+let importArmed = 0;
+importBtn.addEventListener("click", async () => {
+  if (!importArea.value.trim()) { transferMsg.textContent = "引き継ぎコードを貼り付けてください。"; return; }
+  if (!importArmed) {
+    importBtn.textContent = "もう一度押すと今のデータと入れ替え";
+    importArmed = window.setTimeout(() => { importArmed = 0; importBtn.textContent = "読み込む"; }, 3000);
+    return;
+  }
+  clearTimeout(importArmed);
+  importArmed = 0;
+  importBtn.textContent = "読み込む";
+  try {
+    const n = await importCode(importArea.value);
+    transferMsg.textContent = `読み込みました（${n} 件）。画面を読み込み直します…`;
+    setTimeout(() => location.reload(), 900);
+  } catch (err) {
+    transferMsg.textContent = `読み込めませんでした: ${(err as Error).message || "コードが壊れています"}`;
+  }
+});
+
+requestPersist();
+try { history.replaceState({ screen: "home" }, ""); } catch { /* 無視 */ }
+show("home");
 render();

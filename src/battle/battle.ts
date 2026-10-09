@@ -1,5 +1,5 @@
 // 戦闘画面（全画面）。入力（仮想スティック・ボタン・キーボード）→ 固定ステップの戦闘計算 → 3D 表示＋効果音。
-import { aiInput, createAi } from "../sim/ai";
+import { aiInput, createAi, type AiLevel } from "../sim/ai";
 import { attackCostOf, dodgeCost, DT, MATCH_TICKS, createWorld, specialCharge, step, TICK_HZ, type BattleEvent, type Input, type World } from "../sim/world";
 import type { Sfx } from "./audio";
 import type { CharacterBuild } from "./character";
@@ -12,6 +12,10 @@ export interface BattleOptions {
   seed: number;
   sfx: Sfx;
   onExit: () => void;
+  cpuLevel?: AiLevel; // 相手 CPU の強さ（ストーリー）
+  exitLabel?: string; // 結果画面の「戻る」ボタンの文言
+  // 決着のたびに呼ぶ（winner: 0=自分 1=相手 2=引き分け）。返した HTML を結果画面に足す（経験値など）
+  onResult?: (winner: number) => string;
 }
 
 const pips = (i: number) => `<div class="b-charge" data-ch="${i}">${"<i></i>".repeat(specialCharge)}</div>`;
@@ -36,6 +40,7 @@ const HTML = `
   </div>
   <div class="b-result" hidden>
     <div class="b-result-text"></div>
+    <div class="b-reward"></div>
     <table class="b-stats"></table>
     <div class="b-result-buttons"><button data-again>もう一回</button><button data-exit>必殺を変えて再戦</button></div>
   </div>
@@ -58,9 +63,10 @@ export function startBattle(opts: BattleOptions) {
   const q = <T extends HTMLElement>(s: string) => el.querySelector(s) as T;
 
   let world: World = createWorld(opts.player.cfg, opts.cpu.cfg, opts.seed);
-  let ais = [createAi(), createAi()];
+  let ais = [createAi(), createAi(opts.cpuLevel)];
   let stats = [newStats(), newStats()];
   const scene = new BattleScene(q(".b-view"), [opts.player, opts.cpu], opts.spectate ? -1 : 0);
+  if (opts.exitLabel) q(".b-result-buttons [data-exit]").textContent = opts.exitLabel;
   q("[data-n='0']").textContent = opts.player.cfg.name;
   q("[data-n='1']").textContent = opts.cpu.cfg.name;
   if (opts.spectate) q(".b-controls").classList.add("spectate");
@@ -276,6 +282,7 @@ export function startBattle(opts: BattleOptions) {
         row("通常攻撃 命中", (s) => s.melee) +
         row("必殺 命中/発射", (s) => `${s.specialHits}/${s.shots}`) +
         row("ガード", (s) => s.guards);
+      q(".b-reward").innerHTML = opts.onResult ? opts.onResult(win === -1 ? 2 : win) : "";
       resultEl.hidden = false;
     }
     raf = requestAnimationFrame(frame);
@@ -285,7 +292,10 @@ export function startBattle(opts: BattleOptions) {
   const onResize = () => scene.resize();
   window.addEventListener("resize", onResize);
 
+  let closed = false;
   const exit = () => {
+    if (closed) return;
+    closed = true;
     cancelAnimationFrame(raf);
     window.removeEventListener("keydown", onKey);
     window.removeEventListener("keyup", onKey);
@@ -299,7 +309,7 @@ export function startBattle(opts: BattleOptions) {
   q("[data-again]").addEventListener("click", () => {
     sfx.unlock();
     world = createWorld(opts.player.cfg, opts.cpu.cfg, (opts.seed = (opts.seed * 1664525 + 1013904223) >>> 0));
-    ais = [createAi(), createAi()];
+    ais = [createAi(), createAi(opts.cpuLevel)];
     stats = [newStats(), newStats()];
     ended = false;
     endAt = 0;
@@ -308,4 +318,5 @@ export function startBattle(opts: BattleOptions) {
     resultEl.hidden = true;
     beginCountdown(performance.now());
   });
+  return { close: exit }; // 端末の「戻る」で閉じるとき用
 }

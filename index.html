@@ -49,6 +49,37 @@
         -webkit-tap-highlight-color: transparent;
       }
       h1 { font-size: 20px; font-weight: 800; margin: 0 0 10px; letter-spacing: 0.02em; }
+      .topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+      .topbar h1 { margin: 0; }
+      .topbar .back { min-height: 38px; padding: 4px 14px; border-radius: 999px; font-weight: 700; }
+      .logo { font-size: 30px; text-align: center; margin: 18px 0 14px; color: var(--accent); text-shadow: 0 3px 0 rgba(84, 64, 140, 0.15); }
+      .profile { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; align-items: center; background: var(--panel); border: 2px solid var(--line); border-radius: 18px; padding: 12px 16px; box-shadow: var(--shadow); }
+      .profile .lv { font-size: 15px; font-weight: 700; grid-row: span 2; }
+      .profile .lv b { font-size: 34px; font-weight: 900; color: var(--accent); }
+      .profile .exp small, .profile .pts { color: var(--muted); font-size: 12px; }
+      .profile .pts b { color: var(--ink); font-size: 15px; }
+      .exp-bar { height: 12px; border-radius: 6px; background: var(--line); overflow: hidden; }
+      .exp-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffd43b, #ff922b); border-radius: 6px; }
+      .menu { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+      .menu .big { display: grid; gap: 2px; text-align: left; padding: 14px; min-height: 80px; border-radius: 18px; }
+      .menu .big b { font-size: 17px; }
+      .menu .big small { color: var(--muted); font-size: 12px; }
+      .menu .big.story { grid-column: span 2; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); box-shadow: 0 4px 0 #d9573a; }
+      .menu .big.story small { color: inherit; opacity: .85; }
+      .menu .big:disabled { opacity: .5; }
+      .chapter { margin-top: 14px; }
+      .chapter h2 { font-size: 16px; margin: 0 0 8px; }
+      .stages { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .stages button { display: grid; justify-items: center; gap: 2px; padding: 6px 4px 8px; border-radius: 14px; font-size: 12px; position: relative; }
+      .stages img { width: 100%; max-width: 84px; aspect-ratio: 1; border-radius: 10px; background: #fff; border: 1px solid var(--line); }
+      .stages .no { font-weight: 800; font-size: 13px; }
+      .stages .boss .no { color: #e03131; }
+      .stages .clear { position: absolute; top: 4px; right: 6px; color: #f59f00; font-size: 16px; }
+      .stages button:disabled { opacity: .6; }
+      .stages button:disabled img { filter: brightness(0) opacity(.25); }
+      .chapter.locked { color: var(--muted); }
+      textarea.text.code { font-family: ui-monospace, monospace; font-size: 11px; width: 100%; resize: vertical; }
+      .filebtn { display: inline-flex; align-items: center; border: 2px solid var(--line); border-radius: 14px; padding: 8px 12px; min-height: 42px; background: var(--panel); box-shadow: var(--shadow); cursor: pointer; }
       .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
       .tabs button { flex: 1; padding: 8px 4px; border-radius: 999px; font-weight: 700; }
       button, select {
@@ -80,7 +111,7 @@
       .legend { display: flex; gap: 12px; font-size: 13px; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
       .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
       .field { margin-top: 10px; display: grid; gap: 6px; }
-      input.text { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-height: 40px; width: 100%; }
+      input.text, textarea.text { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-height: 40px; width: 100%; }
       .stats { display: grid; gap: 4px; }
       .stat { display: grid; grid-template-columns: 6em 1fr 2.2em; align-items: center; gap: 8px; font-size: 14px; }
       .stat input { width: 100%; }
@@ -137,6 +168,10 @@
       .b-btn.special { grid-area: sp; background: conic-gradient(rgba(0,0,0,.45) calc(var(--cd, 0) * 360deg), #7048e8 0); }
       .b-result { position: absolute; inset: 0; z-index: 2; display: grid; place-content: center; gap: 16px; background: rgba(0,0,0,.45); color: #fff; text-align: center; }
       .b-result-text { font-size: 40px; font-weight: 900; }
+      .b-reward { display: grid; gap: 4px; font-weight: 700; }
+      .b-reward:empty { display: none; }
+      .b-reward .exp { font-size: 20px; color: #ffd43b; }
+      .b-reward .up { font-size: 22px; color: #8ce99a; animation: popin .4s ease-out; }
       .b-result-buttons { display: flex; gap: 10px; justify-content: center; }
       .b-result-buttons button { min-width: 110px; font-weight: 700; }
       .b-pops { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
@@ -182,13 +217,60 @@
     </style>
   </head>
   <body>
-    <h1>らくがきアリーナ 試作</h1>
-    <div class="tabs">
+    <div class="topbar" id="topbar" hidden>
+      <button id="backBtn" class="back" aria-label="もどる">‹ もどる</button>
+      <h1 id="screenTitle"></h1>
+    </div>
+    <section id="home">
+      <h1 class="logo">らくがきアリーナ</h1>
+      <div class="profile">
+        <div class="lv">Lv <b id="pLevel">1</b></div>
+        <div class="exp"><div class="exp-bar"><i id="pExpBar"></i></div><small id="pExp"></small></div>
+        <div class="pts">スキルポイント <b id="pPoints">0</b></div>
+      </div>
+      <div class="menu">
+        <button class="big story" data-go="story"><b>ストーリー</b><small>敵を倒して強くなる</small></button>
+        <button class="big" data-go="free"><b>自由バトル</b><small>好きな相手と戦う・観戦</small></button>
+        <button class="big" data-go="make"><b>キャラを作る</b><small>描く・検知・動かす・設定</small></button>
+        <button class="big" disabled><b>スキルツリー</b><small>準備中</small></button>
+        <button class="big" disabled><b>必殺パーツ</b><small>準備中</small></button>
+        <button class="big" data-go="transfer"><b>引き継ぎ</b><small>データの書き出し・読み込み</small></button>
+      </div>
+    </section>
+    <section id="storyScreen" hidden>
+      <div class="field">
+        <label class="label" for="storyChar">使うキャラ</label>
+        <select id="storyChar"></select>
+      </div>
+      <div id="chapters"></div>
+    </section>
+    <section id="transferScreen" hidden>
+      <div class="note">保存したキャラ・レベル・ストーリーの進み具合を1つの「引き継ぎコード」にまとめます。別の端末やブラウザで読み込むと、同じデータで続きを遊べます。ブラウザのデータは消えることがあるので、ときどき書き出しておくと安心です。</div>
+      <div class="field">
+        <div class="label">書き出す</div>
+        <button id="exportBtn">引き継ぎコードを作る</button>
+        <textarea id="exportCode" class="text code" rows="4" readonly hidden></textarea>
+        <div class="row" id="exportActions" hidden>
+          <button id="copyCode">コピー</button>
+          <button id="downloadCode">ファイルに保存</button>
+        </div>
+      </div>
+      <div class="field">
+        <div class="label">読み込む（今のデータは置き換わります）</div>
+        <textarea id="importCode" class="text code" rows="4" placeholder="引き継ぎコードを貼り付け"></textarea>
+        <div class="row">
+          <button id="importBtn">読み込む</button>
+          <label class="filebtn">ファイルから<input type="file" id="importFile" accept=".txt,text/plain" hidden /></label>
+        </div>
+      </div>
+      <div class="note" id="transferMsg"></div>
+    </section>
+    <div id="workspace" hidden>
+    <div class="tabs" id="makeTabs">
       <button data-view="draw" class="on">描く</button>
       <button data-view="detect">検知</button>
       <button data-view="anim">動かす</button>
       <button data-view="char">キャラ</button>
-      <button data-view="battle">戦う</button>
     </div>
     <section id="charSetup" hidden>
       <div class="field">
@@ -231,7 +313,7 @@
       <div class="field">
         <div class="label">あなたのキャラ</div>
         <div id="myCharName" class="mychar"></div>
-        <div class="note">「キャラ」タブで編集中のキャラで戦います。</div>
+        <div class="note">「キャラを作る」で編集中のキャラで戦います。</div>
       </div>
       <div class="field">
         <label class="label" for="cpuChar">相手</label>
@@ -272,6 +354,7 @@
       <div class="row"><button id="resetParams">初期値に戻す</button></div>
       <div class="note">変えると「検知結果」「動かす」に即反映されます。良い値が見つかったら教えてください。</div>
     </details>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
