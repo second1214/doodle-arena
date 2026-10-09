@@ -17,6 +17,7 @@ export interface Stage {
   parts: [PartKind, Rarity][]; // 敵の必殺パーツ（数値はステージごとに毎回同じ）
   boostPoints: number; // 敵の強化ポイント（スキルツリーを prefer の枝の順に取る）
   prefer: string[];
+  hp?: number; // 敵の体力の増減（簡単なステージは減らす）
   ai: AiLevel;
   boss?: boolean;
   final?: boolean; // ラスボス（A 確定・4回に1回 S）
@@ -152,23 +153,23 @@ export const CHAPTERS: Chapter[] = [
     no: 1,
     title: "らくがき町",
     stages: [
-      { id: "1-1", no: 1, title: "はじめの一歩", enemy: "棒人間", strokes: SAMPLES["棒人間"], personality: "aggressive", specialType: "ranged", parts: [], ...EVEN, ai: CH1_AI },
-      { id: "1-2", no: 2, title: "うねうね", enemy: "タコ", strokes: SAMPLES["タコ"], personality: "tricky", specialType: "ranged", parts: [], ...EVEN, ai: CH1_AI },
-      { id: "1-3", no: 3, title: "突進してくる", enemy: "短足ずんぐり", strokes: SAMPLES["短足ずんぐり"], personality: "aggressive", specialType: "melee", parts: [["m:dash", "F"]], ...EVEN, ai: CH1_AI },
-      { id: "1-4", no: 4, title: "トゲの雨", enemy: "トゲトゲ", strokes: SAMPLES["トゲトゲ"], personality: "sniper", specialType: "ranged", parts: [["r:multi", "E"]], ...EVEN, ai: CH1_AI },
-      { id: "1-5", no: 5, title: "ころころ注意", enemy: "まんまる", strokes: SAMPLES["まんまる（塗りつぶし）"], personality: "cautious", specialType: "ranged", parts: [["r:homing", "E"]], ...EVEN, ai: CH1_AI },
-      { id: "1-6", no: 6, title: "らくがき大王", enemy: "らくがき大王", strokes: KING, personality: "aggressive", specialType: "melee", parts: [["m:giantHands", "D"], ["m:slam", "D"]], boostPoints: 4, prefer: ["atk", "hp"], ai: { wait: [8, 5], defend: 0.5 }, boss: true },
+      { id: "1-1", no: 1, title: "はじめの一歩", enemy: "棒人間", strokes: SAMPLES["棒人間"], personality: "aggressive", specialType: "ranged", parts: [], ...EVEN, hp: -30, ai: CH1_AI },
+      { id: "1-2", no: 2, title: "うねうね", enemy: "タコ", strokes: SAMPLES["タコ"], personality: "tricky", specialType: "ranged", parts: [], ...EVEN, hp: -30, ai: CH1_AI },
+      { id: "1-3", no: 3, title: "突進してくる", enemy: "短足ずんぐり", strokes: SAMPLES["短足ずんぐり"], personality: "aggressive", specialType: "melee", parts: [["m:dash", "F"]], ...EVEN, hp: -30, ai: CH1_AI },
+      { id: "1-4", no: 4, title: "トゲの雨", enemy: "トゲトゲ", strokes: SAMPLES["トゲトゲ"], personality: "sniper", specialType: "ranged", parts: [["r:multi", "E"]], ...EVEN, hp: -30, ai: CH1_AI },
+      { id: "1-5", no: 5, title: "ころころ注意", enemy: "まんまる", strokes: SAMPLES["まんまる（塗りつぶし）"], personality: "cautious", specialType: "ranged", parts: [["r:homing", "E"]], ...EVEN, hp: -30, ai: CH1_AI },
+      { id: "1-6", no: 6, title: "らくがき大王", enemy: "らくがき大王", strokes: KING, personality: "aggressive", specialType: "melee", parts: [["m:giantHands", "D"], ["m:slam", "D"]], boostPoints: 4, prefer: ["atk", "hp"], hp: -15, ai: { wait: [8, 5], defend: 0.5 }, boss: true },
     ],
   },
   {
     no: 2,
     title: "インクの森",
     stages: [
-      { id: "2-1", no: 7, title: "はやい弾", enemy: "ふつうの生き物", strokes: SAMPLES["ふつうの生き物"], personality: "aggressive", specialType: "ranged", parts: [["r:fast", "E"]], boostPoints: 3, prefer: A, ai: CH2_AI },
-      { id: "2-2", no: 8, title: "グニャグニャ文字", enemy: "文字 ABC", strokes: SAMPLES["文字 ABC"], personality: "tricky", specialType: "melee", parts: [["m:wobble", "E"]], boostPoints: 4, prefer: T, ai: CH2_AI },
-      { id: "2-3", no: 9, title: "動けない", enemy: "胴長ノッポ", strokes: SAMPLES["胴長ノッポ"], personality: "sniper", specialType: "ranged", parts: [["r:restrain", "D"]], boostPoints: 5, prefer: N, ai: CH2_AI },
-      { id: "2-4", no: 10, title: "のびる拳", enemy: "巨大な片手", strokes: SAMPLES["巨大な片手"], personality: "aggressive", specialType: "melee", parts: [["m:rubber", "D"]], boostPoints: 6, prefer: A, ai: CH2_AI },
-      { id: "2-5", no: 11, title: "大きな墨", enemy: "墨タコ", strokes: SAMPLES["タコ"], personality: "cautious", specialType: "ranged", parts: [["r:giant", "D"], ["r:homing", "E"]], boostPoints: 7, prefer: C, ai: CH2_AI },
+      { id: "2-1", no: 7, title: "はやい弾", enemy: "ふつうの生き物", strokes: SAMPLES["ふつうの生き物"], personality: "aggressive", specialType: "ranged", parts: [["r:fast", "E"]], boostPoints: 3, prefer: A, hp: -15, ai: CH2_AI },
+      { id: "2-2", no: 8, title: "グニャグニャ文字", enemy: "文字 ABC", strokes: SAMPLES["文字 ABC"], personality: "tricky", specialType: "melee", parts: [["m:wobble", "E"]], boostPoints: 4, prefer: T, hp: -15, ai: CH2_AI },
+      { id: "2-3", no: 9, title: "動けない", enemy: "胴長ノッポ", strokes: SAMPLES["胴長ノッポ"], personality: "sniper", specialType: "ranged", parts: [["r:restrain", "D"]], boostPoints: 5, prefer: N, hp: -15, ai: CH2_AI },
+      { id: "2-4", no: 10, title: "のびる拳", enemy: "巨大な片手", strokes: SAMPLES["巨大な片手"], personality: "aggressive", specialType: "melee", parts: [["m:rubber", "D"]], boostPoints: 6, prefer: A, hp: -15, ai: CH2_AI },
+      { id: "2-5", no: 11, title: "大きな墨", enemy: "墨タコ", strokes: SAMPLES["タコ"], personality: "cautious", specialType: "ranged", parts: [["r:giant", "D"], ["r:homing", "E"]], boostPoints: 7, prefer: C, hp: -15, ai: CH2_AI },
       { id: "2-6", no: 12, title: "インクの竜", enemy: "インクの竜", strokes: DRAGON, personality: "aggressive", specialType: "melee", parts: [["m:tornado", "C"], ["m:legbind", "C"]], boostPoints: 12, prefer: ["hp", "atk", "sta"], ai: { wait: [6, 5], defend: 0.7 }, boss: true },
     ],
   },

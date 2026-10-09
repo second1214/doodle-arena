@@ -1083,7 +1083,7 @@ function startStage(stage: Stage) {
   sfx.unlock();
   const player = buildPlayer(storyCharSel.value);
   const cpu = buildCharacter(stage.enemy, stage.strokes(), [], DEFAULT_PARAMS);
-  applyData(cpu, stage, enemyParts(stage), boostOf(autoTree(stage.boostPoints, stage.prefer)));
+  applyData(cpu, stage, enemyParts(stage), sumBoost([boostOf(autoTree(stage.boostPoints, stage.prefer)), { hp: stage.hp ?? 0 }]));
   runBattle({
     player,
     cpu,
