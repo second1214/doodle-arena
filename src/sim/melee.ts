@@ -1,7 +1,8 @@
 // 近接型の必殺技。遠距離型と同じく「予算20ポイントで効果を選ぶ」。効果は部品で、適用順はフェーズで固定する
 // （選んだ順に依らず同じ構成なら同じ挙動）。矛盾した組み合わせも止めない。数値は調整前提の仮値。
 
-export type MeleeEffectId = "tornado" | "wobble" | "legbind" | "giantHands" | "rubber" | "dash" | "grab" | "slam" | "crumple";
+export type MeleeEffectId = "tornado" | "wobble" | "legbind" | "giantHands" | "rubber" | "dash" | "grab" | "slam" | "crumple"
+  | "magnet" | "vampire" | "ice" | "counter" | "mushroom" | "bulldozer";
 
 export interface MeleeSpec {
   windup: number; // 構え（tick。殴られると潰れる）
@@ -22,6 +23,13 @@ export interface MeleeSpec {
   crumpleTicks: number; // 紙くしゃくしゃ
   limbScale: number; // 手足の見た目の拡大（巨大な手）
   rubberScale: number; // 一番長い手の伸び（ゴム）
+ 
+  pull: number; // 出した瞬間に遠くの相手を手元へ引き寄せる強さ
+  lifesteal: number; // 与えたダメージの何割を回復
+  freezeTicks: number; // 足元が凍って滑る
+  counter: boolean; // 構え中に殴られたら受け流して2倍で反撃
+  bigTicks: number; // 出した後、自分が大きくなって攻撃1.5倍・被ダメ0.8倍
+  push: number; // 吹き飛ばさずに押し込む（壁に挟むと追加ダメージ）
   tags: MeleeEffectId[];
 }
 
@@ -40,9 +48,11 @@ export const BASE_MELEE: MeleeSpec = {
   windup: 3, active: 6, recover: 15, damage: 16, hits: 1, hitInterval: 4,
   range: 1.4, arc: Math.PI / 3, knock: 9, spinTicks: 0, dash: 0,
   grab: false, slam: false, wobbleTicks: 0, legbindTicks: 0, crumpleTicks: 0,
-  limbScale: 1, rubberScale: 1, tags: [],
+  limbScale: 1, rubberScale: 1, pull: 0, lifesteal: 0, freezeTicks: 0, counter: false, bigTicks: 0, push: 0, tags: [],
 };
 
+// 測定用の基準コスト
+export const MAGNET_COST = 6, VAMPIRE_COST = 14, ICE_COST = 4, COUNTER_COST = 1, MUSHROOM_COST = 1, BULLDOZER_COST = 6;
 export const MELEE_EFFECTS: MeleeEffectDef[] = [
   { id: "giantHands", name: "巨大な手", cost: 6, phase: "body", apply: (s) => { s.limbScale *= 3; s.range *= 2.2; s.windup += 6; } },
   { id: "rubber", name: "ゴム伸びパンチ", cost: 4, phase: "body", apply: (s) => { s.rubberScale *= 4; s.range *= 3.5; s.arc *= 0.3; s.recover += 8; } },
@@ -53,6 +63,13 @@ export const MELEE_EFFECTS: MeleeEffectDef[] = [
   { id: "wobble", name: "グニャグニャ視界", cost: 7, phase: "after", apply: (s) => { s.wobbleTicks += 120; } },
   { id: "legbind", name: "足封じ", cost: 6, phase: "after", apply: (s) => { s.legbindTicks += 120; } },
   { id: "crumple", name: "紙くしゃくしゃ", cost: 9, phase: "after", apply: (s) => { s.crumpleTicks += 60; } },
+ 
+  { id: "magnet", name: "じしゃくの手", cost: MAGNET_COST, phase: "motion", apply: (s) => { s.pull += 1; s.active += 4; } },
+  { id: "vampire", name: "すいとりパンチ", cost: VAMPIRE_COST, phase: "after", apply: (s) => { s.lifesteal += 0.6; } },
+  { id: "ice", name: "こおりタッチ", cost: ICE_COST, phase: "after", apply: (s) => { s.freezeTicks += 120; } },
+  { id: "counter", name: "カウンター", cost: COUNTER_COST, phase: "hit", apply: (s) => { s.counter = true; s.windup += 22; } },
+  { id: "mushroom", name: "でっかくなる", cost: MUSHROOM_COST, phase: "after", apply: (s) => { s.bigTicks += 180; s.damage *= 0.5; } },
+  { id: "bulldozer", name: "ブルドーザー", cost: BULLDOZER_COST, phase: "motion", apply: (s) => { s.push += 1; s.active += 20; s.knock = 0; s.damage *= 0.6; } }, // 測定1回目は1回平均50ダメで強すぎ
 ];
 
 export function composeMelee(ids: MeleeEffectId[]): MeleeSpec {

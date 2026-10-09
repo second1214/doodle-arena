@@ -56,7 +56,7 @@ describe("パーツの数値", () => {
   it("レア度の出やすさは章の表どおり（第1章は B 以上が出ない）", () => {
     const rnd = seededRnd(7);
     for (let k = 0; k < 500; k++) expect(["F", "E", "D", "C"]).toContain(rollRarity(1, rnd));
-    expect(ALL_KINDS.length).toBe(22);
+    expect(ALL_KINDS.length).toBe(40);
   });
 });
 

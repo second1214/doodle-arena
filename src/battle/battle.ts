@@ -75,7 +75,7 @@ export function startBattle(opts: BattleOptions) {
     b.className = "b-say";
     b.textContent = `「${opts.cpuLine}」`;
     el.appendChild(b);
-    setTimeout(() => b.remove(), 2600);
+    setTimeout(() => b.remove(), 4200); // カウントダウン（2.4秒）が終わって少しまで
   };
   say();
   q("[data-n='0']").textContent = opts.player.cfg.name;

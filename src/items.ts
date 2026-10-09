@@ -21,7 +21,8 @@ export const RARITY_INFO: Record<Rarity, { roll: [number, number]; costMul: numb
 };
 
 // パーツの種類: 効果パーツ（遠距離8・近接9）＋ 能力パーツ
-export type StatKind = "power" | "pspeed" | "duration" | "windup" | "charge";
+export type StatKind = "power" | "pspeed" | "duration" | "windup" | "charge"
+  | "bigger" | "lucky" | "carry" | "pierce";
 export type PartKind = `r:${EffectId}` | `m:${MeleeEffectId}` | StatKind;
 export type PartType = "ranged" | "melee" | "both";
 
@@ -32,16 +33,33 @@ const STAT_KINDS: Record<StatKind, KindInfo> = {
   duration: { name: "効き目延長", type: "both", baseCost: 3, desc: "拘束・グニャグニャ・足封じ・くしゃくしゃが長くなる" },
   windup: { name: "構え短縮", type: "melee", baseCost: 3, desc: "近接必殺の構えが短くなる" },
   charge: { name: "発動ポイント−1", type: "both", baseCost: 6, desc: "必殺に必要な命中が1回減る（2個目からは装備コスト2倍）" },
+  // 新しい能力パーツ（両用）
+  bigger: { name: "大きさアップ", type: "both", baseCost: 3, desc: "弾が大きく、近接は届く距離が少し長くなる" },
+  lucky: { name: "ラッキー会心", type: "both", baseCost: 4, desc: "ときどき必殺の威力が2倍になる" },
+  carry: { name: "ゲージのこし", type: "both", baseCost: 5, desc: "必殺を出してもゲージが少し残る（2個目からは装備コスト2倍）" },
+  pierce: { name: "ガードやぶり", type: "both", baseCost: 5, desc: "防御されても必殺のダメージが通りやすい" },
+};
+
+// 効果パーツの一言説明（何が起きるかが分かるように）
+const EFFECT_DESC: Record<string, string> = {
+  "r:invisible": "弾が見えない", "r:giant": "弾がとても大きい（少し遅い）", "r:multi": "当たると何回も削る", "r:restrain": "当たると動けなくなる",
+  "r:tiny": "小さいけど とても痛い", "r:fast": "弾がとても速い", "r:homing": "ゆらゆら追いかける", "r:meteor": "空から落ちてくる",
+  "r:split": "とちゅうで3つに分かれる", "r:bounce": "かべで はね返る", "r:boomerang": "行って もどってくる", "r:trap": "地面に置いて 踏むのを待つ",
+  "r:vacuum": "近くの相手を すいよせる", "r:drain": "当てた分 体力が回復", "r:freeze": "足元がこおって すべる", "r:blast": "消える時に ばくはつ",
+  "m:giantHands": "手が大きくなって 遠くまで届く", "m:rubber": "いちばん長い手が のびる", "m:tornado": "回って まわりを何回も殴る", "m:dash": "前へ走りぬける",
+  "m:slam": "跳んで地面をたたく（輪の内側は安全）", "m:grab": "つかんで投げる（防御できない）", "m:wobble": "相手の操作が グニャグニャ逆に", "m:legbind": "相手の足が使えなくなる",
+  "m:crumple": "相手が紙くずになって転がる", "m:magnet": "相手を手元へ引きよせる", "m:vampire": "殴った分 体力が回復", "m:ice": "相手の足元がこおって すべる",
+  "m:counter": "構え中に殴られたら 2倍で返す", "m:mushroom": "しばらく大きく強くなる（本体は弱い）", "m:bulldozer": "吹き飛ばさずに押しこむ（かべで追加ダメージ）",
 };
 
 export function kindInfo(kind: PartKind): KindInfo {
   if (kind.startsWith("r:")) {
     const e = EFFECTS.find((x) => x.id === kind.slice(2))!;
-    return { name: `${e.name}(遠)`, type: "ranged", baseCost: e.cost, desc: "遠距離の必殺に付ける効果" };
+    return { name: `${e.name}(遠)`, type: "ranged", baseCost: e.cost, desc: EFFECT_DESC[kind] ?? "遠距離の必殺に付ける効果" };
   }
   if (kind.startsWith("m:")) {
     const e = MELEE_EFFECTS.find((x) => x.id === kind.slice(2))!;
-    return { name: `${e.name}(近)`, type: "melee", baseCost: e.cost, desc: "近接の必殺に付ける効果" };
+    return { name: `${e.name}(近)`, type: "melee", baseCost: e.cost, desc: EFFECT_DESC[kind] ?? "近接の必殺に付ける効果" };
   }
   return STAT_KINDS[kind as StatKind];
 }
@@ -50,6 +68,10 @@ export function kindInfo(kind: PartKind): KindInfo {
 const KIND_ICON: Record<string, string> = {
   "r:invisible": "👻", "r:giant": "🪨", "r:multi": "💫", "r:restrain": "⛓️", "r:tiny": "🫘", "r:fast": "⚡", "r:homing": "🐝", "r:meteor": "☄️",
   "m:giantHands": "🖐️", "m:rubber": "🥊", "m:tornado": "🌪️", "m:dash": "💨", "m:slam": "🔨", "m:grab": "🤲", "m:wobble": "😵‍💫", "m:legbind": "🦶", "m:crumple": "📄",
+ 
+  "r:split": "🎆", "r:bounce": "🏓", "r:boomerang": "🪃", "r:trap": "🪤", "r:vacuum": "🌀", "r:drain": "🧛", "r:freeze": "🧊", "r:blast": "💣",
+  "m:magnet": "🧲", "m:vampire": "🦇", "m:ice": "⛸️", "m:counter": "🔄", "m:mushroom": "🍄", "m:bulldozer": "🚜",
+  bigger: "🎈", lucky: "🍀", carry: "🔁", pierce: "🗡️",
   power: "💪", pspeed: "🏹", duration: "⏳", windup: "⏩", charge: "🔋",
 };
 export const kindIcon = (kind: PartKind) => KIND_ICON[kind] ?? "✨";
@@ -105,6 +127,10 @@ export function mainText(p: Part): string {
     case "duration": return `状態異常の時間 +${Math.round(30 * p.roll)}%`;
     case "windup": return `近接必殺の構え −${Math.max(1, Math.round(3 * p.roll))}コマ`;
     case "charge": return "必殺に必要な命中 −1回";
+    case "bigger": return `大きさ +${Math.round(40 * p.roll)}%`;
+    case "lucky": return `会心(威力2倍)の確率 +${Math.round(20 * p.roll)}%`;
+    case "carry": return `撃った後のゲージ +${Math.round(p.roll * 10) / 10}`;
+    case "pierce": return `防御を貫く +${Math.round(40 * p.roll)}%`;
     default: return `威力 ${Math.round(p.roll * 100)}%`;
   }
 }
@@ -123,9 +149,10 @@ export const fitsType = (p: Part, type: "ranged" | "melee") => {
 };
 
 // 装備した時のコスト（発動ポイント−1 は2個目から2倍）
+// 発動ポイント−1 とゲージのこしは、2個目からコスト2倍（重ねると必殺が撃ち放題になるため。測定: ゲージのこし×4 で勝率75%）
 export function equipCosts(parts: Part[]): number[] {
-  let charges = 0;
-  return parts.map((p) => (p.kind === "charge" && charges++ > 0 ? p.cost * 2 : p.cost));
+  const seen = { charge: 0, carry: 0 };
+  return parts.map((p) => (p.kind === "charge" || p.kind === "carry") && seen[p.kind]++ > 0 ? p.cost * 2 : p.cost);
 }
 export const SPECIAL_BUDGET = 20;
 
@@ -140,7 +167,7 @@ export interface BuiltSpecial {
 // 装備したパーツ → 戦闘に渡す数値。効果パーツの威力は (出来−1) を足し合わせる（F は威力を下げ、S は上げる）
 export function buildSpecial(parts: Part[], type: "ranged" | "melee"): BuiltSpecial {
   const use = parts.filter((p) => fitsType(p, type));
-  const out: BuiltSpecial = { special: [], melee: [], mod: { power: 1, speed: 1, duration: 1, windup: 0 }, chargeDelta: 0, cost: equipCosts(use).reduce((a, c) => a + c, 0) };
+  const out: BuiltSpecial = { special: [], melee: [], mod: { power: 1, speed: 1, duration: 1, windup: 0, size: 1, crit: 0, carry: 0, pierce: 0 }, chargeDelta: 0, cost: equipCosts(use).reduce((a, c) => a + c, 0) };
   for (const p of use) {
     if (p.kind.startsWith("r:")) { out.special.push(p.kind.slice(2) as EffectId); out.mod.power += p.roll - 1; }
     else if (p.kind.startsWith("m:")) { out.melee.push(p.kind.slice(2) as MeleeEffectId); out.mod.power += p.roll - 1; }
@@ -149,6 +176,10 @@ export function buildSpecial(parts: Part[], type: "ranged" | "melee"): BuiltSpec
     else if (p.kind === "duration") out.mod.duration += 0.3 * p.roll;
     else if (p.kind === "windup") out.mod.windup += Math.max(1, Math.round(3 * p.roll));
     else if (p.kind === "charge") out.chargeDelta -= 1;
+    else if (p.kind === "bigger") out.mod.size! += 0.4 * p.roll; // 重ねがけは足し算
+    else if (p.kind === "lucky") out.mod.crit! += 0.2 * p.roll; // 1 を超えたら毎回会心（上限なし・コストで釣り合わせる）
+    else if (p.kind === "carry") out.mod.carry! += p.roll; // 必要数以上なら撃ち放題（壊れ方の一つ）
+    else if (p.kind === "pierce") out.mod.pierce! += 0.4 * p.roll; // 1 で防御が無意味に
     for (const e of p.extras) {
       if (e.stat === "power") out.mod.power += e.value;
       else if (e.stat === "pspeed") out.mod.speed += e.value;
@@ -156,7 +187,8 @@ export function buildSpecial(parts: Part[], type: "ranged" | "melee"): BuiltSpec
       else out.mod.windup += e.value;
     }
   }
-  out.mod = { power: round2(out.mod.power), speed: round2(out.mod.speed), duration: round2(out.mod.duration), windup: out.mod.windup };
+  out.mod = { power: round2(out.mod.power), speed: round2(out.mod.speed), duration: round2(out.mod.duration), windup: out.mod.windup,
+    size: round2(out.mod.size!), crit: round2(out.mod.crit!), carry: round2(out.mod.carry!), pierce: round2(out.mod.pierce!) };
   return out;
 }
 

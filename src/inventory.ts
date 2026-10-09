@@ -1,5 +1,5 @@
 // 持っている必殺パーツ（プレイヤー共通・ブラウザ内に保存）。ドロップ・分解・合成・振り直し。
-import { isKind, makePart, PITY, RARITIES, RARITY_INFO, rarityIndex, randomKind, rollRarity, type Part, type PartKind, type Rarity } from "./items";
+import { ALL_KINDS, isKind, makePart, PITY, RARITIES, RARITY_INFO, rarityIndex, rollRarity, type Part, type PartKind, type Rarity } from "./items";
 
 const KEY = "doodle-arena:inventory";
 export const INVENTORY_CAP = 300;
@@ -52,7 +52,10 @@ export function dropParts(chapter: number, boss: boolean, rnd: () => number = Ma
     if (final && k === 0) r = rnd() < 0.25 ? "S" : "A";
     if (inv.sinceA + 1 >= PITY && rarityIndex(r) < rarityIndex("A")) r = "A";
     inv.sinceA = rarityIndex(r) >= rarityIndex("A") ? 0 : inv.sinceA + 1;
-    const p = makePart(randomKind(rnd), r, rnd);
+    // まだ持っていない種類は出やすく（2倍）＝種類が増えても新しいパーツに出会える
+    const owned = new Set(inv.parts.map((x) => x.kind));
+    const pool = ALL_KINDS.flatMap((k) => (owned.has(k) ? [k] : [k, k]));
+    const p = makePart(pool[Math.floor(rnd() * pool.length)], r, rnd);
     if (inv.parts.length >= INVENTORY_CAP) { inv.shards += RARITY_INFO[r].shards; res.shardsInstead += RARITY_INFO[r].shards; }
     else { inv.parts.push(p); res.got.push(p); }
   }

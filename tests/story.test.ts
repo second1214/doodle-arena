@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { detect, DEFAULT_PARAMS } from "../src/detect";
 import { ALL_STAGES, enemyParts, isUnlocked } from "../src/story";
-import { buildSpecial } from "../src/items";
+import { buildSpecial, seededRnd } from "../src/items";
 import { applyStageResult, expToNext, exportCode, importCode, loadProfile } from "../src/progress";
-import { createWorld, step } from "../src/sim/world";
+import { createWorld, hashWorld, step } from "../src/sim/world";
 import { aiInput, createAi } from "../src/sim/ai";
 import { fighterShape } from "../src/shape";
 import { autoTree, boostOf } from "../src/tree";
@@ -73,4 +73,25 @@ describe("ストーリーの敵", () => {
       expect(w.winner).toBeGreaterThanOrEqual(0);
     }
   });
+});
+
+describe("自由バトルの CPU キャラ", () => {
+  it("全員が絵から体を作れ、固定のパーツで試合が最後まで進む（同じシードなら同じ結果）", async () => {
+    const { CPU_CHARS } = await import("../src/cpuChars");
+    const { makePart, hashStr } = await import("../src/items");
+    expect(CPU_CHARS.length).toBeGreaterThanOrEqual(29);
+    for (const c of CPU_CHARS) {
+      const shape = fighterShape(detect(c.strokes(), DEFAULT_PARAMS));
+      const parts = c.parts.map((k, i) => makePart(k, "C", seededRnd(hashStr(`${c.id}#${i}`)), `${c.id}#${i}`));
+      const b = buildSpecial(parts, c.specialType);
+      const cfg = { name: c.name, reach: shape.reach, hasHands: shape.hasHands, hasFeet: shape.hasFeet, traits: shape.traits, special: b.special, melee: b.melee, specialMod: b.mod, specialType: c.specialType, personality: c.personality, boost: boostOf(autoTree(10, c.prefer)) };
+      const play = () => {
+        const w = createWorld(cfg, { name: "p", reach: 0.8, hasHands: true, hasFeet: true, special: ["homing"] }, 11);
+        const ais = [createAi(), createAi()];
+        while (w.winner === -1) step(w, [aiInput(w, 0, ais[0]), aiInput(w, 1, ais[1])]);
+        return hashWorld(w);
+      };
+      expect(play()).toBe(play());
+    }
+  }, 120_000);
 });

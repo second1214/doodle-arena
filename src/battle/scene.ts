@@ -7,6 +7,17 @@ import type { CharacterBuild } from "./character";
 import { arcTexture, glowTexture, Particles, Popups, ringTexture, sparkTexture, starTexture, type Flash } from "./fx";
 import { ProjectileVisual, SpecialTextures } from "./specialfx";
 import { inflateCanvas } from "./inflate";
+import { EFFECTS } from "../sim/special";
+import { MELEE_EFFECTS } from "../sim/melee";
+import { kindIcon, type PartKind } from "../items";
+
+// 必殺を出した時の見出し: 付いている効果のアイコン＋（1つだけなら）技の名前。例「🌪️ 竜巻スピン!」
+function specialTitle(tags: string[], melee: boolean): string {
+  if (!tags.length) return "必殺!";
+  const icons = tags.map((t) => kindIcon(`${melee ? "m" : "r"}:${t}` as PartKind)).join("");
+  const name = tags.length === 1 ? (melee ? MELEE_EFFECTS : EFFECTS).find((e) => e.id === tags[0])?.name : "";
+  return `${icons} ${name || "必殺"}!`;
+}
 
 const TILT = -0.1; // 立体なので後傾は少しだけ
 const PROJ_COLORS = [0xff7a1a, 0x9b5cff];
@@ -36,6 +47,11 @@ export class FighterVisual {
   limbScale = 1;
   crumpleK = 0;
   rangeRing: THREE.Mesh; // 竜巻の届く範囲（見た目と当たり判定を一致させる）
+  // 今かかっている状態（凍った・大きくなった・足封じ 等）を頭の上にアイコンで出し続ける
+  statusIcons: THREE.Sprite;
+  statusCanvas = document.createElement("canvas");
+  statusTex: THREE.CanvasTexture;
+  statusKey = "";
 
   setGhost(on: boolean) {
     for (const m of this.materials) { m.transparent = on; m.opacity = on ? 0.45 : 1; m.depthWrite = !on; }
@@ -153,6 +169,17 @@ export class FighterVisual {
     this.rangeRing.position.y = 0.025;
     this.rangeRing.visible = false;
     disposables.push(rrGeo, rrMat);
+
+    this.statusCanvas.width = 256; this.statusCanvas.height = 64;
+    this.statusTex = new THREE.CanvasTexture(this.statusCanvas);
+    this.statusTex.colorSpace = THREE.SRGBColorSpace;
+    const stMat = new THREE.SpriteMaterial({ map: this.statusTex, transparent: true, depthWrite: false });
+    this.statusIcons = new THREE.Sprite(stMat);
+    this.statusIcons.scale.set(1.6, 0.4, 1);
+    this.statusIcons.position.set(0, 2.55, 0);
+    this.statusIcons.visible = false;
+    disposables.push(this.statusTex, stMat);
+    this.root.add(this.statusIcons);
 
     this.body.rotation.x = TILT;
     this.root.add(this.aura, this.dizzy, this.rangeRing);
@@ -276,6 +303,24 @@ export class FighterVisual {
       (this.dizzy.material as THREE.SpriteMaterial).rotation = Math.sin(t * 6) * 0.4;
       this.dizzy.position.x = Math.sin(t * 3) * 0.2;
     }
+    // 状態アイコン（変わった時だけ描き直す）
+    const icons = [
+      f.wobble > 0 || f.dizzy > 0 ? "😵" : "", f.legbind > 0 ? "🦶" : "", f.crumple > 0 ? "📄" : "",
+      f.rooted > 0 ? "⛓️" : "", f.ice > 0 ? "🧊" : "", f.big > 0 ? "🍄" : "",
+    ].join("");
+    if (icons !== this.statusKey) {
+      this.statusKey = icons;
+      const g = this.statusCanvas.getContext("2d")!;
+      g.clearRect(0, 0, 256, 64);
+      if (icons) {
+        g.font = "48px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+        g.fillText(icons, 128, 34);
+      }
+      this.statusTex.needsUpdate = true;
+      this.statusIcons.visible = !!icons;
+    }
+    // でっかくなる: 効いている間は体が大きい
+    if (f.big > 0) this.flip.scale.multiplyScalar(1.3);
     // 足封じ: 足は動かさない
     if (f.legbind > 0) for (const l of this.limbs) if (l.kind === "foot") l.pivot.rotation.z = 0;
 
@@ -509,7 +554,7 @@ export class BattleScene {
         this.shake = Math.max(this.shake, 0.35);
         this.fighters[e.target].squash = 0.6;
         const invisible = (e.tags ?? []).includes("invisible");
-        this.popups.add(invisible ? "必殺…？" : "必殺!", new THREE.Vector3(e.x, 2.7, e.z), "special");
+        this.popups.add(invisible ? "必殺…？" : specialTitle((e.tags ?? []) as string[], false), new THREE.Vector3(e.x, 2.7, e.z), "special");
         break;
       }
       case "mstart": {
@@ -518,7 +563,7 @@ export class BattleScene {
         this.addFlash(this.tex.ring, col, new THREE.Vector3(e.x, 0.05, e.z), 0.4, 3.5, 0.4, true);
         this.particles.emit({ count: 26, x: e.x, y: 1, z: e.z, color: col, speed: 7, spread: 1, life: 0.35, size: 0.25, drag: 5 });
         this.shake = Math.max(this.shake, 0.3);
-        this.popups.add("必殺!", new THREE.Vector3(e.x, 2.7, e.z), "special");
+        this.popups.add(specialTitle((e.tags ?? []) as string[], true), new THREE.Vector3(e.x, 2.7, e.z), "special");
         break;
       }
       case "mactive": {
@@ -547,7 +592,8 @@ export class BattleScene {
         break;
       }
       case "status": {
-        const label = e.status === "wobble" ? "グニャ〜" : e.status === "legbind" ? "足封じ!" : "クシャッ!";
+        const STATUS_LABEL: Record<string, string> = { wobble: "グニャ〜", legbind: "足封じ!", crumple: "クシャッ!" };
+        const label = STATUS_LABEL[e.status ?? ""] ?? "!?";
         this.popups.add(label, new THREE.Vector3(e.x, 2.9, e.z), "bind");
         if (e.status === "crumple") this.sparks.emit({ count: 14, x: e.x, y: 1, z: e.z, color: 0xffffff, speed: 4, spread: 1, life: 0.4, size: 0.25 });
         break;

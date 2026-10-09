@@ -18,6 +18,19 @@ function runAiMatch(a: FighterConfig, b: FighterConfig, seed: number, onTick?: (
   return w;
 }
 
+// 組み合わせ: 最初からある効果（先頭 oldN 個）は全部の組み合わせ、後から足した効果は「2つずつ（同じ効果の重ねがけ込み）」＋全部のせ＋1つを3重
+function combos<T>(ids: T[], oldN: number): T[][] {
+  const out: T[][] = [];
+  const old = ids.slice(0, oldN);
+  for (let mask = 1; mask < 1 << old.length; mask++) out.push(old.filter((_, i) => mask & (1 << i)));
+  for (let i = oldN; i < ids.length; i++) {
+    for (let j = 0; j <= i; j++) out.push([ids[i], ids[j]]);
+    out.push([ids[i], ids[i], ids[i]]);
+  }
+  out.push([...ids]);
+  return out;
+}
+
 describe("戦闘シミュレーション", () => {
   it("同じシード・同じ構成なら毎 tick 同じ状態（決定性）", () => {
     const a = cfg("A", ["homing", "multi"]), b = cfg("B", ["meteor", "giant"], { hasHands: false });
@@ -41,21 +54,21 @@ describe("戦闘シミュレーション", () => {
 
   it("全効果の組み合わせで数値が壊れない・弾数が上限を超えない", () => {
     const ids = EFFECTS.map((e) => e.id);
-    for (let mask = 1; mask < 1 << ids.length; mask++) {
-      const sp = ids.filter((_, i) => mask & (1 << i));
-      runAiMatch(cfg("A", sp), cfg("B", sp, { hasFeet: false }), mask, (w) => {
+    const list = combos(ids, 8);
+    list.forEach((sp, mask) => {
+      runAiMatch(cfg("A", sp), cfg("B", sp, { hasFeet: false }), mask + 1, (w) => {
         expect(w.projectiles.length).toBeLessThanOrEqual(MAX_PROJECTILES);
         for (const f of w.fighters) {
           expect(Number.isFinite(f.x) && Number.isFinite(f.z) && Number.isFinite(f.hp)).toBe(true);
         }
       });
-    }
-  }, 120_000); // 255通り×1試合ずつ回すので長め
+    });
+  }, 300_000); // 数百通り×1試合ずつ回すので長め
 
   it("近接型: 全効果の組み合わせで数値が壊れず、必ず決着する", () => {
     const ids = MELEE_EFFECTS.map((e) => e.id);
-    for (let mask = 1; mask < 1 << ids.length; mask++) {
-      const m = ids.filter((_, i) => mask & (1 << i));
+    combos(ids, 9).forEach((m, k) => {
+      const mask = k + 1;
       const w = runAiMatch(
         cfg("A", [], { specialType: "melee", melee: m }),
         cfg("B", [], { specialType: "melee", melee: m, hasFeet: mask % 2 === 0, hasHands: mask % 3 !== 0 }),
@@ -65,8 +78,8 @@ describe("戦闘シミュレーション", () => {
         },
       );
       expect(w.winner).not.toBe(-1);
-    }
-  }, 300_000);
+    });
+  }, 600_000);
 
   it("近接型: 効果の適用結果は選んだ順番に依らない", () => {
     expect(composeMelee(["tornado", "grab", "giantHands"])).toEqual(composeMelee(["giantHands", "grab", "tornado"]));

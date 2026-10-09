@@ -465,7 +465,9 @@ function partTile(p: Part, cost: number, note = ""): HTMLButtonElement {
   b.querySelector(".ct")!.textContent = `${cost}`;
   b.querySelector(".ic")!.textContent = kindIcon(p.kind);
   b.querySelector(".nm")!.textContent = name;
-  b.querySelector(".pw")!.textContent = note || mainText(p) + (p.extras.length ? ` ＋${p.extras.length}` : "");
+  // 効果パーツは「何が起きるか」を、能力パーツは数値を見せる
+  const what = p.kind.includes(":") ? kindInfo(p.kind).desc : mainText(p);
+  b.querySelector(".pw")!.textContent = note || what + (p.extras.length ? ` ＋${p.extras.length}` : "");
   b.title = `${name}・${[mainText(p), ...p.extras.map(extraText)].join("・")}・コスト${cost}`;
   return b;
 }
