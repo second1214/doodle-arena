@@ -43,7 +43,8 @@ const MOVE_SPEED = 3;
 // 防御成功で防いだ側に溜まるゲージ（標準0.5・攻撃1回につき1度）は、強化で変わるのでキャラごとの st に持つ（stats.ts）
 const SHOOT_SLOW = 15; // 必殺技を撃った直後に足が遅くなる tick
 const RETREAT_SPEED = 0.75; // 相手から離れる方向へ歩くときの速度倍率（逃げ撃ち対策）
-const PROJ_ARM = 3; // 必殺技の弾が出てから当たり始めるまでの tick（密着必中の防止）
+const PROJ_ARM = 3;
+const METEOR_TRACK = 3; // 打ち上げ→落下: 落下地点が相手を追う速さ（単位/秒。測定で勝率18%→50%） // 必殺技の弾が出てから当たり始めるまでの tick（密着必中の防止）
 const ACTIVE = slow(4);
 const PUNCH_DAMAGE = 5;
 const TACKLE_DAMAGE = 5;
@@ -582,6 +583,10 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
   stepMelee(w, i, dist);
 }
 
+// つかみ投げが掴める中心間距離（体が触れる距離）
+const GRAB_REACH = 0.8; // つかみ投げの手の届く余裕（0.5→0.8。CPU が寄ってから撃つ改善と合わせて勝率7%→43%）
+export function grabRange(cfg: FighterConfig, target: FighterConfig): number { return rad(cfg) + rad(target) + GRAB_REACH; }
+
 // 近接必殺: 届く距離は「体の縁 ＋ 手（無ければ体）の長さ × 倍率」。描いた手が長いほど届く
 export function meleeSpecialRange(cfg: FighterConfig, spec: MeleeSpec, target?: FighterConfig): number {
   const limb = cfg.hasHands ? Math.max(0.4, cfg.reach) : 0.5;
@@ -615,7 +620,7 @@ function stepMelee(w: World, i: 0 | 1, dist: number) {
       }
       if (s.grab) {
         // 体が触れる距離でしか掴めない。外したら大きな隙
-        if (dist <= rad(me.cfg) + rad(op.cfg) + 0.5 && op.crumple === 0) { ms.grabbed = true; ev("grab"); }
+        if (dist <= grabRange(me.cfg, op.cfg) && op.crumple === 0) { ms.grabbed = true; ev("grab"); }
         else { ms.extraRecover = TICK_HZ; ev("whiff"); }
       }
     }
@@ -756,6 +761,10 @@ function stepProjectileCore(w: World, p: Projectile): boolean {
     } else if (p.age <= RISE + HOVER) {
       if (p.age === RISE + HOVER) { p.tx = target.x; p.tz = target.z; p.sx = p.x; p.sz = p.z; }
     } else {
+      // 落ちながら相手を追いかける（落下地点を毎 tick 相手の方へずらす。速さ METEOR_TRACK 単位/秒、追尾付きならさらに速い）
+      const track = (METEOR_TRACK + s.homing * 0.5) * DT;
+      const ex = target.x - p.tx, ez = target.z - p.tz, el = Math.hypot(ex, ez);
+      if (el > 1e-6) { const k = Math.min(1, track / el); p.tx += ex * k; p.tz += ez * k; }
       const t = Math.min(1, (p.age - RISE - HOVER) / FALL);
       p.x = p.sx + (p.tx - p.sx) * t;
       p.z = p.sz + (p.tz - p.sz) * t;

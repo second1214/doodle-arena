@@ -59,7 +59,7 @@ export const MELEE_EFFECTS: MeleeEffectDef[] = [
   { id: "tornado", name: "竜巻スピン", cost: 8, phase: "motion", apply: (s) => { s.spinTicks += 45; s.arc = Math.PI; s.hits = Math.max(s.hits, 6); s.hitInterval = 6; } },
   { id: "dash", name: "突進すり抜け", cost: 5, phase: "motion", apply: (s) => { s.dash += 5; s.arc = Math.PI; } },
   { id: "slam", name: "地面たたき", cost: 5, phase: "motion", apply: (s) => { s.slam = true; s.windup += 6; } },
-  { id: "grab", name: "つかみ投げ", cost: 9, phase: "hit", apply: (s) => { s.grab = true; s.knock *= 1.8; } },
+  { id: "grab", name: "つかみ投げ", cost: 7, phase: "hit", apply: (s) => { s.grab = true; s.knock *= 1.8; } },
   { id: "wobble", name: "グニャグニャ視界", cost: 7, phase: "after", apply: (s) => { s.wobbleTicks += 120; } },
   { id: "legbind", name: "足封じ", cost: 6, phase: "after", apply: (s) => { s.legbindTicks += 120; } },
   { id: "crumple", name: "紙くしゃくしゃ", cost: 9, phase: "after", apply: (s) => { s.crumpleTicks += 60; } },

@@ -34,6 +34,10 @@ export interface ProjSpec {
 type Phase = "mul" | "add" | "motion" | "behavior";
 const PHASE_ORDER: Phase[] = ["mul", "add", "motion", "behavior"];
 
+// 多段ヒット: 8回当たるのはそのまま、1回の威力を 0.3→0.14 倍に（2026-10-09 測定で勝率81%→54%）
+const MULTI_DMG = 0.14;
+const MULTI_HITS = 7;
+
 export interface EffectDef {
   id: EffectId;
   name: string;
@@ -65,7 +69,7 @@ export const SPLIT_COST = 4, BOUNCE_COST = 2, BOOMERANG_COST = 3, TRAP_COST = 4,
 export const EFFECTS: EffectDef[] = [
   { id: "invisible", name: "見えない弾", cost: 11, phase: "behavior", apply: (s) => { s.visible = false; } },
   { id: "giant", name: "巨大", cost: 6, phase: "mul", apply: (s) => { s.size *= 3; s.speed *= 0.75; } },
-  { id: "multi", name: "多段ヒット", cost: 7, phase: "add", apply: (s) => { s.hits += 7; s.damage *= 0.3; s.hitInterval = 3; s.grind = true; } },
+  { id: "multi", name: "多段ヒット", cost: 7, phase: "add", apply: (s) => { s.hits += MULTI_HITS; s.damage *= MULTI_DMG; s.hitInterval = 3; s.grind = true; } },
   { id: "restrain", name: "拘束", cost: 7, phase: "behavior", apply: (s) => { s.restrainTicks += 90; } },
   { id: "tiny", name: "豆粒（高威力）", cost: 12, phase: "mul", apply: (s) => { s.size *= 0.35; s.damage *= 2.2; } },
   { id: "fast", name: "高速", cost: 9, phase: "mul", apply: (s) => { s.speed *= 2.2; } },

@@ -1,6 +1,6 @@
 // CPU の操作。性格ごとに行動の重みを変える（猛攻 / 慎重 / 狙撃 / トリッキー）。
 // 反応の遅れ・迷いはシード固定の乱数で決めるので、同じシードなら同じ試合になる。
-import { attackCostOf, meleeRange, meleeSpecialRange, type Input, type Personality, type World } from "./world";
+import { attackCostOf, grabRange, meleeRange, meleeSpecialRange, type Input, type Personality, type World } from "./world";
 
 export type { Personality };
 
@@ -110,8 +110,10 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState): Input {
     shove = true; // 守りを固める相手は突き飛ばして崩す
   } else if (ready && melee) {
     // 近接型: 届く距離まで寄ってから撃つ（突進や地面たたきは少し遠めでも撃つ）
-    const want = me.mspec.dash > 0 ? mReach + 3 : me.mspec.slam ? 4 : mReach;
-    if (dist <= want && rng.next() < 0.7) special = true;
+    // つかみ投げは体が触れる距離まで寄ってから（構えの間に逃げられないよう少し手前で）。防御で固める相手には特に狙う
+    const grab = me.mspec.grab && me.mspec.dash === 0;
+    const want = grab ? grabRange(me.cfg, op.cfg) - 0.25 : me.mspec.dash > 0 ? mReach + 3 : me.mspec.slam ? 4 : mReach;
+    if (dist <= want && rng.next() < (grab && op.guarding ? 0.95 : 0.7)) special = true;
     else { mx = ux; mz = uz; }
   } else if (ready && dist < P.keep - 0.5 && P.keep > 3) {
     // 狙撃: 撃つ前に距離を取る
