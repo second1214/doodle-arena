@@ -13,10 +13,16 @@ export const MAX_PROJECTILES = 128; // エンジン保護（ゲーム上の制�
 
 const MAX_HP = 100;
 const MAX_STAMINA = 100;
-const STAMINA_REGEN = 0.6;
+const STAMINA_REGEN = 0.45;
+const REGEN_DELAY = 15; // 攻撃後しばらくスタミナが回復しない（連打防止）
 const GUARD_DRAIN = 0.5;
 const GUARD_CUT = 0.7; // 防御中は 7 割カット
-const ATTACK_COST = 15;
+const ATTACK_COST = 28;
+// ノックバック: 初速（単位/秒）を tick ごとに減衰させる。のけぞり中は行動不能。
+const KNOCK_DECAY = 0.82;
+const MELEE_KNOCK = 7, TACKLE_KNOCK = 9;
+const MELEE_STUN = 9, GUARD_STUN = 4, SPECIAL_STUN = 12;
+const HITSTOP_LIGHT = 2, HITSTOP_HEAVY = 4;
 const MOVE_SPEED = 4;
 const SPECIAL_COOLDOWN = 8 * TICK_HZ;
 const ACTIVE = 4;
@@ -60,6 +66,10 @@ export interface Fighter {
   rooted: number;
   hitFlash: number;
   moving: boolean;
+  kx: number; kz: number; // ノックバック速度
+  stun: number; // のけぞり（行動不能）
+  guardStun: boolean; // 防御で受けたのけぞり（防御は続けられる）
+  regenDelay: number;
 }
 
 export interface Projectile {
@@ -82,7 +92,18 @@ export interface World {
   projectiles: Projectile[];
   nextId: number;
   winner: -1 | 0 | 1 | 2; // -1=試合中, 0/1=勝者, 2=引き分け
-  events: { kind: "hit" | "guard" | "shoot"; x: number; z: number; h: number; amount: number }[];
+  hitstop: number; // ヒットストップ（全体が止まる tick）
+  events: BattleEvent[];
+}
+
+export interface BattleEvent {
+  kind: "hit" | "guard" | "shoot" | "land" | "ko";
+  x: number; z: number; h: number;
+  amount: number;
+  src: "melee" | "special";
+  target: number; // 受けた側（shoot は撃った側）
+  dx: number; dz: number; // 吹き飛ぶ向き
+  size: number; // 弾の大きさ（melee は 0）
 }
 
 function makeFighter(cfg: FighterConfig, x: number): Fighter {
@@ -91,6 +112,7 @@ function makeFighter(cfg: FighterConfig, x: number): Fighter {
     x, z: 0, vx: 0, vz: 0, fx: x < 0 ? 1 : -1, fz: 0,
     hp: MAX_HP, stamina: MAX_STAMINA, guarding: false, guardBroken: 0,
     attack: "none", attackT: 0, attackHit: false, specialCd: 2 * TICK_HZ, rooted: 0, hitFlash: 0, moving: false,
+    kx: 0, kz: 0, stun: 0, guardStun: false, regenDelay: 0,
   };
 }
 
@@ -98,7 +120,7 @@ export function createWorld(a: FighterConfig, b: FighterConfig, seed: number): W
   return {
     tick: 0, rng: new Rng(seed),
     fighters: [makeFighter(a, -4), makeFighter(b, 4)],
-    projectiles: [], nextId: 1, winner: -1, events: [],
+    projectiles: [], nextId: 1, winner: -1, hitstop: 0, events: [],
   };
 }
 
@@ -115,13 +137,38 @@ export const maxHp = MAX_HP;
 export const maxStamina = MAX_STAMINA;
 export const specialCooldown = SPECIAL_COOLDOWN;
 
-function damage(w: World, target: Fighter, amount: number, x: number, z: number, h: number) {
-  const cut = target.guarding ? 1 - GUARD_CUT : 1;
-  const dmg = amount * cut;
+interface Hit {
+  amount: number;
+  src: "melee" | "special";
+  dx: number; dz: number; // 吹き飛ばす向き（単位ベクトル）
+  knock: number;
+  stun: number;
+  x: number; z: number; h: number;
+  size: number;
+}
+
+function damage(w: World, ti: number, hit: Hit) {
+  const target = w.fighters[ti];
+  const guarded = target.guarding;
+  const dmg = hit.amount * (guarded ? 1 - GUARD_CUT : 1);
+  const wasAlive = target.hp > 0;
   target.hp = Math.max(0, target.hp - dmg);
   target.hitFlash = 6;
-  w.events.push({ kind: target.guarding ? "guard" : "hit", x, z, h, amount: dmg });
+  const k = hit.knock * (guarded ? 0.3 : 1);
+  target.kx += hit.dx * k; target.kz += hit.dz * k;
+  target.stun = Math.max(target.stun, guarded ? GUARD_STUN : hit.stun);
+  target.guardStun = guarded;
+  if (!guarded && target.attack !== "none") { target.attack = "none"; target.attackT = 0; } // 殴られたら攻撃は潰れる
+  w.hitstop = Math.max(w.hitstop, hit.src === "special" || dmg >= 8 ? HITSTOP_HEAVY : HITSTOP_LIGHT);
+  w.events.push({ kind: guarded ? "guard" : "hit", x: hit.x, z: hit.z, h: hit.h, amount: dmg, src: hit.src, target: ti, dx: hit.dx, dz: hit.dz, size: hit.size });
+  if (wasAlive && target.hp <= 0) {
+    w.hitstop = 10;
+    w.events.push({ kind: "ko", x: target.x, z: target.z, h: 1, amount: 0, src: hit.src, target: ti, dx: hit.dx, dz: hit.dz, size: 0 });
+  }
 }
+
+// 同じ tick の通常攻撃は両者の行動処理が終わってから同時に当てる（同時に殴ったら相打ち）
+let pendingMelee: [number, Hit][] = [];
 
 function stepFighter(w: World, i: 0 | 1, inp: Input) {
   const me = w.fighters[i];
@@ -133,15 +180,18 @@ function stepFighter(w: World, i: 0 | 1, inp: Input) {
   if (me.hitFlash > 0) me.hitFlash--;
   if (me.guardBroken > 0) me.guardBroken--;
   if (me.specialCd > 0) me.specialCd--;
-  const rooted = me.rooted > 0;
-  if (rooted) me.rooted--;
+  if (me.regenDelay > 0) me.regenDelay--;
+  const stunned = me.stun > 0;
+  if (stunned) me.stun--;
+  const rooted = me.rooted > 0 || stunned;
+  if (me.rooted > 0) me.rooted--;
 
   // 防御
-  me.guarding = !rooted && inp.guard && me.guardBroken === 0 && me.attack === "none";
+  me.guarding = me.rooted === 0 && (!stunned || me.guardStun) && inp.guard && me.guardBroken === 0 && me.attack === "none";
   if (me.guarding) {
     me.stamina -= GUARD_DRAIN;
     if (me.stamina <= 0) { me.stamina = 0; me.guarding = false; me.guardBroken = TICK_HZ; }
-  } else {
+  } else if (me.regenDelay === 0 && me.attack === "none") {
     me.stamina = Math.min(MAX_STAMINA, me.stamina + STAMINA_REGEN);
   }
 
@@ -158,7 +208,7 @@ function stepFighter(w: World, i: 0 | 1, inp: Input) {
 
   // 通常攻撃（手を振る / 手なしは体当たり）
   if (inp.attack && !rooted && me.attack === "none" && me.stamina >= ATTACK_COST) {
-    me.attack = "windup"; me.attackT = 0; me.attackHit = false; me.stamina -= ATTACK_COST;
+    me.attack = "windup"; me.attackT = 0; me.attackHit = false; me.stamina -= ATTACK_COST; me.regenDelay = REGEN_DELAY;
   }
   if (me.attack !== "none") {
     me.attackT++;
@@ -171,9 +221,11 @@ function stepFighter(w: World, i: 0 | 1, inp: Input) {
     const reach = meleeRange(me.cfg);
     if (!me.attackHit && dist <= reach) {
       me.attackHit = true;
-      damage(w, op, me.cfg.hasHands ? PUNCH_DAMAGE : TACKLE_DAMAGE, op.x, op.z, 1.0);
-      const kb = op.guarding ? 0.2 : 0.6;
-      op.x += me.fx * kb; op.z += me.fz * kb;
+      pendingMelee.push([1 - i, {
+        amount: me.cfg.hasHands ? PUNCH_DAMAGE : TACKLE_DAMAGE, src: "melee",
+        dx: me.fx, dz: me.fz, knock: me.cfg.hasHands ? MELEE_KNOCK : TACKLE_KNOCK, stun: MELEE_STUN,
+        x: (me.x + op.x) / 2, z: (me.z + op.z) / 2, h: 1.0, size: 0,
+      }]);
     }
   }
 
@@ -187,7 +239,7 @@ function stepFighter(w: World, i: 0 | 1, inp: Input) {
       dx: me.fx, dz: me.fz, age: 0, hitsLeft: s.hits, rehit: 0,
       tx: op.x, tz: op.z, sx: me.x, sz: me.z,
     });
-    w.events.push({ kind: "shoot", x: me.x, z: me.z, h: 1, amount: 0 });
+    w.events.push({ kind: "shoot", x: me.x, z: me.z, h: 1, amount: 0, src: "special", target: i, dx: me.fx, dz: me.fz, size: s.size });
   }
 }
 
@@ -209,6 +261,9 @@ function stepProjectile(w: World, p: Projectile): boolean {
       p.x = p.sx + (p.tx - p.sx) * t;
       p.z = p.sz + (p.tz - p.sz) * t;
       p.h = 8 * (1 - t);
+      if (t >= 1 && p.age === RISE + HOVER + FALL) {
+        w.events.push({ kind: "land", x: p.x, z: p.z, h: 0, amount: 0, src: "special", target: p.owner, dx: 0, dz: 0, size: s.size });
+      }
       if (t >= 1 && p.hitsLeft === s.hits) return false; // 外れたら着地で消える
     }
   }
@@ -232,8 +287,19 @@ function stepProjectile(w: World, p: Projectile): boolean {
   // 当たり判定（地面の円＋高さ）
   const near = Math.hypot(target.x - p.x, target.z - p.z) <= s.size + BODY_RADIUS;
   if (near && p.h - s.size <= BODY_HEIGHT && p.h + s.size >= 0 && p.rehit === 0) {
-    damage(w, target, s.damage, p.x, p.z, p.h);
-    if (s.restrainTicks > 0 && !target.guarding) target.rooted = Math.max(target.rooted, s.restrainTicks);
+    // 吹き飛ぶ向き: 落下弾は着弾点から外向き、それ以外は弾の進行方向
+    let kdx = p.dx, kdz = p.dz;
+    if (s.meteor) {
+      const ox = target.x - p.x, oz = target.z - p.z, ol = Math.hypot(ox, oz);
+      if (ol > 0.01) { kdx = ox / ol; kdz = oz / ol; }
+    }
+    const restrain = s.restrainTicks > 0 && !target.guarding;
+    damage(w, 1 - p.owner, {
+      amount: s.damage, src: "special", dx: kdx, dz: kdz,
+      knock: restrain ? 0 : 4 + s.damage * 0.35 + s.size * 2, stun: SPECIAL_STUN,
+      x: p.x, z: p.z, h: p.h, size: s.size,
+    });
+    if (restrain) target.rooted = Math.max(target.rooted, s.restrainTicks);
     p.hitsLeft--;
     p.rehit = s.hitInterval;
     if (p.hitsLeft <= 0) return false;
@@ -247,14 +313,20 @@ function stepProjectile(w: World, p: Projectile): boolean {
 export function step(w: World, inputs: [Input, Input]) {
   if (w.winner !== -1) return;
   w.events = [];
+  if (w.hitstop > 0) { w.hitstop--; return; } // ヒットストップ中は全体が止まる（試合時間も進まない）
   w.tick++;
   // 処理順で先手が有利にならないよう、tick ごとに順番を入れ替える
   const first = (w.tick & 1) as 0 | 1;
   const second = (1 - first) as 0 | 1;
+  pendingMelee = [];
   stepFighter(w, first, inputs[first]);
   stepFighter(w, second, inputs[second]);
+  for (const [ti, hit] of pendingMelee) damage(w, ti, hit);
   for (const f of w.fighters) {
-    f.x += f.vx * DT; f.z += f.vz * DT;
+    f.x += (f.vx + f.kx) * DT; f.z += (f.vz + f.kz) * DT;
+    f.kx *= KNOCK_DECAY; f.kz *= KNOCK_DECAY;
+    if (Math.abs(f.kx) < 0.05) f.kx = 0;
+    if (Math.abs(f.kz) < 0.05) f.kz = 0;
     const r = Math.hypot(f.x, f.z);
     const lim = ARENA_RADIUS - BODY_RADIUS;
     if (r > lim) { f.x *= lim / r; f.z *= lim / r; }
@@ -279,7 +351,7 @@ export function hashWorld(w: World): string {
   const r = (v: number) => Math.round(v * 1000);
   return JSON.stringify([
     w.tick, w.winner, w.rng.state(),
-    w.fighters.map((f) => [r(f.x), r(f.z), r(f.hp), r(f.stamina), f.attack, f.rooted]),
+    w.fighters.map((f) => [r(f.x), r(f.z), r(f.hp), r(f.stamina), f.attack, f.rooted, f.stun]),
     w.projectiles.map((p) => [p.id, r(p.x), r(p.z), r(p.h), p.hitsLeft]),
   ]);
 }

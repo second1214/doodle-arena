@@ -145,6 +145,7 @@ export function startBattle(opts: BattleOptions) {
   let acc = 0;
   let raf = 0;
   let ended = false;
+  let endAt = 0;
   const t0 = performance.now();
   const frame = (now: number) => {
     acc += Math.min(0.25, (now - last) / 1000);
@@ -159,10 +160,12 @@ export function startBattle(opts: BattleOptions) {
     }
     scene.render(world, (now - t0) / 1000, events);
     updateHud();
-    if (world.winner !== -1 && !ended) {
+    if (world.winner !== -1 && !ended && !endAt) endAt = now + 1600; // KO の演出を見せてから結果を出す
+    if (endAt && now >= endAt && !ended) {
       ended = true;
-      const msg = world.winner === 2 ? "引き分け" : opts.spectate
-        ? `${world.fighters[world.winner].cfg.name} の勝ち`
+      const win = world.winner;
+      const msg = win === 2 || win === -1 ? "引き分け" : opts.spectate
+        ? `${world.fighters[win].cfg.name} の勝ち`
         : world.winner === 0 ? "勝ち！" : "負け…";
       q(".b-result-text").textContent = msg;
       resultEl.hidden = false;
@@ -189,6 +192,8 @@ export function startBattle(opts: BattleOptions) {
     world = createWorld(opts.player.cfg, opts.cpu.cfg, (opts.seed = (opts.seed * 1664525 + 1013904223) >>> 0));
     ais = [createAi(), createAi()];
     ended = false;
+    endAt = 0;
+    scene.reset();
     resultEl.hidden = true;
   });
 }
