@@ -296,8 +296,18 @@ document.getElementById("undo")!.addEventListener("click", () => {
   save();
   render();
 });
-document.getElementById("clear")!.addEventListener("click", () => {
-  if (strokes.length && !confirm("全部消しますか？")) return;
+// 確認ダイアログが使えない環境もあるので、2回押しで全消去する。
+const clearBtn = document.getElementById("clear")!;
+let clearArmed = 0;
+clearBtn.addEventListener("click", () => {
+  if (strokes.length && !clearArmed) {
+    clearBtn.textContent = "もう一度押すと消えます";
+    clearArmed = window.setTimeout(() => { clearArmed = 0; clearBtn.textContent = "全部消す"; }, 2500);
+    return;
+  }
+  clearTimeout(clearArmed);
+  clearArmed = 0;
+  clearBtn.textContent = "全部消す";
   strokes = [];
   save();
   render();
