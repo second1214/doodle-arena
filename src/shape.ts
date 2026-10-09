@@ -35,8 +35,8 @@ export const SHAPE = {
   rollTopBase: 1.15, rollTopRound: 0.35, // 丸いほどよく転がる
   rollAccelBase: 0.035, rollAccelSquare: 0.03, // 丸いほど転がり出しが鈍い（慣性）
   rollGuardCut: 0.4, momentum: 0.5,
-  // 長い手の代償: 威力ダウン＋スタミナ多め（振りかぶりの遅さは弱める）
-  longHandDmg: 0.5, longHandCost: 0.5, longHandRef: 0.25, windupPerReach: 1.5,
+  // 長い手の代償: 威力ダウン（スタミナ増は無し・振りかぶりの遅さは弱め）
+  longHandDmg: 0.5, longHandCost: 0, longHandRef: 0.25, windupPerReach: 1.5, // スタミナ増は無し（ユーザー決定）
   multiCostPerHit: 0.12, // 手が多い: 1回増えるごとのスタミナ増
   tackleDmg: 1.5, tackleKnock: 1.4, selfDmg: 0.2, // 体当たり
   weightBase: 0.4, weightPerFill: 1.5, // 塗りの多さ → 重さ

@@ -15,12 +15,12 @@ describe("形の性能", () => {
     expect(shapeOf(SAMPLES["トゲトゲ"]()).traits.hits).toBeGreaterThan(1);
   });
 
-  it("手が長いほど届くが威力は下がる", () => {
+  it("手が長いほど届くが威力は下がる（スタミナ消費は増えない）", () => {
     const long = shapeOf(SAMPLES["巨大な片手"]());
     const short = shapeOf(SAMPLES["棒人間"]());
     expect(long.reach).toBeGreaterThan(short.reach);
     expect(long.traits.dmg).toBeLessThan(short.traits.dmg);
-    expect(long.traits.cost).toBeGreaterThan(short.traits.cost);
+    expect(long.traits.cost).toBeCloseTo(1, 5);
   });
 
   it("手なしは体当たりで反動あり", () => {
