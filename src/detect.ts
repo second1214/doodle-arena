@@ -9,7 +9,8 @@ export const CANVAS_SIZE = 512;
 export interface Stroke {
   color: string; // "erase" は消しゴム
   width: number; // CANVAS_SIZE 座標系での太さ
-  points: number[]; // [x0, y0, x1, y1, ...]（CANVAS_SIZE 座標系）
+  points: number[]; // [x0, y0, x1, y1, ...]（CANVAS_SIZE 座標系）。塗りつぶしは [x, y] の1点
+  fill?: boolean; // 塗りつぶし（その点から、線で囲まれた範囲を塗る）
 }
 
 export interface DetectParams {
@@ -56,6 +57,10 @@ export function rasterize(strokes: Stroke[], size: number): Uint8Array {
   const mask = new Uint8Array(size * size);
   const s = size / CANVAS_SIZE;
   for (const st of strokes) {
+    if (st.fill) {
+      floodMask(mask, size, Math.floor(st.points[0] * s), Math.floor(st.points[1] * s));
+      continue;
+    }
     const value = st.color === "erase" ? 0 : 1;
     const r = Math.max(0.75, (st.width * s) / 2);
     const p = st.points;
@@ -82,6 +87,21 @@ export function rasterize(strokes: Stroke[], size: number): Uint8Array {
     }
   }
   return mask;
+}
+
+// 塗りつぶし: 空白の点から始めた場合、つながった空白を 1 にする（線の上なら形は変わらない）
+function floodMask(mask: Uint8Array, size: number, sx: number, sy: number) {
+  if (sx < 0 || sy < 0 || sx >= size || sy >= size || mask[sy * size + sx]) return;
+  const stack = [sy * size + sx];
+  mask[stack[0]] = 1;
+  while (stack.length) {
+    const i = stack.pop()!;
+    const x = i % size, y = (i - x) / size;
+    if (x > 0 && !mask[i - 1]) { mask[i - 1] = 1; stack.push(i - 1); }
+    if (x < size - 1 && !mask[i + 1]) { mask[i + 1] = 1; stack.push(i + 1); }
+    if (y > 0 && !mask[i - size]) { mask[i - size] = 1; stack.push(i - size); }
+    if (y < size - 1 && !mask[i + size]) { mask[i + size] = 1; stack.push(i + size); }
+  }
 }
 
 // Felzenszwalb の距離変換。mask==1 の画素までの二乗距離を返す。

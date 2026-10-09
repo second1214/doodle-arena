@@ -4,6 +4,7 @@ import { Rng } from "./rng";
 import { composeSpecial, type EffectId, type ProjSpec } from "./special";
 import { DEFAULT_TRAITS, type Traits } from "../shape";
 import { composeMelee, type MeleeEffectId, type MeleeSpec } from "./melee";
+import { statEffects, type StatEffects, type Stats } from "./stats";
 
 export const TICK_HZ = 30;
 export const DT = 1 / TICK_HZ;
@@ -49,7 +50,11 @@ export interface FighterConfig {
   specialType?: "ranged" | "melee"; // 必殺技の型（既定は遠距離）
   melee?: MeleeEffectId[]; // 近接型の効果
   traits?: Traits; // 絵の形による性能（無ければ標準）
+  stats?: Stats; // 能力値の振り分け（無ければ標準）
+  personality?: Personality; // CPU が動かすときの性格
 }
+
+export type Personality = "aggressive" | "cautious" | "sniper" | "tricky";
 
 const tr = (c: FighterConfig) => c.traits ?? DEFAULT_TRAITS;
 const rad = (c: FighterConfig) => BODY_RADIUS * tr(c).radius;
@@ -105,6 +110,9 @@ export interface Fighter {
   dodgeT: number; // 回避の残り tick（この間は無敵）
   dodgeRec: number; // 回避後の硬直
   dodgeX: number; dodgeZ: number;
+  st: StatEffects; // 能力値から決まる倍率
+  maxHp: number;
+  maxStamina: number;
 }
 
 export interface MeleeState {
@@ -163,10 +171,12 @@ export interface BattleEvent {
 const idleMelee = (): MeleeState => ({ phase: "none", t: 0, hitsDone: 0, rehit: 0, spin: 0, dashLeft: 0, dirX: 1, dirZ: 0, grabbed: false, slamR: 0, slamHit: false, extraRecover: 0 });
 
 function makeFighter(cfg: FighterConfig, x: number): Fighter {
+  const st = statEffects(cfg.stats);
   return {
+    st, maxHp: st.maxHp, maxStamina: st.maxStamina,
     cfg, spec: composeSpecial(cfg.special),
     x, z: 0, vx: 0, vz: 0, fx: x < 0 ? 1 : -1, fz: 0,
-    hp: MAX_HP, stamina: MAX_STAMINA, guarding: false, guardBroken: 0,
+    hp: st.maxHp, stamina: st.maxStamina, guarding: false, guardBroken: 0,
     attack: "none", attackT: 0, attackHit: false, charge: 0, shootSlow: 0, rooted: 0, hitFlash: 0, moving: false,
     kx: 0, kz: 0, stun: 0, guardStun: false, regenDelay: 0, preSpeed: 0, swingHits: 0,
     mspec: composeMelee(cfg.melee ?? []), ms: idleMelee(),
@@ -195,8 +205,8 @@ function recoverTicks(cfg: FighterConfig) { return cfg.hasHands ? 6 + Math.round
 function activeTicks(cfg: FighterConfig) { return ACTIVE + 2 * (tr(cfg).hits - 1); }
 export function attackCostOf(cfg: FighterConfig) { return ATTACK_COST * tr(cfg).cost; }
 
-export const maxHp = MAX_HP;
-export const maxStamina = MAX_STAMINA;
+export const baseMaxHp = MAX_HP;
+export const baseMaxStamina = MAX_STAMINA;
 export const specialCharge = SPECIAL_CHARGE;
 export const attackCost = ATTACK_COST;
 export const dodgeCost = DODGE_COST;
@@ -226,12 +236,14 @@ function damage(w: World, ti: number, hit: Hit) {
   }
   const guarded = target.guarding && !hit.ignoreGuard;
   const rolling = !target.feetNow && Math.hypot(target.vx, target.vz) > MOVE_SPEED * 0.5;
-  const dmg = hit.amount * (guarded ? 1 - (rolling ? tr(target.cfg).rollGuardCut : GUARD_CUT) : 1);
+  const base = hit.amount * w.fighters[1 - ti].st.dealt * target.st.taken; // 能力値（攻撃力・防御力）
+  hit = { ...hit, amount: base };
+  const dmg = base * (guarded ? 1 - (rolling ? tr(target.cfg).rollGuardCut : GUARD_CUT) : 1);
   const wasAlive = target.hp > 0;
   target.hp = Math.max(0, target.hp - dmg);
   // 防御成功で少し回復（防いだ分の一部）
   const heal = guarded && target.hp > 0 ? Math.min(GUARD_HEAL_MAX, (hit.amount - dmg) * GUARD_HEAL) : 0;
-  if (heal > 0) target.hp = Math.min(MAX_HP, target.hp + heal);
+  if (heal > 0) target.hp = Math.min(target.maxHp, target.hp + heal);
   target.hitFlash = 6;
   const k = hit.knock * tr(target.cfg).knockTaken * (guarded ? 0.3 : 1);
   target.kx += hit.dx * k; target.kz += hit.dz * k;
@@ -342,14 +354,14 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
     me.stamina -= GUARD_DRAIN;
     if (me.stamina <= 0) { me.stamina = 0; me.guarding = false; me.guardBroken = TICK_HZ; }
   } else if (me.regenDelay === 0 && !busy) {
-    me.stamina = Math.min(MAX_STAMINA, me.stamina + STAMINA_REGEN);
+    me.stamina = Math.min(me.maxStamina, me.stamina + STAMINA_REGEN * me.st.regen);
   }
 
   // 移動
   let mx = inp.mx, mz = inp.mz;
   const ml = Math.hypot(mx, mz);
   if (ml > 1) { mx /= ml; mz /= ml; }
-  let speed = MOVE_SPEED * (me.feetNow ? tr(me.cfg).walk : tr(me.cfg).top) * (me.guarding ? 0.5 : 1);
+  let speed = MOVE_SPEED * me.st.speed * (me.feetNow ? tr(me.cfg).walk : tr(me.cfg).top) * (me.guarding ? 0.5 : 1);
   if (me.shootSlow > 0) speed *= 0.3;
   if (mx * me.fx + mz * me.fz < -0.3) speed *= RETREAT_SPEED; // 相手から離れる向き
   if (rooted || me.attack === "active" || me.attack === "windup") speed *= rooted ? 0 : 0.3;

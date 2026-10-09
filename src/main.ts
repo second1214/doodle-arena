@@ -1,5 +1,5 @@
 import { CANVAS_SIZE, DEFAULT_PARAMS, detect, type DetectParams, type DetectResult, type Stroke } from "./detect";
-import { cutParts, drawStroke } from "./parts";
+import { cutParts, drawStroke, renderStrokes } from "./parts";
 import { SAMPLES } from "./samples";
 import { startBattle } from "./battle/battle";
 import { Sfx } from "./battle/audio";
@@ -7,6 +7,10 @@ import { buildCharacter } from "./battle/character";
 import { EFFECTS, specialCost, type EffectId } from "./sim/special";
 import { MELEE_EFFECTS, meleeCost, type MeleeEffectId } from "./sim/melee";
 import { describeShape, fighterShape } from "./shape";
+import { PERSONAS } from "./sim/ai";
+import { DEFAULT_STATS, STAT_BUDGET, STAT_KEYS, STAT_LABELS, STAT_MAX, statEffects, statTotal, type Stats } from "./sim/stats";
+import type { Personality } from "./sim/world";
+import { deleteCharacter, loadDraft, loadRoster, normalize, saveCharacter, saveDraft, type CharacterData } from "./roster";
 
 const STORAGE_KEY = "doodle-arena:proto1";
 const COLORS = ["#222222", "#e03131", "#1c7ed6", "#f2c200", "#2f9e44", "#ae3ec9", "#f08c00"];
@@ -14,7 +18,7 @@ const HAND_COLORS = ["#e8590c", "#f76707", "#d9480f", "#fd7e14", "#c2255c"];
 const FOOT_COLORS = ["#1c7ed6", "#1971c2", "#3b5bdb", "#0c8599", "#5f3dc4"];
 const TORSO_COLOR = "#9aa0a6";
 
-type View = "draw" | "detect" | "anim" | "battle";
+type View = "draw" | "detect" | "anim" | "char" | "battle";
 const SPECIAL_BUDGET = 20; // 必殺ポイント（仮）。全効果は付けられない
 
 const canvas = document.getElementById("view") as HTMLCanvasElement;
@@ -24,12 +28,17 @@ const legendEl = document.getElementById("legend")!;
 const drawTools = document.getElementById("drawTools")!;
 const stageEl = document.querySelector(".stage") as HTMLElement;
 const battleSetup = document.getElementById("battleSetup")!;
+const charSetup = document.getElementById("charSetup")!;
 
 let strokes: Stroke[] = load();
 let params: DetectParams = { ...DEFAULT_PARAMS };
 let color = COLORS[0];
 let width = 9;
 let erasing = false;
+let filling = false; // 塗りつぶしツール
+let committed: HTMLCanvasElement = document.createElement("canvas");
+let committedFor: Stroke[] | null = null;
+let committedLen = -1;
 let view: View = "draw";
 let current: Stroke | null = null;
 let detected: { res: DetectResult; parts: HTMLCanvasElement[] } | null = null;
@@ -70,7 +79,7 @@ function runDetect() {
   const feet = res.limbs.filter((l) => l.kind === "foot").length;
   const notes: string[] = [];
   if (strokes.length && hands === 0) notes.push("手なし→体当たりで攻撃");
-  if (strokes.length && feet === 0) notes.push("足なし→滑って移動");
+  if (strokes.length && feet === 0) notes.push("足なし→転がって移動");
   resultEl.textContent = strokes.length ? `手 ${hands}本・足 ${feet}本${notes.length ? "（" + notes.join("／") + "）" : ""}` : "まだ何も描かれていません";
 }
 
@@ -81,10 +90,16 @@ function limbColor(res: DetectResult, k: number) {
 }
 
 function render() {
-  if (view === "battle") return;
+  if (view === "battle" || view === "char") return;
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
   if (view === "draw") {
-    for (const st of strokes) drawStroke(ctx, st);
+    // 確定した線は1枚の画像にまとめておく（塗りつぶしを描くたびに計算し直さない）
+    if (committedFor !== strokes || committedLen !== strokes.length) {
+      committed = renderStrokes(strokes);
+      committedFor = strokes;
+      committedLen = strokes.length;
+    }
+    ctx.drawImage(committed, 0, 0);
     if (current) drawStroke(ctx, current);
     return;
   }
@@ -176,18 +191,20 @@ function setView(v: View) {
   document.querySelectorAll<HTMLButtonElement>(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
   drawTools.hidden = v !== "draw";
   legendEl.hidden = v !== "detect";
-  stageEl.hidden = v === "battle";
+  const panel = v === "battle" || v === "char";
+  stageEl.hidden = panel;
   battleSetup.hidden = v !== "battle";
+  charSetup.hidden = v !== "char";
+  if (v === "char") {
+    resultEl.textContent = strokes.length ? "" : "絵がまだ無いので、特徴は「棒人間」で表示しています（描くタブで描いてください）";
+    renderTraits();
+    renderRoster();
+    return;
+  }
   if (v === "battle") {
     resultEl.textContent = strokes.length ? "" : "絵がまだ無いので、あなたのキャラは「棒人間」で戦います";
-    const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
-    const traitsEl = document.getElementById("myTraits")!;
-    traitsEl.innerHTML = "";
-    for (const line of describeShape(fighterShape(detect(mine, params)))) {
-      const li = document.createElement("li");
-      li.textContent = line;
-      traitsEl.appendChild(li);
-    }
+    document.getElementById("myCharName")!.textContent = `${editor.name || "名無し"}（${PERSONAS[editor.personality].label}・${editor.specialType === "melee" ? "近接" : "遠距離"}必殺）`;
+    refreshCpuOptions();
     return;
   }
   if (v === "draw") {
@@ -206,8 +223,14 @@ function toCanvas(e: PointerEvent): [number, number] {
 }
 canvas.addEventListener("pointerdown", (e) => {
   if (view !== "draw") return;
-  canvas.setPointerCapture(e.pointerId);
   const [x, y] = toCanvas(e);
+  if (filling) {
+    strokes.push({ color, width: 0, points: [Math.round(x), Math.round(y)], fill: true });
+    save();
+    render();
+    return;
+  }
+  canvas.setPointerCapture(e.pointerId);
   current = { color: erasing ? "erase" : color, width: erasing ? width * 2 : width, points: [Math.round(x), Math.round(y)] };
   render();
 });
@@ -253,7 +276,15 @@ document.querySelectorAll<HTMLButtonElement>("[data-width]").forEach((b) =>
     document.querySelectorAll("[data-width]").forEach((o) => o.classList.toggle("on", o === b));
   }),
 );
+const fillBtn = document.getElementById("fillTool")!;
+fillBtn.addEventListener("click", () => {
+  filling = !filling;
+  if (filling) { erasing = false; eraserBtn.classList.remove("on"); }
+  fillBtn.classList.toggle("on", filling);
+});
 eraserBtn.addEventListener("click", () => {
+  filling = false;
+  fillBtn.classList.remove("on");
   erasing = !erasing;
   eraserBtn.classList.toggle("on", erasing);
 });
@@ -338,28 +369,102 @@ document.getElementById("resetParams")!.addEventListener("click", () => {
   scheduleRedetect();
 });
 
-// --- 戦う ---
-const cpuSel = document.getElementById("cpuChar") as HTMLSelectElement;
-cpuSel.add(new Option("ランダム", ""));
-for (const name of Object.keys(SAMPLES)) cpuSel.add(new Option(name, name));
-let chosen: EffectId[] = ["homing"];
-let chosenMelee: MeleeEffectId[] = ["tornado"];
-let stype: "ranged" | "melee" = "ranged";
+// --- キャラ（編集中のキャラ） ---
+const draft = loadDraft();
+const editor: CharacterData = normalize({ ...(draft ?? {}), name: draft?.name ?? "", special: draft?.special ?? ["homing"], melee: draft?.melee ?? ["tornado"] });
+let editId: string | null = draft?.id && loadRoster().some((c) => c.id === draft.id) ? draft.id : null;
+const persistDraft = () => saveDraft({ ...editor, id: editId ?? undefined, strokes: [] });
+
+const nameInput = document.getElementById("charName") as HTMLInputElement;
+nameInput.value = editor.name === "名無し" ? "" : editor.name;
+nameInput.addEventListener("input", () => { editor.name = nameInput.value.slice(0, 16); persistDraft(); });
+
+function renderTraits() {
+  const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
+  const traitsEl = document.getElementById("myTraits")!;
+  traitsEl.innerHTML = "";
+  for (const line of describeShape(fighterShape(detect(mine, params)))) {
+    const li = document.createElement("li");
+    li.textContent = line;
+    traitsEl.appendChild(li);
+  }
+}
+
+// 能力値: 合計が予算を超えないようにスライダーを抑える
+const statsEl = document.getElementById("stats")!;
+const statInfo = document.getElementById("statInfo")!;
+const STAT_NOTE: Record<keyof Stats, (v: number) => string> = {
+  attack: (v) => `与えるダメージ ×${statEffects({ ...DEFAULT_STATS, attack: v }).dealt.toFixed(2)}`,
+  defense: (v) => `受けるダメージ ×${statEffects({ ...DEFAULT_STATS, defense: v }).taken.toFixed(2)}`,
+  speed: (v) => `移動 ×${statEffects({ ...DEFAULT_STATS, speed: v }).speed.toFixed(2)}`,
+  hp: (v) => `体力 ${statEffects({ ...DEFAULT_STATS, hp: v }).maxHp}`,
+  stamina: (v) => `スタミナ ${statEffects({ ...DEFAULT_STATS, stamina: v }).maxStamina}・回復 ×${statEffects({ ...DEFAULT_STATS, stamina: v }).regen.toFixed(2)}`,
+};
+const statInputs: Partial<Record<keyof Stats, { input: HTMLInputElement; val: HTMLElement; note: HTMLElement }>> = {};
+for (const k of STAT_KEYS) {
+  const row = document.createElement("div");
+  row.className = "stat";
+  const lab = document.createElement("label");
+  lab.textContent = STAT_LABELS[k];
+  lab.htmlFor = `stat-${k}`;
+  const input = document.createElement("input");
+  input.type = "range"; input.min = "0"; input.max = String(STAT_MAX); input.step = "1"; input.id = `stat-${k}`;
+  const val = document.createElement("b");
+  const note = document.createElement("small");
+  input.addEventListener("input", () => {
+    // 予算を超える分は、ほかの能力値（高いものから）を1ずつ下げて捻出する
+    editor.stats[k] = Number(input.value);
+    let over = statTotal(editor.stats) - STAT_BUDGET;
+    while (over > 0) {
+      const donor = STAT_KEYS.filter((o) => o !== k && editor.stats[o] > 0).sort((a, b) => editor.stats[b] - editor.stats[a])[0];
+      if (!donor) { editor.stats[k] -= over; break; }
+      editor.stats[donor]--;
+      over--;
+    }
+    syncStats();
+    persistDraft();
+  });
+  row.append(lab, input, val, note);
+  statsEl.appendChild(row);
+  statInputs[k] = { input, val, note };
+}
+function syncStats() {
+  for (const k of STAT_KEYS) {
+    const r = statInputs[k]!;
+    r.input.value = String(editor.stats[k]);
+    r.val.textContent = String(editor.stats[k]);
+    r.note.textContent = STAT_NOTE[k](editor.stats[k]);
+  }
+  statInfo.textContent = `残り ${STAT_BUDGET - statTotal(editor.stats)} / ${STAT_BUDGET} ポイント`;
+}
+
+// 性格
+const persSel = document.getElementById("personality") as HTMLSelectElement;
+const persDesc = document.getElementById("personalityDesc")!;
+for (const [k, p] of Object.entries(PERSONAS)) persSel.add(new Option(p.label, k));
+persSel.addEventListener("change", () => { editor.personality = persSel.value as Personality; syncPersonality(); persistDraft(); });
+function syncPersonality() {
+  persSel.value = editor.personality;
+  persDesc.textContent = PERSONAS[editor.personality].desc;
+}
+
+// 必殺技
 document.querySelectorAll<HTMLButtonElement>("[data-stype]").forEach((b) =>
   b.addEventListener("click", () => {
-    stype = b.dataset.stype as "ranged" | "melee";
-    document.querySelectorAll("[data-stype]").forEach((o) => o.classList.toggle("on", o === b));
+    editor.specialType = b.dataset.stype as "ranged" | "melee";
     renderEffects();
+    persistDraft();
   }),
 );
 const effectsEl = document.getElementById("effects")!;
 const costInfo = document.getElementById("costInfo")!;
 function renderEffects() {
+  document.querySelectorAll("[data-stype]").forEach((o) => o.classList.toggle("on", (o as HTMLElement).dataset.stype === editor.specialType));
   effectsEl.innerHTML = "";
-  const melee = stype === "melee";
+  const melee = editor.specialType === "melee";
   const list: { id: string; name: string; cost: number }[] = melee ? MELEE_EFFECTS : EFFECTS;
-  const sel: string[] = melee ? chosenMelee : chosen;
-  const used = melee ? meleeCost(chosenMelee) : specialCost(chosen);
+  const sel: string[] = melee ? editor.melee : editor.special;
+  const used = melee ? meleeCost(editor.melee) : specialCost(editor.special);
   costInfo.textContent = `${used} / ${SPECIAL_BUDGET} ポイント`;
   for (const e of list) {
     const on = sel.includes(e.id);
@@ -371,9 +476,10 @@ function renderEffects() {
     box.checked = on;
     box.disabled = !fits;
     box.addEventListener("change", () => {
-      if (melee) chosenMelee = box.checked ? [...chosenMelee, e.id as MeleeEffectId] : chosenMelee.filter((x) => x !== e.id);
-      else chosen = box.checked ? [...chosen, e.id as EffectId] : chosen.filter((x) => x !== e.id);
+      if (melee) editor.melee = box.checked ? [...editor.melee, e.id as MeleeEffectId] : editor.melee.filter((x) => x !== e.id);
+      else editor.special = box.checked ? [...editor.special, e.id as EffectId] : editor.special.filter((x) => x !== e.id);
       renderEffects();
+      persistDraft();
     });
     const txt = document.createElement("span");
     txt.innerHTML = `${e.name} <small>${e.cost}</small>`;
@@ -381,7 +487,121 @@ function renderEffects() {
     effectsEl.appendChild(lab);
   }
 }
-renderEffects();
+
+function syncEditor() {
+  nameInput.value = editor.name === "名無し" ? "" : editor.name;
+  syncStats();
+  syncPersonality();
+  renderEffects();
+}
+syncEditor();
+
+// 保存・新規・一覧
+const saveMsg = document.getElementById("saveMsg")!;
+document.getElementById("saveChar")!.addEventListener("click", () => {
+  if (!strokes.length) { saveMsg.textContent = "絵が描かれていません。「描く」タブで描いてから保存してください。"; return; }
+  const id = editId ?? normalize({}).id;
+  const ok = saveCharacter({ ...editor, id, name: editor.name || "名無し", strokes: strokes.map((s) => ({ ...s, points: [...s.points] })) });
+  editId = id;
+  persistDraft();
+  saveMsg.textContent = ok ? `「${editor.name || "名無し"}」を保存しました。` : "保存できませんでした（ブラウザの設定で保存が禁止されている可能性があります）。";
+  renderRoster();
+});
+const newBtn = document.getElementById("newChar")!;
+let newArmed = 0;
+newBtn.addEventListener("click", () => {
+  if (strokes.length && !newArmed) {
+    newBtn.textContent = "もう一度押すと絵を消して新規";
+    newArmed = window.setTimeout(() => { newArmed = 0; newBtn.textContent = "新しいキャラ"; }, 2500);
+    return;
+  }
+  clearTimeout(newArmed);
+  newArmed = 0;
+  newBtn.textContent = "新しいキャラ";
+  editId = null;
+  Object.assign(editor, normalize({ name: "", special: ["homing"], melee: ["tornado"] }));
+  editor.name = "";
+  strokes = [];
+  save();
+  syncEditor();
+  renderTraits();
+  renderRoster();
+  persistDraft();
+  saveMsg.textContent = "新しいキャラを作ります。「描く」タブで絵を描いてください。";
+});
+
+function loadIntoEditor(c: CharacterData) {
+  editId = c.id;
+  Object.assign(editor, normalize(c));
+  strokes = c.strokes.map((s) => ({ ...s, points: [...s.points] }));
+  save();
+  syncEditor();
+  renderTraits();
+  renderRoster();
+  persistDraft();
+  saveMsg.textContent = `「${c.name}」を読み込みました。`;
+}
+
+const rosterEl = document.getElementById("roster")!;
+function renderRoster() {
+  const list = loadRoster();
+  rosterEl.innerHTML = "";
+  if (!list.length) {
+    const li = document.createElement("li");
+    li.textContent = "まだありません。描いて「保存」を押すとここに並びます。";
+    rosterEl.appendChild(li);
+    return;
+  }
+  for (const c of list) {
+    const li = document.createElement("li");
+    li.classList.toggle("on", c.id === editId);
+    const img = document.createElement("img");
+    if (c.thumb) img.src = c.thumb;
+    img.alt = "";
+    const nm = document.createElement("span");
+    nm.className = "nm";
+    nm.textContent = c.name;
+    const sub = document.createElement("span");
+    sub.className = "sub";
+    sub.textContent = `${PERSONAS[c.personality].label}・${c.specialType === "melee" ? "近接" : "遠距離"}必殺`;
+    nm.appendChild(sub);
+    const edit = document.createElement("button");
+    edit.textContent = "編集";
+    edit.addEventListener("click", () => loadIntoEditor(c));
+    const del = document.createElement("button");
+    del.textContent = "削除";
+    let armed = 0;
+    del.addEventListener("click", () => {
+      if (!armed) { del.textContent = "本当に削除"; armed = window.setTimeout(() => { armed = 0; del.textContent = "削除"; }, 2500); return; }
+      clearTimeout(armed);
+      deleteCharacter(c.id);
+      if (editId === c.id) editId = null;
+      renderRoster();
+    });
+    li.append(img, nm, edit, del);
+    rosterEl.appendChild(li);
+  }
+}
+
+// --- 戦う ---
+const cpuSel = document.getElementById("cpuChar") as HTMLSelectElement;
+function refreshCpuOptions() {
+  const keep = cpuSel.value;
+  cpuSel.innerHTML = "";
+  cpuSel.add(new Option("ランダム（CPU が作ったキャラ）", ""));
+  const g1 = document.createElement("optgroup");
+  g1.label = "CPU が作ったキャラ";
+  for (const name of Object.keys(SAMPLES)) g1.appendChild(new Option(name, `sample:${name}`));
+  cpuSel.appendChild(g1);
+  const saved = loadRoster();
+  if (saved.length) {
+    const g2 = document.createElement("optgroup");
+    g2.label = "保存したキャラ";
+    for (const c of saved) g2.appendChild(new Option(c.name, `saved:${c.id}`));
+    cpuSel.appendChild(g2);
+  }
+  cpuSel.value = [...cpuSel.options].some((o) => o.value === keep) ? keep : "";
+}
 
 // CPU の必殺技は型をランダムに選び、予算内でランダムに組む
 function randomSpecial(): EffectId[] {
@@ -396,19 +616,47 @@ function randomMelee(): MeleeEffectId[] {
   for (const e of pool) if (meleeCost([...out, e.id]) <= SPECIAL_BUDGET) out.push(e.id);
   return out;
 }
+// CPU が作ったキャラ: 能力値と性格もランダム
+function randomStats(): Stats {
+  const st: Stats = { attack: 0, defense: 0, speed: 0, hp: 0, stamina: 0 };
+  for (let n = 0; n < STAT_BUDGET; ) {
+    const k = STAT_KEYS[Math.floor(Math.random() * STAT_KEYS.length)];
+    if (st[k] < STAT_MAX) { st[k]++; n++; }
+  }
+  return st;
+}
+const PERS_KEYS = Object.keys(PERSONAS) as Personality[];
+
+function applyData(build: ReturnType<typeof buildCharacter>, c: CharacterData) {
+  build.cfg.stats = c.stats;
+  build.cfg.personality = c.personality;
+  build.cfg.specialType = c.specialType;
+  build.cfg.special = c.special;
+  build.cfg.melee = c.melee;
+}
 
 const sfx = new Sfx();
 document.getElementById("startBattle")!.addEventListener("click", () => {
   sfx.unlock(); // 効果音はボタン操作の中でしか有効にできない
-  const names = Object.keys(SAMPLES);
-  const cpuName = cpuSel.value || names[Math.floor(Math.random() * names.length)];
   const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
-  const player = buildCharacter("あなた", mine, chosen, params);
-  player.cfg.specialType = stype;
-  player.cfg.melee = chosenMelee;
-  const cpu = buildCharacter(`CPU（${cpuName}）`, SAMPLES[cpuName](), randomSpecial(), params);
-  cpu.cfg.specialType = Math.random() < 0.5 ? "melee" : "ranged";
-  cpu.cfg.melee = randomMelee();
+  const player = buildCharacter(editor.name || "あなた", mine, editor.special, params);
+  applyData(player, editor);
+
+  const names = Object.keys(SAMPLES);
+  const v = cpuSel.value || `sample:${names[Math.floor(Math.random() * names.length)]}`;
+  let cpu: ReturnType<typeof buildCharacter>;
+  const saved = v.startsWith("saved:") ? loadRoster().find((c) => c.id === v.slice(6)) : undefined;
+  if (saved) {
+    cpu = buildCharacter(saved.name, saved.strokes, saved.special, params);
+    applyData(cpu, saved);
+  } else {
+    const name = v.slice(7);
+    cpu = buildCharacter(`CPU（${name}）`, SAMPLES[name](), randomSpecial(), params);
+    applyData(cpu, normalize({
+      name, stats: randomStats(), personality: PERS_KEYS[Math.floor(Math.random() * PERS_KEYS.length)],
+      specialType: Math.random() < 0.5 ? "melee" : "ranged", special: cpu.cfg.special, melee: randomMelee(),
+    }));
+  }
   startBattle({
     player,
     cpu,

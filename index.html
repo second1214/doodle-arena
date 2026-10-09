@@ -49,7 +49,7 @@
       }
       h1 { font-size: 18px; margin: 0 0 8px; }
       .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
-      .tabs button { flex: 1; }
+      .tabs button { flex: 1; padding: 8px 4px; }
       button, select {
         font: inherit; color: var(--ink); background: var(--panel);
         border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-height: 40px;
@@ -72,6 +72,21 @@
       .legend { display: flex; gap: 12px; font-size: 13px; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
       .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
       .field { margin-top: 10px; display: grid; gap: 6px; }
+      input.text { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-height: 40px; width: 100%; }
+      .stats { display: grid; gap: 4px; }
+      .stat { display: grid; grid-template-columns: 6em 1fr 2.2em; align-items: center; gap: 8px; font-size: 14px; }
+      .stat input { width: 100%; }
+      .stat b { text-align: right; font-variant-numeric: tabular-nums; }
+      .stat small { grid-column: 2 / -1; color: var(--muted); font-size: 12px; margin-top: -4px; }
+      button.primary.inline { width: auto; margin-top: 0; padding: 8px 22px; font-size: 15px; min-height: 40px; }
+      .roster { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+      .roster li { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; }
+      .roster li.on { border-color: var(--accent); }
+      .roster img { width: 44px; height: 44px; border-radius: 6px; background: #fff; border: 1px solid var(--line); flex: none; }
+      .roster .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+      .roster .sub { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
+      .roster button { min-height: 34px; padding: 4px 10px; font-size: 13px; }
+      .mychar { font-weight: 700; font-size: 17px; }
       .traits { margin: 0; padding-left: 1.2em; color: var(--ink); font-size: 14px; line-height: 1.6; }
       .label { font-weight: 600; }
       .cost { color: var(--muted); font-weight: 400; font-size: 13px; }
@@ -160,27 +175,57 @@
     <h1>らくがきアリーナ 試作</h1>
     <div class="tabs">
       <button data-view="draw" class="on">描く</button>
-      <button data-view="detect">検知結果</button>
+      <button data-view="detect">検知</button>
       <button data-view="anim">動かす</button>
+      <button data-view="char">キャラ</button>
       <button data-view="battle">戦う</button>
     </div>
-    <section id="battleSetup" hidden>
+    <section id="charSetup" hidden>
       <div class="field">
-        <div class="label">あなたのキャラの特徴（絵の形で決まる）</div>
+        <label class="label" for="charName">名前</label>
+        <input id="charName" class="text" maxlength="16" placeholder="キャラの名前" />
+      </div>
+      <div class="field">
+        <div class="label">絵の形で決まる特徴</div>
         <ul id="myTraits" class="traits"></ul>
       </div>
       <div class="field">
-        <div class="label">相手（CPUが作ったキャラ）</div>
-        <select id="cpuChar"></select>
+        <div class="label">能力値 <span id="statInfo" class="cost"></span></div>
+        <div id="stats" class="stats"></div>
       </div>
       <div class="field">
-        <div class="label">あなたの必殺技 <span id="costInfo" class="cost"></span></div>
+        <label class="label" for="personality">性格（CPU が動かすときの戦い方）</label>
+        <select id="personality"></select>
+        <div class="note" id="personalityDesc"></div>
+      </div>
+      <div class="field">
+        <div class="label">必殺技 <span id="costInfo" class="cost"></span></div>
         <div class="seg" role="radiogroup" aria-label="必殺技の型">
           <button type="button" data-stype="ranged" class="on">遠距離（弾）</button>
           <button type="button" data-stype="melee">近接</button>
         </div>
         <div id="effects" class="effects"></div>
         <div class="note">効果ごとに必要なポイントが違います。矛盾した組み合わせも付けられます。</div>
+      </div>
+      <div class="row">
+        <button id="saveChar" class="primary inline">保存</button>
+        <button id="newChar">新しいキャラ</button>
+      </div>
+      <div class="note" id="saveMsg"></div>
+      <div class="field">
+        <div class="label">保存したキャラ</div>
+        <ul id="roster" class="roster"></ul>
+      </div>
+    </section>
+    <section id="battleSetup" hidden>
+      <div class="field">
+        <div class="label">あなたのキャラ</div>
+        <div id="myCharName" class="mychar"></div>
+        <div class="note">「キャラ」タブで編集中のキャラで戦います。</div>
+      </div>
+      <div class="field">
+        <label class="label" for="cpuChar">相手</label>
+        <select id="cpuChar"></select>
       </div>
       <label class="check"><input type="checkbox" id="spectate" /> 観戦モード（自分のキャラも CPU が操作）</label>
       <button id="startBattle" class="primary">戦闘開始</button>
@@ -202,6 +247,7 @@
         <button data-width="4">細</button>
         <button data-width="9" class="on">中</button>
         <button data-width="18">太</button>
+        <button id="fillTool">塗りつぶし</button>
         <button id="eraser">消しゴム</button>
       </div>
       <div class="row">

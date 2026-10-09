@@ -1,9 +1,48 @@
 // 線画の描画と、検知結果に従ったパーツ切り出し（塗りつぶしは検知専用で、表示には元の線画を使う）。
 import { CANVAS_SIZE, labelAt, type DetectResult, type Stroke } from "./detect";
 
+// 塗りつぶし: 押した点と似た色でつながった範囲を塗る（線のにじみ部分も1画素広げて塗り、白い縁を残さない）
+function floodFill(c: CanvasRenderingContext2D, sx: number, sy: number, color: string) {
+  const W = c.canvas.width, H = c.canvas.height;
+  sx = Math.floor(sx); sy = Math.floor(sy);
+  if (sx < 0 || sy < 0 || sx >= W || sy >= H) return;
+  const img = c.getImageData(0, 0, W, H);
+  const d = img.data;
+  const o0 = (sy * W + sx) * 4;
+  const r0 = d[o0], g0 = d[o0 + 1], b0 = d[o0 + 2], a0 = d[o0 + 3];
+  const tmp = document.createElement("canvas").getContext("2d")!;
+  tmp.fillStyle = color;
+  tmp.fillRect(0, 0, 1, 1);
+  const [cr, cg, cb] = tmp.getImageData(0, 0, 1, 1).data;
+  const TOL = 60;
+  const similar = (o: number) =>
+    Math.abs(d[o + 3] - a0) <= TOL && (a0 < 20 || (Math.abs(d[o] - r0) + Math.abs(d[o + 1] - g0) + Math.abs(d[o + 2] - b0)) <= TOL * 2);
+  const filled = new Uint8Array(W * H);
+  const stack = [sy * W + sx];
+  filled[stack[0]] = 1;
+  while (stack.length) {
+    const i = stack.pop()!;
+    const x = i % W, y = (i - x) / W;
+    const nb = [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1];
+    for (const j of nb) if (j >= 0 && !filled[j] && similar(j * 4)) { filled[j] = 1; stack.push(j); }
+  }
+  const paint = (i: number) => { const o = i * 4; d[o] = cr; d[o + 1] = cg; d[o + 2] = cb; d[o + 3] = 255; };
+  const edge: number[] = [];
+  for (let i = 0; i < filled.length; i++) {
+    if (!filled[i]) continue;
+    paint(i);
+    const x = i % W, y = (i - x) / W;
+    for (const j of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1]) if (j >= 0 && !filled[j]) edge.push(j);
+  }
+  // にじみ（線との境目の半透明）を、線の色が濃い場合は残し、薄い場合は塗る
+  for (const j of edge) if (d[j * 4 + 3] < 200) paint(j);
+  c.putImageData(img, 0, 0);
+}
+
 export function drawStroke(c: CanvasRenderingContext2D, st: Stroke) {
   const p = st.points;
   if (p.length < 2) return;
+  if (st.fill) { floodFill(c, p[0], p[1], st.color); return; }
   c.save();
   c.lineCap = "round";
   c.lineJoin = "round";
