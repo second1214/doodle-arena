@@ -40,14 +40,16 @@ export function saveInventory(inv: Inventory): boolean {
 
 export interface DropResult { got: Part[]; shardsInstead: number }
 
-// ストーリーの勝利報酬: 1個（ボスは2個で、うち1個は1段上のレア度を保証）。持ち物がいっぱいなら、かけらに変える
-export function dropParts(chapter: number, boss: boolean, rnd: () => number = Math.random): DropResult {
+// ストーリーの勝利報酬: 1個（ボスは2個で、うち1個は1段上のレア度を保証。ラスボスはその1個が A 確定・4回に1回 S）。
+// 持ち物がいっぱいなら、かけらに変える
+export function dropParts(chapter: number, boss: boolean, rnd: () => number = Math.random, final = false): DropResult {
   const inv = loadInventory();
   const res: DropResult = { got: [], shardsInstead: 0 };
   const n = boss ? 2 : 1;
   for (let k = 0; k < n; k++) {
     let r = rollRarity(chapter, rnd);
     if (boss && k === 0) r = RARITIES[Math.min(RARITIES.length - 1, rarityIndex(r) + 1)];
+    if (final && k === 0) r = rnd() < 0.25 ? "S" : "A";
     if (inv.sinceA + 1 >= PITY && rarityIndex(r) < rarityIndex("A")) r = "A";
     inv.sinceA = rarityIndex(r) >= rarityIndex("A") ? 0 : inv.sinceA + 1;
     const p = makePart(randomKind(rnd), r, rnd);

@@ -1073,7 +1073,7 @@ function startStage(stage: Stage) {
     exitLabel: "ステージ選択へ",
     onResult: (winner) => {
       const r = applyStageResult(stage.no, stage.id, !!stage.boss, winner === 0);
-      return rewardHtml(r, stage, winner === 0 ? dropParts(chapterOf(stage), !!stage.boss) : null);
+      return rewardHtml(r, stage, winner === 0 ? dropParts(chapterOf(stage), !!stage.boss, Math.random, !!stage.final) : null);
     },
   });
 }
