@@ -58,6 +58,7 @@ export interface FighterConfig {
   melee?: MeleeEffectId[]; // 近接型の効果
   traits?: Traits; // 絵の形による性能（無ければ標準）
   boost?: Partial<Boost>; // スキルツリーの強化（無ければ標準）
+  specialMod?: Partial<SpecialMod>; // 必殺パーツの数値（無ければ標準）
   hurt?: Hurt; // 描いた部分だけの当たり判定（無ければ体の円）
   personality?: Personality; // CPU が動かすときの性格
 }
@@ -198,6 +199,19 @@ export interface BattleEvent {
 
 const idleMelee = (): MeleeState => ({ phase: "none", t: 0, hitsDone: 0, rehit: 0, spin: 0, dashLeft: 0, dirX: 1, dirZ: 0, grabbed: false, slamR: 0, slamHit: false, extraRecover: 0 });
 
+// 必殺パーツの数値: 威力の倍率・弾の速さの倍率・状態異常の時間の倍率・構えを縮める tick（いずれも標準 1 / 0）
+export interface SpecialMod { power: number; speed: number; duration: number; windup: number }
+function modProj(s: ProjSpec, m: Partial<SpecialMod> = {}): ProjSpec {
+  const d = m.duration ?? 1;
+  return { ...s, damage: s.damage * Math.max(0.05, m.power ?? 1), speed: s.speed * Math.max(0.05, m.speed ?? 1), restrainTicks: Math.round(s.restrainTicks * d) };
+}
+function modMelee(s: MeleeSpec, m: Partial<SpecialMod> = {}): MeleeSpec {
+  const d = m.duration ?? 1;
+  return {
+    ...s, damage: s.damage * Math.max(0.05, m.power ?? 1), windup: Math.max(1, s.windup - Math.round(m.windup ?? 0)),
+    wobbleTicks: Math.round(s.wobbleTicks * d), legbindTicks: Math.round(s.legbindTicks * d), crumpleTicks: Math.round(s.crumpleTicks * d),
+  };
+}
 function paceProj(s: ProjSpec): ProjSpec { return { ...s, speed: s.speed * PROJ_PACE }; }
 function paceMelee(s: MeleeSpec): MeleeSpec { return { ...s, windup: slow(s.windup), active: slow(s.active), recover: slow(s.recover) }; }
 
@@ -205,12 +219,12 @@ function makeFighter(cfg: FighterConfig, x: number): Fighter {
   const st = statEffects(cfg.boost);
   return {
     st, maxHp: st.maxHp, maxStamina: st.maxStamina,
-    cfg, spec: paceProj(composeSpecial(cfg.special)),
+    cfg, spec: paceProj(modProj(composeSpecial(cfg.special), cfg.specialMod)),
     x, z: 0, vx: 0, vz: 0, fx: x < 0 ? 1 : -1, fz: 0,
     hp: st.maxHp, stamina: st.maxStamina, guarding: false, guardBroken: 0,
     attack: "none", attackT: 0, attackHit: false, charge: 0, specialSeq: 0, guardedSeq: 0, shootSlow: 0, rooted: 0, hitFlash: 0, moving: false,
     kx: 0, kz: 0, stun: 0, guardStun: false, regenDelay: 0, preSpeed: 0, swingHits: 0,
-    mspec: paceMelee(composeMelee(cfg.melee ?? [])), ms: idleMelee(),
+    mspec: paceMelee(modMelee(composeMelee(cfg.melee ?? []), cfg.specialMod)), ms: idleMelee(),
     wobble: 0, dizzy: 0, legbind: 0, crumple: 0, feetNow: cfg.hasFeet,
     shoveT: 0, shoveCd: 0, dodgeT: 0, dodgeRec: 0, dodgeX: 0, dodgeZ: 0,
   };

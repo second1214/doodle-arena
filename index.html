@@ -94,6 +94,21 @@
       .node-info { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 10px 12px; min-height: 64px; font-size: 14px; }
       .node-info b { font-size: 16px; }
       .node-info .row { margin-top: 6px; }
+      .plabel { font-size: 13px; font-weight: 700; color: var(--muted); margin-top: 6px; }
+      .plist { display: grid; gap: 6px; }
+      .plist > button { padding: 0; border-radius: 12px; min-height: 0; text-align: left; overflow: hidden; }
+      .plist > button.off { opacity: .55; }
+      .plist > button.sel { outline: 3px solid var(--accent); }
+      .plist > button:disabled { opacity: .45; }
+      .pc { display: grid; grid-template-columns: 34px 1fr auto; grid-template-rows: auto auto; align-items: center; column-gap: 8px; padding: 6px 10px 6px 0; border-left: 6px solid var(--rc); }
+      .pc .rk { grid-row: span 2; justify-self: center; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--rc); color: #fff; font-weight: 900; }
+      .pc .pn { font-weight: 700; }
+      .pc small { grid-column: 2; color: var(--muted); font-size: 12px; }
+      .pc .pcost { grid-row: 1 / span 2; grid-column: 3; font-weight: 800; font-size: 15px; min-width: 2em; text-align: right; }
+      .pc .pcost::before { content: "コスト "; font-size: 10px; font-weight: 400; color: var(--muted); }
+      .b-reward .drop { display: grid; gap: 4px; margin-top: 4px; }
+      .b-reward .pc { background: rgba(255,255,255,.92); color: #2d2640; border-radius: 10px; text-align: left; min-width: 240px; }
+      .b-reward .pc small { color: #6a6280; }
       textarea.text.code { font-family: ui-monospace, monospace; font-size: 11px; width: 100%; resize: vertical; }
       .filebtn { display: inline-flex; align-items: center; border: 2px solid var(--line); border-radius: 14px; padding: 8px 12px; min-height: 42px; background: var(--panel); box-shadow: var(--shadow); cursor: pointer; }
       .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
@@ -249,7 +264,7 @@
         <button class="big" data-go="free"><b>自由バトル</b><small>好きな相手と戦う・観戦</small></button>
         <button class="big" data-go="make"><b>キャラを作る</b><small>描く・検知・動かす・設定</small></button>
         <button class="big" data-go="tree"><b>スキルツリー</b><small id="treeHint">ポイントで強くなる</small></button>
-        <button class="big" disabled><b>必殺パーツ</b><small>準備中</small></button>
+        <button class="big" data-go="parts"><b>必殺パーツ</b><small>持ち物・分解・合成</small></button>
         <button class="big" data-go="transfer"><b>引き継ぎ</b><small>データの書き出し・読み込み</small></button>
       </div>
     </section>
@@ -271,6 +286,20 @@
         <div class="label">今の強化（全キャラ共通）</div>
         <ul id="treeTotal" class="traits"></ul>
       </div>
+    </section>
+    <section id="partsScreen" hidden>
+      <div class="tree-head">
+        <div>パーツ <b id="invCount">0</b> / <span id="invCap"></span><div class="note">かけら <b id="shards">0</b></div></div>
+      </div>
+      <div class="seg" id="partFilter">
+        <button type="button" data-pf="all" class="on">すべて</button>
+        <button type="button" data-pf="ranged">遠距離</button>
+        <button type="button" data-pf="melee">近接</button>
+        <button type="button" data-pf="both">共通</button>
+      </div>
+      <div class="node-info" id="partInfo"></div>
+      <div class="plist" id="partList"></div>
+      <div class="note">パーツはキャラ作りの「キャラ」で付け外しします。装備コストの合計が20までです。分解するとかけらになり、かけらで数値を振り直せます。同じ種類・同じレア度を5個集めると、1段上のレア度に合成できます。</div>
     </section>
     <section id="transferScreen" hidden>
       <div class="note">保存したキャラ・レベル・ストーリーの進み具合を1つの「引き継ぎコード」にまとめます。別の端末やブラウザで読み込むと、同じデータで続きを遊べます。ブラウザのデータは消えることがあるので、ときどき書き出しておくと安心です。</div>
@@ -321,8 +350,8 @@
           <button type="button" data-stype="ranged" class="on">遠距離（弾）</button>
           <button type="button" data-stype="melee">近接</button>
         </div>
-        <div id="effects" class="effects"></div>
-        <div class="note">効果ごとに必要なポイントが違います。矛盾した組み合わせも付けられます。</div>
+        <div id="effects" class="pfield"></div>
+        <div class="note">パーツは手に入れるたびに威力とコストが違います。同じパーツを重ねて付けると効果も重なります。矛盾した組み合わせも付けられます。</div>
       </div>
       <div class="row">
         <button id="saveChar" class="primary inline">保存</button>

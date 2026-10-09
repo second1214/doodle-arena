@@ -3,8 +3,7 @@
 import type { Stroke } from "./detect";
 import { SAMPLES } from "./samples";
 import type { AiLevel } from "./sim/ai";
-import type { EffectId } from "./sim/special";
-import type { MeleeEffectId } from "./sim/melee";
+import { hashStr, makePart, seededRnd, type Part, type PartKind, type Rarity } from "./items";
 import type { Personality } from "./sim/world";
 
 export interface Stage {
@@ -15,8 +14,7 @@ export interface Stage {
   strokes: () => Stroke[];
   personality: Personality;
   specialType: "ranged" | "melee";
-  special: EffectId[];
-  melee: MeleeEffectId[];
+  parts: [PartKind, Rarity][]; // 敵の必殺パーツ（数値はステージごとに毎回同じ）
   boostPoints: number; // 敵の強化ポイント（スキルツリーを prefer の枝の順に取る）
   prefer: string[];
   ai: AiLevel;
@@ -66,12 +64,12 @@ export const CHAPTERS: Chapter[] = [
     no: 1,
     title: "らくがき町",
     stages: [
-      { id: "1-1", no: 1, title: "はじめの一歩", enemy: "棒人間", strokes: SAMPLES["棒人間"], personality: "aggressive", specialType: "ranged", special: [], melee: [], ...EVEN, ai: CH1_AI },
-      { id: "1-2", no: 2, title: "うねうね", enemy: "タコ", strokes: SAMPLES["タコ"], personality: "tricky", specialType: "ranged", special: [], melee: [], ...EVEN, ai: CH1_AI },
-      { id: "1-3", no: 3, title: "突進してくる", enemy: "短足ずんぐり", strokes: SAMPLES["短足ずんぐり"], personality: "aggressive", specialType: "melee", special: [], melee: ["dash"], ...EVEN, ai: CH1_AI },
-      { id: "1-4", no: 4, title: "トゲの雨", enemy: "トゲトゲ", strokes: SAMPLES["トゲトゲ"], personality: "sniper", specialType: "ranged", special: ["multi"], melee: [], ...EVEN, ai: CH1_AI },
-      { id: "1-5", no: 5, title: "ころころ注意", enemy: "まんまる", strokes: SAMPLES["まんまる（塗りつぶし）"], personality: "cautious", specialType: "ranged", special: ["homing"], melee: [], ...EVEN, ai: CH1_AI },
-      { id: "1-6", no: 6, title: "らくがき大王", enemy: "らくがき大王", strokes: KING, personality: "aggressive", specialType: "melee", special: [], melee: ["giantHands", "slam"], boostPoints: 4, prefer: ["atk", "hp"], ai: { wait: [8, 5], defend: 0.5 }, boss: true },
+      { id: "1-1", no: 1, title: "はじめの一歩", enemy: "棒人間", strokes: SAMPLES["棒人間"], personality: "aggressive", specialType: "ranged", parts: [], ...EVEN, ai: CH1_AI },
+      { id: "1-2", no: 2, title: "うねうね", enemy: "タコ", strokes: SAMPLES["タコ"], personality: "tricky", specialType: "ranged", parts: [], ...EVEN, ai: CH1_AI },
+      { id: "1-3", no: 3, title: "突進してくる", enemy: "短足ずんぐり", strokes: SAMPLES["短足ずんぐり"], personality: "aggressive", specialType: "melee", parts: [["m:dash", "F"]], ...EVEN, ai: CH1_AI },
+      { id: "1-4", no: 4, title: "トゲの雨", enemy: "トゲトゲ", strokes: SAMPLES["トゲトゲ"], personality: "sniper", specialType: "ranged", parts: [["r:multi", "E"]], ...EVEN, ai: CH1_AI },
+      { id: "1-5", no: 5, title: "ころころ注意", enemy: "まんまる", strokes: SAMPLES["まんまる（塗りつぶし）"], personality: "cautious", specialType: "ranged", parts: [["r:homing", "E"]], ...EVEN, ai: CH1_AI },
+      { id: "1-6", no: 6, title: "らくがき大王", enemy: "らくがき大王", strokes: KING, personality: "aggressive", specialType: "melee", parts: [["m:giantHands", "D"], ["m:slam", "D"]], boostPoints: 4, prefer: ["atk", "hp"], ai: { wait: [8, 5], defend: 0.5 }, boss: true },
     ],
   },
 ];
@@ -86,3 +84,11 @@ export function isUnlocked(stage: Stage, cleared: Record<string, number>): boole
   const i = ALL_STAGES.indexOf(stage);
   return i <= 0 || !!cleared[ALL_STAGES[i - 1].id];
 }
+
+export const chapterOf = (stage: Stage) => CHAPTERS.find((c) => c.stages.includes(stage))?.no ?? 1;
+
+// 敵のパーツの実体（ステージ id から作るので毎回同じ数値）
+export function enemyParts(stage: Stage): Part[] {
+  return stage.parts.map(([kind, rarity], i) => makePart(kind, rarity, seededRnd(hashStr(`${stage.id}#${i}`)), `${stage.id}#${i}`));
+}
+

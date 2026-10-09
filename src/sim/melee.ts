@@ -57,14 +57,14 @@ export const MELEE_EFFECTS: MeleeEffectDef[] = [
 
 export function composeMelee(ids: MeleeEffectId[]): MeleeSpec {
   const s: MeleeSpec = { ...BASE_MELEE };
-  const chosen = MELEE_EFFECTS.filter((e) => ids.includes(e.id));
+  const chosen = MELEE_EFFECTS.flatMap((e) => ids.filter((x) => x === e.id).map(() => e)); // 同じ効果は重ねてかける
   for (const phase of PHASE_ORDER) for (const e of chosen) if (e.phase === phase) e.apply(s);
   s.active += s.spinTicks;
   // 多段のときは合計が威力の目安に近くなるよう1回ごとを割る
-  s.tags = chosen.map((e) => e.id);
+  s.tags = MELEE_EFFECTS.filter((e) => ids.includes(e.id)).map((e) => e.id);
   return s;
 }
 
 export function meleeCost(ids: MeleeEffectId[]): number {
-  return MELEE_EFFECTS.filter((e) => ids.includes(e.id)).reduce((a, e) => a + e.cost, 0);
+  return ids.reduce((a, id) => a + (MELEE_EFFECTS.find((e) => e.id === id)?.cost ?? 0), 0);
 }

@@ -4,16 +4,16 @@ import { SAMPLES } from "./samples";
 import { startBattle } from "./battle/battle";
 import { Sfx } from "./battle/audio";
 import { buildCharacter } from "./battle/character";
-import { EFFECTS, specialCost, type EffectId } from "./sim/special";
-import { MELEE_EFFECTS, meleeCost, type MeleeEffectId } from "./sim/melee";
 import { describeShape, fighterShape } from "./shape";
 import { PERSONAS } from "./sim/ai";
-import type { Boost } from "./sim/stats";
+import { sumBoost, type Boost } from "./sim/stats";
+import { ALL_KINDS, buildSpecial, equipCosts, extraText, fitsType, kindInfo, mainText, makePart, RARITY_INFO, rarityIndex, SPECIAL_BUDGET, type BuiltSpecial, type Part, type PartKind } from "./items";
+import { combinable, combine, COMBINE_COUNT, dismantle, dropParts, INVENTORY_CAP, loadInventory, migrateToParts, reroll, rerollCost, type DropResult } from "./inventory";
 import { autoTree, boostOf, BRANCHES, canTake, nodeById, randomTree, SMALL_TIERS, spentOf, TREE_TOTAL } from "./tree";
 import type { Personality } from "./sim/world";
-import { deleteCharacter, loadDraft, loadRoster, normalize, saveCharacter, saveDraft, thumbnail, type CharacterData } from "./roster";
+import { deleteCharacter, loadDraft, loadRoster, normalize, saveCharacter, saveDraft, thumbnail, writeRoster, type CharacterData } from "./roster";
 import { applyStageResult, expToNext, exportCode, importCode, LEVEL_CAP, loadProfile, loadStory, requestPersist, resetTree, takeNode, totalPoints, type Reward } from "./progress";
-import { ALL_STAGES, CHAPTERS, isUnlocked, UPCOMING, type Stage } from "./story";
+import { ALL_STAGES, CHAPTERS, chapterOf, enemyParts, isUnlocked, UPCOMING, type Stage } from "./story";
 
 const STORAGE_KEY = "doodle-arena:proto1";
 const COLORS = ["#222222", "#e03131", "#1c7ed6", "#f2c200", "#2f9e44", "#ae3ec9", "#f08c00"];
@@ -22,7 +22,6 @@ const FOOT_COLORS = ["#1c7ed6", "#1971c2", "#3b5bdb", "#0c8599", "#5f3dc4"];
 const TORSO_COLOR = "#9aa0a6";
 
 type View = "draw" | "detect" | "anim" | "char" | "battle";
-const SPECIAL_BUDGET = 20; // 必殺ポイント（仮）。全効果は付けられない
 
 const canvas = document.getElementById("view") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -372,6 +371,20 @@ document.getElementById("resetParams")!.addEventListener("click", () => {
   scheduleRedetect();
 });
 
+// --- 必殺パーツへの移行（初回だけ）: 今までの効果選択を C 相当のパーツにして、そのまま装備する ---
+(() => {
+  const roster = loadRoster();
+  const d = loadDraft();
+  const kindsOf = (c: Partial<CharacterData>) => [...(c.special ?? []).map((id) => `r:${id}` as PartKind), ...(c.melee ?? []).map((id) => `m:${id}` as PartKind)];
+  const map = migrateToParts([...roster.flatMap(kindsOf), ...(d ? kindsOf(d) : [])]);
+  if (!map) return;
+  const toParts = (c: Partial<CharacterData>) => [...new Set(kindsOf(c))].map((k) => map.get(k)).filter((x): x is string => !!x);
+  writeRoster(roster.map((c) => ({ ...c, parts: c.parts.length ? c.parts : toParts(c) })));
+  saveDraft({ ...(d ?? {}), parts: d?.parts?.length ? d.parts : toParts(d ?? { special: ["homing"], melee: ["tornado"] }) });
+})();
+// 新しいキャラに最初から付けるパーツ（配った 追尾(遠)・竜巻(近) が残っていれば）
+const starterParts = () => ["start-r-homing", "start-m-tornado"].filter((id) => loadInventory().parts.some((p) => p.id === id));
+
 // --- キャラ（編集中のキャラ） ---
 const draft = loadDraft();
 const editor: CharacterData = normalize({ ...(draft ?? {}), name: draft?.name ?? "", special: draft?.special ?? ["homing"], melee: draft?.melee ?? ["tornado"] });
@@ -403,7 +416,7 @@ function syncPersonality() {
   persDesc.textContent = PERSONAS[editor.personality].desc;
 }
 
-// 必殺技
+// 必殺技: 持っているパーツを付け外しして組む（予算内）
 document.querySelectorAll<HTMLButtonElement>("[data-stype]").forEach((b) =>
   b.addEventListener("click", () => {
     editor.specialType = b.dataset.stype as "ranged" | "melee";
@@ -413,33 +426,93 @@ document.querySelectorAll<HTMLButtonElement>("[data-stype]").forEach((b) =>
 );
 const effectsEl = document.getElementById("effects")!;
 const costInfo = document.getElementById("costInfo")!;
+
+// パーツ1つの札（レア度・名前・数値・コスト）
+function partChip(p: Part, cost = p.cost, note = ""): HTMLElement {
+  const el = document.createElement("span");
+  el.className = "pc";
+  el.style.setProperty("--rc", RARITY_INFO[p.rarity].color);
+  const rk = document.createElement("b");
+  rk.className = "rk";
+  rk.textContent = p.rarity;
+  const nm = document.createElement("span");
+  nm.className = "pn";
+  nm.textContent = kindInfo(p.kind).name;
+  const sub = document.createElement("small");
+  sub.textContent = [mainText(p), ...p.extras.map(extraText)].join("・") + (note ? `（${note}）` : "");
+  const c = document.createElement("span");
+  c.className = "pcost";
+  c.textContent = `${cost}`;
+  c.title = "装備コスト";
+  el.append(rk, nm, sub, c);
+  return el;
+}
+const partsById = (ids: string[]): Part[] => {
+  const inv = loadInventory();
+  return ids.map((id) => inv.parts.find((p) => p.id === id)).filter((p): p is Part => !!p);
+};
+// 予算を超える分は後ろから効かない（振り直しでコストが上がった時など）
+function withinBudget(parts: Part[], type: "ranged" | "melee"): Part[] {
+  const out: Part[] = [];
+  for (const p of parts.filter((x) => fitsType(x, type))) {
+    const cs = equipCosts([...out, p]);
+    if (cs.reduce((a, c) => a + c, 0) <= SPECIAL_BUDGET) out.push(p);
+  }
+  return out;
+}
+function specialSummary(b: BuiltSpecial, type: "ranged" | "melee"): string {
+  const t = [`威力 ×${b.mod.power.toFixed(2)}`];
+  if (type === "ranged" && b.mod.speed !== 1) t.push(`弾の速さ ×${b.mod.speed.toFixed(2)}`);
+  if (b.mod.duration !== 1) t.push(`状態異常の時間 ×${b.mod.duration.toFixed(2)}`);
+  if (type === "melee" && b.mod.windup) t.push(`構え −${b.mod.windup}`);
+  if (b.chargeDelta) t.push(`必殺に必要な命中 ${b.chargeDelta}回`);
+  return t.join("・");
+}
+
 function renderEffects() {
   document.querySelectorAll("[data-stype]").forEach((o) => o.classList.toggle("on", (o as HTMLElement).dataset.stype === editor.specialType));
-  effectsEl.innerHTML = "";
-  const melee = editor.specialType === "melee";
-  const list: { id: string; name: string; cost: number }[] = melee ? MELEE_EFFECTS : EFFECTS;
-  const sel: string[] = melee ? editor.melee : editor.special;
-  const used = melee ? meleeCost(editor.melee) : specialCost(editor.special);
+  const type = editor.specialType;
+  const inv = loadInventory();
+  editor.parts = editor.parts.filter((id) => inv.parts.some((p) => p.id === id)); // 分解したパーツは外す
+  const mine = partsById(editor.parts);
+  const active = withinBudget(mine, type);
+  const costs = equipCosts(active);
+  const used = costs.reduce((a, c) => a + c, 0);
   costInfo.textContent = `${used} / ${SPECIAL_BUDGET} ポイント`;
-  for (const e of list) {
-    const on = sel.includes(e.id);
-    const fits = on || used + e.cost <= SPECIAL_BUDGET;
-    const lab = document.createElement("label");
-    lab.className = on ? "on" : fits ? "" : "off";
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.checked = on;
-    box.disabled = !fits;
-    box.addEventListener("change", () => {
-      if (melee) editor.melee = box.checked ? [...editor.melee, e.id as MeleeEffectId] : editor.melee.filter((x) => x !== e.id);
-      else editor.special = box.checked ? [...editor.special, e.id as EffectId] : editor.special.filter((x) => x !== e.id);
-      renderEffects();
-      persistDraft();
-    });
-    const txt = document.createElement("span");
-    txt.innerHTML = `${e.name} <small>${e.cost}</small>`;
-    lab.append(box, txt);
-    effectsEl.appendChild(lab);
+  effectsEl.innerHTML = "";
+  const head = (t: string) => { const h = document.createElement("div"); h.className = "plabel"; h.textContent = t; effectsEl.appendChild(h); };
+  const list = () => { const ul = document.createElement("div"); ul.className = "plist"; effectsEl.appendChild(ul); return ul; };
+
+  head("付けているパーツ（タップで外す）");
+  const on = list();
+  if (!mine.length) on.textContent = "まだ何も付けていません（効果なしの基本の必殺になります）";
+  for (const p of mine) {
+    const k = active.indexOf(p);
+    const b = document.createElement("button");
+    b.type = "button";
+    b.appendChild(partChip(p, k >= 0 ? costs[k] : p.cost, !fitsType(p, type) ? "この型では効かない" : k < 0 ? "予算オーバーで効かない" : ""));
+    if (k < 0) b.classList.add("off");
+    b.addEventListener("click", () => { editor.parts = editor.parts.filter((id) => id !== p.id); renderEffects(); persistDraft(); });
+    on.appendChild(b);
+  }
+  const sum = document.createElement("div");
+  sum.className = "note";
+  sum.textContent = specialSummary(buildSpecial(active, type), type);
+  effectsEl.appendChild(sum);
+
+  head("持っているパーツ（タップで付ける）");
+  const have = list();
+  const cand = inv.parts.filter((p) => fitsType(p, type) && !editor.parts.includes(p.id))
+    .sort((a, b) => rarityIndex(b.rarity) - rarityIndex(a.rarity) || kindInfo(a.kind).name.localeCompare(kindInfo(b.kind).name));
+  if (!cand.length) have.textContent = "付けられるパーツがありません。ストーリーで勝つと手に入ります。";
+  for (const p of cand) {
+    const add = equipCosts([...active, p]).at(-1)!;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.disabled = used + add > SPECIAL_BUDGET;
+    b.appendChild(partChip(p, add));
+    b.addEventListener("click", () => { editor.parts = [...editor.parts, p.id]; renderEffects(); persistDraft(); });
+    have.appendChild(b);
   }
 }
 
@@ -473,7 +546,7 @@ newBtn.addEventListener("click", () => {
   newArmed = 0;
   newBtn.textContent = "新しいキャラ";
   editId = null;
-  Object.assign(editor, normalize({ name: "", special: ["homing"], melee: ["tornado"] }));
+  Object.assign(editor, normalize({ name: "", parts: starterParts() }));
   editor.name = "";
   strokes = [];
   save();
@@ -557,28 +630,27 @@ function refreshCpuOptions() {
   cpuSel.value = [...cpuSel.options].some((o) => o.value === keep) ? keep : "";
 }
 
-// CPU の必殺技は型をランダムに選び、予算内でランダムに組む
-function randomSpecial(): EffectId[] {
-  const pool = [...EFFECTS].sort(() => Math.random() - 0.5);
-  const out: EffectId[] = [];
-  for (const e of pool) if (specialCost([...out, e.id]) <= SPECIAL_BUDGET) out.push(e.id);
-  return out;
-}
-function randomMelee(): MeleeEffectId[] {
-  const pool = [...MELEE_EFFECTS].sort(() => Math.random() - 0.5);
-  const out: MeleeEffectId[] = [];
-  for (const e of pool) if (meleeCost([...out, e.id]) <= SPECIAL_BUDGET) out.push(e.id);
+// CPU の必殺技: C 相当のパーツをランダムに予算内で組む
+function randomParts(type: "ranged" | "melee"): Part[] {
+  const out: Part[] = [];
+  const kinds = ALL_KINDS.filter((k) => { const t = kindInfo(k).type; return t === "both" || t === type; }).sort(() => Math.random() - 0.5);
+  for (const k of kinds) {
+    const p = makePart(k, "C", Math.random);
+    if (equipCosts([...out, p]).reduce((a, c) => a + c, 0) <= SPECIAL_BUDGET) out.push(p);
+  }
   return out;
 }
 const PERS_KEYS = Object.keys(PERSONAS) as Personality[];
 
-// boost: スキルツリーの強化（プレイヤーのキャラは自分のツリー、敵は敵用のツリー）
-function applyData(build: ReturnType<typeof buildCharacter>, c: Pick<CharacterData, "personality" | "specialType" | "special" | "melee">, boost: Partial<Boost>) {
-  build.cfg.boost = boost;
+// parts: 必殺パーツ（予算内で型に合うものが効く）。boost: スキルツリーの強化（自分のツリー / 敵用のツリー）
+function applyData(build: ReturnType<typeof buildCharacter>, c: { personality: Personality; specialType: "ranged" | "melee" }, parts: Part[], boost: Partial<Boost>) {
+  const sp = buildSpecial(withinBudget(parts, c.specialType), c.specialType);
+  build.cfg.boost = sp.chargeDelta ? sumBoost([boost, { chargeNeed: sp.chargeDelta }]) : boost;
   build.cfg.personality = c.personality;
   build.cfg.specialType = c.specialType;
-  build.cfg.special = c.special;
-  build.cfg.melee = c.melee;
+  build.cfg.special = sp.special;
+  build.cfg.melee = sp.melee;
+  build.cfg.specialMod = sp.mod;
 }
 
 // 自分のキャラ: "" = 編集中のキャラ（絵が無ければ棒人間）/ "saved:id" = 保存したキャラ
@@ -588,13 +660,13 @@ const myBoost = () => boostOf(loadProfile().nodes);
 function buildPlayer(choice: string) {
   const saved = choice.startsWith("saved:") ? loadRoster().find((c) => c.id === choice.slice(6)) : undefined;
   if (saved) {
-    const b = buildCharacter(saved.name, saved.strokes, saved.special, params);
-    applyData(b, saved, myBoost());
+    const b = buildCharacter(saved.name, saved.strokes, [], params);
+    applyData(b, saved, partsById(saved.parts), myBoost());
     return b;
   }
   const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
-  const b = buildCharacter(editor.name || "あなた", mine, editor.special, params);
-  applyData(b, editor, myBoost());
+  const b = buildCharacter(editor.name || "あなた", mine, [], params);
+  applyData(b, editor, partsById(editor.parts), myBoost());
   return b;
 }
 
@@ -608,15 +680,14 @@ document.getElementById("startBattle")!.addEventListener("click", () => {
   let cpu: ReturnType<typeof buildCharacter>;
   const saved = v.startsWith("saved:") ? loadRoster().find((c) => c.id === v.slice(6)) : undefined;
   if (saved) {
-    cpu = buildCharacter(saved.name, saved.strokes, saved.special, params);
-    applyData(cpu, saved, myBoost()); // 自分の保存キャラ同士 → 同じ強化
+    cpu = buildCharacter(saved.name, saved.strokes, [], params);
+    applyData(cpu, saved, partsById(saved.parts), myBoost()); // 自分の保存キャラ同士 → 同じ強化
   } else {
     const name = v.slice(7);
-    cpu = buildCharacter(`CPU（${name}）`, SAMPLES[name](), randomSpecial(), params);
-    applyData(cpu, normalize({
-      name, personality: PERS_KEYS[Math.floor(Math.random() * PERS_KEYS.length)],
-      specialType: Math.random() < 0.5 ? "melee" : "ranged", special: cpu.cfg.special, melee: randomMelee(),
-    }), boostOf(randomTree(totalPoints(loadProfile())))); // CPU も自分と同じポイント数を、ランダムな枝に振る
+    cpu = buildCharacter(`CPU（${name}）`, SAMPLES[name](), [], params);
+    const specialType = Math.random() < 0.5 ? "melee" : "ranged";
+    applyData(cpu, { personality: PERS_KEYS[Math.floor(Math.random() * PERS_KEYS.length)], specialType }, randomParts(specialType),
+      boostOf(randomTree(totalPoints(loadProfile())))); // CPU も自分と同じポイント数を、ランダムな枝に振る
   }
   runBattle({
     player,
@@ -628,8 +699,9 @@ document.getElementById("startBattle")!.addEventListener("click", () => {
 });
 
 // --- 画面の移動（メイン ⇄ 各画面）。端末やブラウザの「戻る」でも1つ前に戻る ---
-type Screen = "home" | "story" | "make" | "free" | "transfer" | "tree";
-const SCREEN_TITLES: Record<Screen, string> = { home: "", story: "ストーリー", make: "キャラを作る", free: "自由バトル", transfer: "引き継ぎ", tree: "スキルツリー" };
+type Screen = "home" | "story" | "make" | "free" | "transfer" | "tree" | "parts";
+const SCREEN_TITLES: Record<Screen, string> = { home: "", story: "ストーリー", make: "キャラを作る", free: "自由バトル", transfer: "引き継ぎ", tree: "スキルツリー", parts: "必殺パーツ" };
+const partsEl = document.getElementById("partsScreen")!;
 const treeEl = document.getElementById("treeScreen")!;
 const homeEl = document.getElementById("home")!;
 const storyEl = document.getElementById("storyScreen")!;
@@ -648,6 +720,7 @@ function show(s: Screen) {
   storyEl.hidden = s !== "story";
   transferEl.hidden = s !== "transfer";
   treeEl.hidden = s !== "tree";
+  partsEl.hidden = s !== "parts";
   workspaceEl.hidden = s !== "make" && s !== "free";
   topbar.hidden = s === "home";
   screenTitle.textContent = SCREEN_TITLES[s];
@@ -655,6 +728,7 @@ function show(s: Screen) {
   if (s === "home") renderProfile();
   else if (s === "story") renderStory();
   else if (s === "tree") renderTree();
+  else if (s === "parts") renderParts();
   else if (s === "make") setView(view === "battle" ? "draw" : view);
   else if (s === "free") setView("battle");
   window.scrollTo(0, 0);
@@ -836,6 +910,83 @@ resetBtn.addEventListener("click", () => {
   renderTree();
 });
 
+// --- 必殺パーツ（持ち物）: 一覧・分解・振り直し・合成 ---
+let partFilter: "all" | "ranged" | "melee" | "both" = "all";
+let selectedPart: string | null = null;
+document.querySelectorAll<HTMLButtonElement>("[data-pf]").forEach((b) => b.addEventListener("click", () => {
+  partFilter = b.dataset.pf as typeof partFilter;
+  document.querySelectorAll("[data-pf]").forEach((o) => o.classList.toggle("on", o === b));
+  renderParts();
+}));
+// どれかのキャラ（編集中・保存済み）が付けているパーツ
+const equippedIds = () => new Set([...editor.parts, ...loadRoster().flatMap((c) => c.parts)]);
+
+function renderParts() {
+  const inv = loadInventory();
+  document.getElementById("invCount")!.textContent = String(inv.parts.length);
+  document.getElementById("invCap")!.textContent = String(INVENTORY_CAP);
+  document.getElementById("shards")!.textContent = String(inv.shards);
+  const eq = equippedIds();
+  const listEl = document.getElementById("partList")!;
+  listEl.innerHTML = "";
+  const shown = inv.parts.filter((p) => partFilter === "all" || kindInfo(p.kind).type === partFilter)
+    .sort((a, b) => rarityIndex(b.rarity) - rarityIndex(a.rarity) || kindInfo(a.kind).name.localeCompare(kindInfo(b.kind).name) || b.roll - a.roll);
+  if (!shown.length) listEl.textContent = "ありません。ストーリーで勝つと手に入ります。";
+  for (const p of shown) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.classList.toggle("sel", p.id === selectedPart);
+    b.appendChild(partChip(p, p.cost, eq.has(p.id) ? "装備中" : ""));
+    b.addEventListener("click", () => { selectedPart = p.id; renderParts(); });
+    listEl.appendChild(b);
+  }
+
+  // 選んだパーツの操作
+  const info = document.getElementById("partInfo")!;
+  info.innerHTML = "";
+  const p = inv.parts.find((x) => x.id === selectedPart);
+  if (!p) { info.textContent = "パーツをタップすると、分解・振り直し・合成ができます。"; return; }
+  info.appendChild(partChip(p, p.cost, eq.has(p.id) ? "装備中" : ""));
+  const desc = document.createElement("div");
+  desc.className = "note";
+  desc.textContent = kindInfo(p.kind).desc;
+  info.appendChild(desc);
+  const row = document.createElement("div");
+  row.className = "row";
+  const msg = document.createElement("div");
+  msg.className = "note";
+
+  const rr = document.createElement("button");
+  rr.textContent = `振り直し（かけら ${rerollCost(p.rarity)}）`;
+  rr.disabled = inv.shards < rerollCost(p.rarity);
+  rr.addEventListener("click", () => { if (reroll(p.id)) renderParts(); });
+
+  const dm = document.createElement("button");
+  dm.textContent = `分解（かけら +${RARITY_INFO[p.rarity].shards}）`;
+  dm.disabled = eq.has(p.id);
+  if (eq.has(p.id)) dm.title = "装備中は分解できません";
+  let armed = 0;
+  dm.addEventListener("click", () => {
+    if (!armed) { dm.textContent = "もう一度で分解"; armed = window.setTimeout(() => { armed = 0; renderParts(); }, 2500); return; }
+    clearTimeout(armed);
+    dismantle(p.id);
+    selectedPart = null;
+    renderParts();
+  });
+
+  const same = combinable(p.kind, p.rarity, eq).length;
+  const cb = document.createElement("button");
+  cb.textContent = p.rarity === "S" ? "合成（S は最高）" : `合成 ${same}/${COMBINE_COUNT}`;
+  cb.disabled = p.rarity === "S" || same < COMBINE_COUNT;
+  cb.addEventListener("click", () => {
+    const np = combine(p.kind, p.rarity, eq);
+    if (np) { selectedPart = np.id; renderParts(); }
+  });
+  row.append(rr, dm, cb);
+  info.append(row, msg);
+  if (eq.has(p.id)) msg.textContent = "装備中のパーツは分解・合成に使えません（振り直しはできます）。";
+}
+
 // --- ストーリー ---
 const storyCharSel = document.getElementById("storyChar") as HTMLSelectElement;
 const chaptersEl = document.getElementById("chapters")!;
@@ -893,7 +1044,7 @@ function renderStory() {
   }
 }
 
-function rewardHtml(r: Reward, stage: Stage): string {
+function rewardHtml(r: Reward, stage: Stage, drop: DropResult | null): string {
   const p = loadProfile();
   let h = `<div class="exp">経験値 +${r.exp}</div>`;
   if (r.levelsUp) h += `<div class="up">レベルアップ！ Lv ${p.level}</div>`;
@@ -902,14 +1053,16 @@ function rewardHtml(r: Reward, stage: Stage): string {
     const next = ALL_STAGES[ALL_STAGES.indexOf(stage) + 1];
     h += `<div>${next ? `次のステージ「${next.enemy}」が開きました` : "ここまでクリア！ 続きの章は準備中です"}</div>`;
   }
+  if (drop?.got.length) h += `<div class="drop"><div>パーツを手に入れた！</div>${drop.got.map((p) => partChip(p).outerHTML).join("")}</div>`;
+  if (drop?.shardsInstead) h += `<div>持ち物がいっぱいなので、かけら +${drop.shardsInstead}</div>`;
   return h;
 }
 
 function startStage(stage: Stage) {
   sfx.unlock();
   const player = buildPlayer(storyCharSel.value);
-  const cpu = buildCharacter(stage.enemy, stage.strokes(), stage.special, DEFAULT_PARAMS);
-  applyData(cpu, stage, boostOf(autoTree(stage.boostPoints, stage.prefer)));
+  const cpu = buildCharacter(stage.enemy, stage.strokes(), [], DEFAULT_PARAMS);
+  applyData(cpu, stage, enemyParts(stage), boostOf(autoTree(stage.boostPoints, stage.prefer)));
   runBattle({
     player,
     cpu,
@@ -918,7 +1071,10 @@ function startStage(stage: Stage) {
     sfx,
     cpuLevel: stage.ai,
     exitLabel: "ステージ選択へ",
-    onResult: (winner) => rewardHtml(applyStageResult(stage.no, stage.id, !!stage.boss, winner === 0), stage),
+    onResult: (winner) => {
+      const r = applyStageResult(stage.no, stage.id, !!stage.boss, winner === 0);
+      return rewardHtml(r, stage, winner === 0 ? dropParts(chapterOf(stage), !!stage.boss) : null);
+    },
   });
 }
 

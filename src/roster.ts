@@ -16,6 +16,7 @@ export interface CharacterData {
   specialType: "ranged" | "melee";
   special: EffectId[];
   melee: MeleeEffectId[];
+  parts: string[]; // 装備している必殺パーツの id（持ち物 inventory の中を指す。型に合うものだけ効く）
   thumb?: string; // 一覧用の小さな画像（data URL）
   savedAt: number;
   shapeVersion: number; // 形の性能の計算式の版（将来の変更に備えて記録）
@@ -34,7 +35,7 @@ export function loadRoster(): CharacterData[] {
   }
 }
 
-function writeRoster(list: CharacterData[]): boolean {
+export function writeRoster(list: CharacterData[]): boolean {
   try {
     localStorage.setItem(KEY, JSON.stringify(list));
     return true;
@@ -58,6 +59,7 @@ export function normalize(c: Partial<CharacterData>): CharacterData {
     specialType: c.specialType === "melee" ? "melee" : "ranged",
     special: c.special ?? [],
     melee: c.melee ?? [],
+    parts: Array.isArray(c.parts) ? c.parts.filter((x) => typeof x === "string") : [],
     thumb: c.thumb,
     savedAt: c.savedAt ?? Date.now(),
     shapeVersion: c.shapeVersion ?? SHAPE_VERSION,

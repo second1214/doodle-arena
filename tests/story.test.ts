@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { detect, DEFAULT_PARAMS } from "../src/detect";
-import { ALL_STAGES, isUnlocked } from "../src/story";
+import { ALL_STAGES, enemyParts, isUnlocked } from "../src/story";
+import { buildSpecial } from "../src/items";
 import { applyStageResult, expToNext, exportCode, importCode, loadProfile } from "../src/progress";
 import { createWorld, step } from "../src/sim/world";
 import { aiInput, createAi } from "../src/sim/ai";
@@ -64,7 +65,7 @@ describe("ストーリーの敵", () => {
     for (const st of ALL_STAGES) {
       const res = detect(st.strokes(), DEFAULT_PARAMS);
       const shape = fighterShape(res);
-      const cfg = { name: st.enemy, reach: shape.reach, hasHands: shape.hasHands, hasFeet: shape.hasFeet, special: st.special, specialType: st.specialType, melee: st.melee, boost: boostOf(autoTree(st.boostPoints, st.prefer)), personality: st.personality, traits: shape.traits };
+      const cfg = { name: st.enemy, reach: shape.reach, hasHands: shape.hasHands, hasFeet: shape.hasFeet, ...(() => { const b = buildSpecial(enemyParts(st), st.specialType); return { special: b.special, melee: b.melee, specialMod: b.mod }; })(), specialType: st.specialType, boost: boostOf(autoTree(st.boostPoints, st.prefer)), personality: st.personality, traits: shape.traits };
       const w = createWorld({ name: "p", reach: 0.8, hasHands: true, hasFeet: true, special: [] }, cfg, 7);
       const ais = [createAi(), createAi(st.ai)];
       while (w.winner === -1) step(w, [aiInput(w, 0, ais[0]), aiInput(w, 1, ais[1])]);

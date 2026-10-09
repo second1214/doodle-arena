@@ -59,14 +59,15 @@ export const EFFECTS: EffectDef[] = [
   { id: "meteor", name: "打ち上げ→落下", cost: 5, phase: "motion", apply: (s) => { s.meteor = true; } },
 ];
 
+// 同じ効果を複数付けたら、その数だけ重ねてかける（巨大×2 なら 9 倍の大きさ）。並び順には依らない
 export function composeSpecial(ids: EffectId[]): ProjSpec {
   const s: ProjSpec = { ...BASE_SPEC };
-  const chosen = EFFECTS.filter((e) => ids.includes(e.id));
+  const chosen = EFFECTS.flatMap((e) => ids.filter((x) => x === e.id).map(() => e));
   for (const phase of PHASE_ORDER) for (const e of chosen) if (e.phase === phase) e.apply(s);
-  s.tags = chosen.map((e) => e.id);
+  s.tags = EFFECTS.filter((e) => ids.includes(e.id)).map((e) => e.id);
   return s;
 }
 
 export function specialCost(ids: EffectId[]): number {
-  return EFFECTS.filter((e) => ids.includes(e.id)).reduce((a, e) => a + e.cost, 0);
+  return ids.reduce((a, id) => a + (EFFECTS.find((e) => e.id === id)?.cost ?? 0), 0);
 }
