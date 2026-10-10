@@ -89,6 +89,8 @@
       .share { width: 100%; margin-top: 10px; font-weight: 800; }
       .sharemsg { margin-top: 8px; padding: 10px 12px; border-radius: 12px; font-weight: 800; background: #d3f9d8; color: #1b5e20; }
       .sharemsg.ng { background: #ffe3e3; color: #8a1c1c; }
+      .sharetext { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; border-radius: 12px; border: 2px solid var(--line); padding: 8px; margin-top: 8px; background: #fff; color: #222; }
+      .sharetext.copied { border-color: #40c057; box-shadow: 0 0 0 3px #b2f2bb; }
       .sharebox.copied textarea { border-color: #40c057; box-shadow: 0 0 0 3px #b2f2bb; }
       .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 28px); transform: translateX(-50%); z-index: 50; padding: 14px 22px; border-radius: 999px; background: #2b2d42; color: #fff; font-weight: 800; font-size: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.25); animation: toast-in .2s ease-out; max-width: calc(100vw - 32px); text-align: center; }
       @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
@@ -458,16 +460,6 @@
         <div class="pts">スキルポイント <b id="pPoints">0</b></div>
       </div>
       <button id="shareBtn" class="share" type="button" data-noruby>📣 SNSよう じまんの ぶんを つくる</button>
-      <div id="shareBox" class="sharebox" hidden>
-        <div class="kidhint">📣 SNS用の じまんの ぶん</div>
-        <div class="note">①「📋 コピー」を おす → ② X・LINE・インスタ などを ひらく → ③ はりつける（文は なおしても いいよ）</div>
-        <textarea id="shareText" rows="8"></textarea>
-        <div class="row">
-          <button id="shareCopy" class="primary inline" type="button">📋 コピー</button>
-          <button id="shareSend" type="button" hidden>📤 おくる</button>
-        </div>
-        <div class="sharemsg" id="shareMsg" aria-live="polite" hidden></div>
-      </div>
       <div class="toast" id="toast" role="status" hidden></div>
       <div class="menu">
         <button class="big story" data-go="story"><b>📖 ストーリー</b><small>てきを たおして つよくなる</small></button>

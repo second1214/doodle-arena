@@ -1542,11 +1542,6 @@ function renderProfile() {
 }
 
 // --- じまんの文（拡散用）: ストーリーの進み具合とステータスから作って、コピー／共有 ---
-const shareBox = document.getElementById("shareBox")!;
-const shareTa = document.getElementById("shareText") as HTMLTextAreaElement;
-const shareMsg = document.getElementById("shareMsg")!;
-const shareSend = document.getElementById("shareSend") as HTMLButtonElement;
-shareSend.hidden = typeof navigator.share !== "function";
 function makeShareText(): string {
   const p = loadProfile();
   const parts = loadInventory().parts;
@@ -1558,7 +1553,6 @@ function makeShareText(): string {
     charName: strokes.length && editor.name ? editor.name : undefined,
   });
 }
-const shareCopyBtn = document.getElementById("shareCopy")!;
 const toastEl = document.getElementById("toast")!;
 let toastTimer = 0;
 // 画面の下に しばらく出る お知らせ（どの画面でも見える）
@@ -1568,38 +1562,79 @@ function toast(text: string) {
   clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => { toastEl.hidden = true; }, 2600);
 }
-function shareResult(ok: boolean, text: string) {
-  shareMsg.hidden = false;
-  shareMsg.className = `sharemsg${ok ? "" : " ng"}`;
-  shareMsg.textContent = text;
-  shareBox.classList.toggle("copied", ok);
-  if (ok) {
-    shareCopyBtn.textContent = "✅ コピーしたよ！";
-    setTimeout(() => { shareCopyBtn.textContent = "📋 コピー"; }, 2600);
+// じまんの文の窓（押すたびに 新しく作って 画面のまん中に出す。開くだけで、とじるのは「とじる」か 外側を おした時だけ）
+let shareModal: HTMLElement | null = null;
+function openShare() {
+  if (shareModal) return; // 2回 続けて 押されても 1つだけ
+  let text = "";
+  try { text = makeShareText(); } catch (e) { text = `文を つくれなかったよ（${(e as Error).message}）`; }
+  const modal = document.createElement("div");
+  modal.className = "modal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  shareModal = modal;
+  const close = () => { modal.remove(); shareModal = null; };
+  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.setAttribute("data-noruby", "");
+  const h = document.createElement("div");
+  h.className = "kidhint";
+  h.textContent = "📣 SNSよう じまんの ぶん";
+  const how = document.createElement("div");
+  how.className = "note";
+  how.textContent = "①「📋 コピー」を おす → ② X・LINE・インスタ などを ひらく → ③ はりつける（文は なおしても いいよ）";
+  const ta = document.createElement("textarea");
+  ta.className = "sharetext";
+  ta.rows = 8;
+  ta.value = text;
+  const msg = document.createElement("div");
+  msg.className = "sharemsg";
+  msg.hidden = true;
+  const row = document.createElement("div");
+  row.className = "row";
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "primary inline";
+  copy.textContent = "📋 コピー";
+  const done = (ok: boolean, t: string) => {
+    msg.hidden = false;
+    msg.className = `sharemsg${ok ? "" : " ng"}`;
+    msg.textContent = t;
+    ta.classList.toggle("copied", ok);
+    if (ok) copy.textContent = "✅ コピーしたよ！";
+    toast(t);
+  };
+  copy.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(ta.value);
+    } catch {
+      // コピーの許可が無いブラウザ: 文を選んで 昔のやり方でコピー
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      if (!document.execCommand("copy")) { done(false, "コピー できなかったよ。文を ながおしして「コピー」を えらんでね"); return; }
+    }
+    done(true, "📋 クリップボードに コピーしたよ！ SNS に はりつけてね");
+  });
+  row.appendChild(copy);
+  if (typeof navigator.share === "function") {
+    const send = document.createElement("button");
+    send.type = "button";
+    send.textContent = "📤 おくる";
+    send.addEventListener("click", () => { navigator.share({ text: ta.value }).catch(() => { /* やめた時など */ }); });
+    row.appendChild(send);
   }
-  toast(text);
+  const cl = document.createElement("button");
+  cl.type = "button";
+  cl.textContent = "とじる";
+  cl.addEventListener("click", close);
+  row.appendChild(cl);
+  box.append(h, how, ta, row, msg);
+  modal.appendChild(box);
+  document.body.appendChild(modal);
 }
-document.getElementById("shareBtn")!.addEventListener("click", () => {
-  shareBox.hidden = !shareBox.hidden;
-  if (!shareBox.hidden) {
-    try { shareTa.value = makeShareText(); } catch (e) { shareTa.value = `文を つくれなかったよ（${(e as Error).message}）`; }
-    toast("📣 じまんの ぶんを つくったよ。下の「📋 コピー」を おしてね");
-    shareMsg.hidden = true;
-    shareBox.classList.remove("copied");
-    setTimeout(() => shareBox.scrollIntoView({ block: "center" }), 50);
-  }
-});
-shareCopyBtn.addEventListener("click", async () => {
-  try {
-    await navigator.clipboard.writeText(shareTa.value);
-  } catch {
-    // コピーの許可が無いブラウザ: 文を選んで 昔のやり方でコピー
-    shareTa.select();
-    if (!document.execCommand("copy")) { shareResult(false, "コピー できなかったよ。文を ながおしして「コピー」を えらんでね"); return; }
-  }
-  shareResult(true, "📋 クリップボードに コピーしたよ！ SNS に はりつけてね");
-});
-shareSend.addEventListener("click", () => { navigator.share({ text: shareTa.value }).catch(() => { /* やめた時など */ }); });
+document.getElementById("shareBtn")!.addEventListener("click", openShare);
 
 // --- スキルツリー: 中心から7本の枝。丸をタップ → 説明 → 取得 ---
 const SVG_NS = "http://www.w3.org/2000/svg";
