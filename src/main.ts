@@ -25,7 +25,8 @@ import { AttractHeader } from "./battle/attract";
 import { ALL_STAGES, CHAPTERS, chapterOf, enemyParts, isUnlocked, UPCOMING, type Stage } from "./story";
 
 const STORAGE_KEY = "doodle-arena:proto1";
-const COLORS = ["#222222", "#e03131", "#1c7ed6", "#f2c200", "#2f9e44", "#ae3ec9", "#f08c00"];
+// よく使う色（黒・白・灰・茶・はだ・赤・もも・だいだい・黄・黄緑・緑・水色・青・むらさき）。ほかの色は「🌈 すきな色」と「💧 スポイト」で
+const COLORS = ["#222222", "#ffffff", "#868e96", "#8b5a2b", "#f5c6a0", "#e03131", "#f783ac", "#f08c00", "#f2c200", "#94d82d", "#2f9e44", "#4dabf7", "#1c7ed6", "#ae3ec9"];
 const HAND_COLORS = ["#e8590c", "#f76707", "#d9480f", "#fd7e14", "#c2255c"];
 const FOOT_COLORS = ["#1c7ed6", "#1971c2", "#3b5bdb", "#0c8599", "#5f3dc4"];
 const TORSO_COLOR = "#9aa0a6";
@@ -294,6 +295,7 @@ let photoDown = false;
 canvas.addEventListener("pointerdown", (e) => {
   if (view !== "draw") return;
   const [x, y] = toCanvas(e);
+  if (picking && layer === "draw" && !(photo && photo.phase !== "done")) { pickColorAt(x, y); return; }
   if (photo && photo.phase !== "done") { canvas.setPointerCapture(e.pointerId); photoDown = true; photoPointer("down", x, y); return; }
   if (filling && layer === "draw") {
     commit({ color, width: 0, points: [Math.round(x), Math.round(y)], fill: true });
@@ -356,18 +358,60 @@ document.querySelectorAll<HTMLButtonElement>(".tabs button").forEach((b) => b.ad
 
 const palette = document.getElementById("palette")!;
 const eraserBtn = document.getElementById("eraser")!;
-for (const c of COLORS) {
-  const b = document.createElement("button");
-  b.className = "swatch" + (c === color ? " on" : "");
-  b.style.background = c;
-  b.setAttribute("aria-label", c);
-  b.addEventListener("click", () => {
-    color = c;
-    erasing = false;
-    eraserBtn.classList.remove("on");
-    palette.querySelectorAll(".swatch").forEach((s) => s.classList.toggle("on", s === b));
-  });
-  palette.appendChild(b);
+const RECENT_KEY = "doodle-arena:recentColors";
+let recentColors: string[] = readJson<string[]>(RECENT_KEY, []).filter((c) => /^#[0-9a-f]{6}$/i.test(c)).slice(0, 8);
+let picking = false; // 💧 スポイト: 次に キャンバスを タップした所の色を とる
+function setColor(c: string, remember = false) {
+  color = c.toLowerCase();
+  erasing = false;
+  eraserBtn.classList.remove("on");
+  if (remember && !COLORS.includes(color)) {
+    recentColors = [color, ...recentColors.filter((x) => x !== color)].slice(0, 8);
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(recentColors)); } catch { /* 無視 */ }
+  }
+  renderPalette();
+}
+function renderPalette() {
+  palette.innerHTML = "";
+  const sw = (c: string) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "swatch" + (c === color && !erasing ? " on" : "");
+    b.style.background = c;
+    b.setAttribute("aria-label", c);
+    b.addEventListener("click", () => setColor(c));
+    palette.appendChild(b);
+  };
+  for (const c of COLORS) sw(c);
+  for (const c of recentColors) sw(c); // 前に えらんだ色
+  // 🌈 すきな色（どんな色でも）
+  const any = document.createElement("label");
+  any.className = "swatch any" + (!COLORS.includes(color) && !erasing ? " on" : "");
+  any.title = "すきな色";
+  any.style.setProperty("--cur", color);
+  any.innerHTML = `<span>🌈</span><input type="color" aria-label="すきな色">`;
+  const inp = any.querySelector("input")!;
+  inp.value = /^#[0-9a-f]{6}$/i.test(color) ? color : "#222222";
+  inp.addEventListener("change", () => setColor(inp.value, true));
+  palette.appendChild(any);
+  // 💧 スポイト（絵や写真から 色を とる）
+  const pk = document.createElement("button");
+  pk.type = "button";
+  pk.className = "swatch pick" + (picking ? " on" : "");
+  pk.title = "スポイト: 絵や写真の 色を とる";
+  pk.textContent = "💧";
+  pk.addEventListener("click", () => { picking = !picking; renderPalette(); resultEl.textContent = picking ? "💧 色を とりたい所を タップしてね" : ""; });
+  palette.appendChild(pk);
+}
+renderPalette();
+// スポイト: いま 見えている絵（写真も）の その場所の色
+function pickColorAt(x: number, y: number) {
+  const c = renderStrokes(strokes).getContext("2d")!.getImageData(Math.max(0, Math.min(CANVAS_SIZE - 1, Math.round(x))), Math.max(0, Math.min(CANVAS_SIZE - 1, Math.round(y))), 1, 1).data;
+  picking = false;
+  if (c[3] < 20) { renderPalette(); resultEl.textContent = "そこには 色が ないよ"; return; }
+  const hx = (v: number) => v.toString(16).padStart(2, "0");
+  setColor(`#${hx(c[0])}${hx(c[1])}${hx(c[2])}`, true);
+  resultEl.textContent = "💧 色を とったよ";
 }
 document.querySelectorAll<HTMLButtonElement>("[data-width]").forEach((b) =>
   b.addEventListener("click", () => {
@@ -386,6 +430,7 @@ eraserBtn.addEventListener("click", () => {
   fillBtn.classList.remove("on");
   erasing = !erasing;
   eraserBtn.classList.toggle("on", erasing);
+  renderPalette();
 });
 document.getElementById("undo")!.addEventListener("click", () => {
   const list = layer === "limb" ? marks : strokes;
@@ -461,6 +506,7 @@ function syncPhoto() {
       : photoMode === "color" ? "色の こまかさを かえられるよ。形を なおしたい時は「✏️ きりぬきを なおす」。" : "白い紙に こい線で かいた絵 むけ。うすい線が 消えたら 右へ。ゴミが 多かったら 左へ。")
     : PHOTO_TEXT[ph][1];
   document.getElementById("photoBrushRow")!.hidden = ph !== "fix";
+  document.getElementById("photoAllRow")!.hidden = ph !== "box";
   document.getElementById("photoBgRow")!.hidden = ph !== "fix";
   document.getElementById("photoSensRow")!.hidden = ph !== "done" || photoMode === "photo";
   document.getElementById("photoSensName")!.textContent = photoMode === "color" ? "こまかさ" : "うすい線も ひろう";
@@ -627,6 +673,21 @@ for (const [id, m] of [["pmPhoto", "photo"], ["pmColor", "color"], ["pmLine", "l
 document.getElementById("pbAdd")!.addEventListener("click", () => { photoBrush = "add"; syncPhoto(); });
 document.getElementById("pbDel")!.addEventListener("click", () => { photoBrush = "del"; syncPhoto(); });
 document.getElementById("pbAuto")!.addEventListener("click", () => { if (photo?.px) { photo.mask = segmentSubject(photo.px, Number(photoBg.value)); render(); } });
+// 切りぬかない: かこんだ四角を まるごと（写真の形のまま）
+document.getElementById("pbRect")!.addEventListener("click", () => {
+  if (!photo?.px) return;
+  const n = photo.px.width, m = new Uint8Array(n * n);
+  for (let i = 0; i < n * n; i++) m[i] = photo.px.data[i * 4 + 3] ? 1 : 0;
+  photo.mask = m;
+  render();
+});
+// 写真ぜんぶ: かこまずに 写真全体を使う
+document.getElementById("photoAll")!.addEventListener("click", () => {
+  if (!photo) return;
+  photo.rect = { x: 0, y: 0, w: photo.img.naturalWidth, h: photo.img.naturalHeight };
+  photo.mask = null;
+  setPhotoPhase(photoMode !== "line" ? "fix" : "done");
+});
 photoNext.addEventListener("click", () => { if (photo?.phase === "fix") setPhotoPhase("done"); else endPhoto(true); });
 photoBack.addEventListener("click", () => {
   if (!photo) return;
@@ -2124,6 +2185,9 @@ show("home");
 onImagesReady(() => { committedFor = null; render(); scheduleEditBar(); });
 void preloadImages([...strokes, ...loadRoster().flatMap((c) => c.strokes)]);
 scheduleEditBar();
+
+// 版（古い版が のこっていないか 確かめる用）
+document.getElementById("buildInfo")!.textContent = `ばん: ${typeof __BUILD__ === "string" ? __BUILD__ : "テスト"}`;
 
 // 漢字に ふりがな（メイン画面の下のボタンで なし にできる）
 installFurigana();
