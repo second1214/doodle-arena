@@ -6,7 +6,7 @@ const DICT_TEXT = `
 中だ:なか 中ま:なか 速:はや 描:か 弾:たま 引:ひ 出:で 出し:だ 出す:だ 出さ:だ 取:と 体力:たいりょく 直:なお 回避:かいひ 長:なが 吹:ふ 棒人間:ぼうにんげん 動:うご 使:つか 振:ふ
 転:ころ 名無:なな 強:つよ 継:つ 代:か 手足:てあし 線:せん 構:かま 回復:かいふく 回:かい 回せ:まわ 回っ:まわ 回る:まわ 回す:まわ 相手:あいて 作:つく 分解:ぶんかい 全部消:ぜんぶけ
 命中:めいちゅう 分:ぶん 分か:わ 分け:わ 門番:もんばん 防御中:ぼうぎょちゅう 勝:しょう 勝ち:か 勝つ:か 勝て:か 勝っ:か 自動:じどう 合成:ごうせい 付:つ 保存:ほぞん 攻撃:こうげき 当:あ
-倍:ばい 文字:もじ 文:ぶん 用:よう 白:しろ 左:ひだり 写真:しゃしん 巨大:きょだい 体当:たいあ 大王:だいおう 章:しょう 竜:りゅう 将軍:しょうぐん 与:よ 与え:あた 溜:た 受:う 入:はい 入れ:い 名前:なまえ 合:あ 同:おな 押:お 突:つ 塗:ぬ
+倍:ばい 文字:もじ 文:ぶん 開:ひら 用:よう 白:しろ 左:ひだり 写真:しゃしん 巨大:きょだい 体当:たいあ 大王:だいおう 章:しょう 竜:りゅう 将軍:しょうぐん 与:よ 与え:あた 溜:た 受:う 入:はい 入れ:い 名前:なまえ 合:あ 同:おな 押:お 突:つ 塗:ぬ
 少:すこ 必要:ひつよう 遅:おそ 空:そら 殴:なぐ 片手:かたて 連打:れんだ 無:な 第:だい 王:おう 魔女:まじょ 白紙:はくし 防御成功:ぼうぎょせいこう 下:した 下げ:さ 物:もの 近接:きんせつ
 装備:そうび 端末:たんまつ 画面:がめん 間:あいだ 止:と 上:うえ 上が:あ 上げ:あ 近:ちか 遠:とお 投:な 時間:じかん 技:わざ 消費:しょうひ 経験値:けいけんち 装備中:そうびちゅう 戦:たたか
 検知:けんち 書:か 形:かたち 丸:まる 外:そと 外し:はず 外す:はず 外れ:はず 大技:おおわざ 今:いま 遠距離:えんきょり 編集中:へんしゅうちゅう 操作:そうさ 胴体:どうたい 所:ところ 何:なに 戻:もど
@@ -89,12 +89,19 @@ function fix(node: Text) {
   const v = node.nodeValue;
   if (!v || !KANJI.test(v)) return;
   const parent = node.parentElement;
-  if (!parent || parent.closest("ruby,script,style,textarea,[data-noruby]")) return;
-  if (KANA_ONLY.has(parent.tagName) || parent instanceof SVGElement) { node.nodeValue = toKana(v); return; }
+  // 付け終わった所（.furi）の中は二度と見ない。辞書に無い漢字は そのまま残るので、見直すと 付け直しが終わらなくなる（固まる）
+  if (!parent || parent.closest(".furi,ruby,script,style,textarea,[data-noruby]")) return;
+  if (KANA_ONLY.has(parent.tagName) || parent instanceof SVGElement) {
+    const k = toKana(v);
+    if (k !== v) node.nodeValue = k; // 同じ文を入れ直すと また見張りが動いて 終わらない
+    return;
+  }
   if (SKIP.has(parent.tagName)) return;
+  const pieces = segment(v);
+  if (!pieces.some(([, r]) => r)) return; // 読める漢字が無ければ 何もしない
   // 1つの span にまとめる（並べ方が grid / flex の箱の中でも、文がばらばらの項目にならないように）
   const frag = document.createElement("span");
-  for (const [t, r] of segment(v)) {
+  for (const [t, r] of pieces) {
     if (!r) { frag.appendChild(document.createTextNode(t)); continue; }
     const ruby = document.createElement("ruby");
     ruby.append(t);

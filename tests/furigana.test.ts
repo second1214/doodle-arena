@@ -12,12 +12,11 @@ async function visibleKanji(): Promise<{ run: string; after: string; where: stri
   walk("server/src"); // サーバーから届く文（エラーなど）も画面に出る
   const out: { run: string; after: string; where: string }[] = [];
   for (const f of files) {
-    let s = fs.readFileSync(f, "utf8");
-    let texts: string[];
-    if (f.endsWith(".ts")) {
-      s = s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/[^\n]*/g, "$1");
-      texts = [...s.matchAll(/"([^"\n]*)"|`([^`]*)`|'([^'\n]*)'/g)].map((m) => m[1] ?? m[2] ?? m[3] ?? "");
-    } else texts = [s.replace(/<!--[\s\S]*?-->/g, "").replace(/<style>[\s\S]*?<\/style>/g, "")];
+    const s = fs.readFileSync(f, "utf8");
+    // コメント以外の全部の文字を見る（文字列の中に文字列が入れ子になった所も見落とさないように）
+    const texts = f.endsWith(".ts")
+      ? [s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|\s)\/\/[^\n]*/g, "$1")]
+      : [s.replace(/<!--[\s\S]*?-->/g, "").replace(/<style>[\s\S]*?<\/style>/g, "")];
     for (const t of texts) for (const m of t.matchAll(/[一-鿿々]+/g)) out.push({ run: m[0], after: t.slice(m.index! + m[0].length, m.index! + m[0].length + 3), where: f });
   }
   return out;
