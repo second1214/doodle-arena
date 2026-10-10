@@ -53,5 +53,12 @@ jobs:
           curl -fsS "$API/chars/random?tier=0" > /dev/null
           curl -fsS "$API/ranking?tier=0" > /dev/null
           # ゲームの公開ページから呼べるか（ブラウザが見る CORS の許可）
-          curl -fsS -D - -o /dev/null -H "Origin: https://second1214.github.io" "$API/health" | grep -i "access-control-allow-origin: https://second1214.github.io"
-          curl -fsS -D - -o /dev/null -H "Origin: https://rakugaki-arena.pages.dev" "$API/health" | grep -i "access-control-allow-origin: https://rakugaki-arena.pages.dev"
+          # 入れかえ直後は 古い版が 返ることがあるので、新しい設定が 届くまで 何回か 待つ
+          for o in https://second1214.github.io https://rakugaki-arena.pages.dev; do
+            ok=0
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              if curl -fsS -D - -o /dev/null -H "Origin: $o" "$API/health" | grep -qi "access-control-allow-origin: $o"; then ok=1; break; fi
+              sleep 10
+            done
+            [ $ok = 1 ] || { echo "CORS NG: $o"; exit 1; }
+          done

@@ -405,6 +405,8 @@
       .pop.recoil { font-size: 15px; color: #ff8787; -webkit-text-stroke: 1.5px #3a0000; }
       .pop.thud { font-size: 30px; color: #fff; -webkit-text-stroke: 2.5px #5a3b12; }
       .pop.thud.big { font-size: 52px; }
+      .movebar { background: #fff3bf; border: 2px solid #fab005; border-radius: 16px; padding: 10px 12px; margin: 4px 0 10px; display: grid; gap: 8px; font-weight: 700; }
+      .movebar button { font-weight: 800; }
       .photobar { position: fixed; left: 8px; right: 8px; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); z-index: 30; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 18px; background: var(--panel); border: 2px solid var(--accent); box-shadow: 0 8px 24px rgba(0,0,0,.2); }
       .photobar span { flex: 1; font-weight: 800; font-size: 13px; min-width: 0; }
       .photobar button { white-space: nowrap; }
@@ -448,6 +450,7 @@
       <h1 id="screenTitle"></h1>
     </div>
     <section id="home">
+      <div class="movebar" id="moveBar" hidden></div>
       <div class="hero" aria-label="CPU どうしの たたかい（自動で流れます）">
         <div class="hero-view" id="heroView"></div>
         <div class="hero-shade"></div>

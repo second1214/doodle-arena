@@ -1,7 +1,7 @@
 // 拡散用の文（SNS などに貼る じまんの文）。ストーリーの進み具合とステータスから作る。DOM 非依存。
 import type { Chapter } from "./story";
 
-export const GAME_URL = "https://second1214.github.io/doodle-arena/";
+export const GAME_URL = "https://rakugaki-arena.pages.dev/";
 export const HASHTAG = "#らくがきアリーナ";
 
 export interface ShareInput {

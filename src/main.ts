@@ -2251,6 +2251,52 @@ onImagesReady(() => { committedFor = null; render(); scheduleEditBar(); });
 void preloadImages([...strokes, ...loadRoster().flatMap((c) => c.strokes)]);
 scheduleEditBar();
 
+// --- 引っこし: 前のアドレス（github.io）→ 新しいアドレス（rakugaki-arena.pages.dev）。
+// ブラウザの保存はアドレスごとに別なので、データ（キャラ・レベルなど）は 引き継ぎコードで 運ぶ ---
+const NEW_HOME = "https://rakugaki-arena.pages.dev";
+const OLD_HOME = "https://second1214.github.io";
+function setupMove() {
+  const bar = document.getElementById("moveBar")!;
+  const btn = (label: string, cls: string, f: () => void) => { const b = document.createElement("button"); b.type = "button"; b.className = cls; b.textContent = label; b.addEventListener("click", f); return b; };
+  if (location.origin === OLD_HOME) {
+    // 前のアドレス: データを コピーして 新しいアドレスへ
+    const t = document.createElement("div");
+    t.textContent = "🏠 らくがきアリーナは あたらしい アドレスに ひっこしたよ: rakugaki-arena.pages.dev";
+    bar.append(t, btn("🚚 データを もって ひっこす（コピーして ひらく）", "primary", async () => {
+      try {
+        const code = await exportCode();
+        await navigator.clipboard.writeText(code);
+        toast("🚚 データを コピーしたよ。あたらしい アドレスで「はりつけ」してね");
+        setTimeout(() => { location.href = `${NEW_HOME}/?from=old`; }, 900);
+      } catch {
+        toast("コピー できなかったよ。「ひきつぎ」で コードを つくって うつしてね");
+        show("transfer");
+      }
+    }));
+    bar.hidden = false;
+    return;
+  }
+  // 新しいアドレス: まだ データが 無い時（または 前のアドレスから 来た時）は、はりつけて うつせる
+  const empty = !loadRoster().length && loadProfile().level <= 1 && !Object.keys(loadStory().cleared).length;
+  if (location.origin === NEW_HOME && (empty || new URLSearchParams(location.search).has("from"))) {
+    const t = document.createElement("div");
+    t.textContent = "🚚 前の アドレス（github.io）で あそんでいた？ そこで「データを もって ひっこす」を おしてから、ここに はりつけてね";
+    const ta = document.createElement("textarea");
+    ta.className = "sharetext";
+    ta.rows = 3;
+    ta.placeholder = "ここを ながおしして「ペースト」";
+    bar.append(t, ta, btn("🚚 データを うつす", "primary", async () => {
+      try {
+        const n = await importCode(ta.value);
+        toast(`🚚 ${n}こ うつしたよ！`);
+        setTimeout(() => { location.href = `${NEW_HOME}/`; }, 900);
+      } catch (e) { toast(`うつせなかったよ（${(e as Error).message}）`); }
+    }), btn("とじる", "", () => { bar.hidden = true; }));
+    bar.hidden = false;
+  }
+}
+setupMove();
+
 // 版（古い版が のこっていないか 確かめる用）
 const BUILD = typeof __BUILD__ === "string" ? __BUILD__ : "テスト";
 document.getElementById("buildInfo")!.textContent = `ばん: ${BUILD}`;
