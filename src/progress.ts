@@ -1,10 +1,10 @@
 // プレイヤーの成長（レベル・経験値・スキルポイント）とストーリーの進み具合。ブラウザ内に保存する。
 // 保存形式には版番号 v を付け、読み込み時に古い形から直す。
-import { canTake, isValidTree, legacyCost, nodeById, spentOf } from "./tree";
+import { canTake, isValidTree, legacyCost, nodeById, spentOf, TREE_CAP } from "./tree";
 const PROFILE_KEY = "doodle-arena:profile";
 const STORY_KEY = "doodle-arena:story";
 
-export const LEVEL_CAP = 40;
+export const LEVEL_CAP = 60; // ツリーの上限 TREE_CAP に届くように（レベル59ぶん＋ボス初撃破5）
 
 export interface Profile {
   v: 1;
@@ -45,7 +45,7 @@ export function loadProfile(): Profile {
   const out: Profile = { v: 1, level: Math.min(LEVEL_CAP, Math.max(1, Math.floor(num(p?.level, 1)))), exp: num(p?.exp, 0), points: Math.floor(num(p?.points, 0)), nodes: [] };
   const nodes = Array.isArray(p?.nodes) ? p.nodes.filter((x): x is string => typeof x === "string") : [];
   // ツリーの形が変わって知らないノードや飛ばし取りがあれば、全部払い戻して振り直してもらう
-  if (isValidTree(nodes)) out.nodes = nodes;
+  if (isValidTree(nodes) && spentOf(nodes) <= TREE_CAP) out.nodes = nodes;
   else out.points += nodes.reduce((a, id) => a + (nodeById(id)?.cost ?? legacyCost(id)), 0);
   return out;
 }
@@ -56,7 +56,7 @@ export const totalPoints = (p: Profile) => p.points + spentOf(p.nodes);
 export function takeNode(id: string): boolean {
   const p = loadProfile();
   const n = nodeById(id);
-  if (!n || !canTake(id, p.nodes) || p.points < n.cost) return false;
+  if (!n || !canTake(id, p.nodes) || p.points < n.cost || spentOf(p.nodes) + n.cost > TREE_CAP) return false;
   p.nodes.push(id);
   p.points -= n.cost;
   return saveProfile(p);

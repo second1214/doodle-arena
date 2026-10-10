@@ -10,7 +10,7 @@ import { PERSONAS } from "./sim/ai";
 import { sumBoost, type Boost } from "./sim/stats";
 import { ALL_KINDS, buildSpecial, equipCosts, extraText, fitsType, hashStr, kindIcon, kindInfo, mainText, makePart, seededRnd, RARITY_INFO, rarityIndex, SPECIAL_BUDGET, type BuiltSpecial, type Part, type PartKind } from "./items";
 import { combinable, combine, COMBINE_COUNT, dismantle, dropParts, INVENTORY_CAP, loadInventory, migrateToParts, reroll, rerollCost, type DropResult } from "./inventory";
-import { autoTree, boostOf, BRANCHES, bridges, canTake, isRevealed, masteredBranches, nodeById, nodeId, randomTree, spentOf, talents, TREE_TOTAL, type ShapeFlags } from "./tree";
+import { autoTree, boostOf, BRANCHES, bridges, canTake, isRevealed, masteredBranches, nodeById, nodeId, randomTree, spentOf, talents, TREE_CAP, TREE_TOTAL, type ShapeFlags } from "./tree";
 import type { Personality } from "./sim/world";
 import { deleteCharacter, loadDraft, loadRoster, normalize, saveCharacter, saveDraft, thumbnail, writeRoster, type CharacterData } from "./roster";
 import { applyStageResult, expToNext, exportCode, importCode, LEVEL_CAP, loadProfile, loadStory, requestPersist, resetTree, takeNode, totalPoints, type Reward } from "./progress";
@@ -861,7 +861,8 @@ function renderProfile() {
   (document.getElementById("pExpBar") as HTMLElement).style.width = max ? "100%" : `${((100 * p.exp) / need).toFixed(1)}%`;
   document.getElementById("pExp")!.textContent = max ? "最大レベル" : `経験値 ${p.exp} / ${need}（次のレベルまで ${need - p.exp}）`;
   document.getElementById("pPoints")!.textContent = String(p.points);
-  document.getElementById("treeHint")!.textContent = p.points > 0 ? `ポイント ${p.points} を使えます` : "ポイントで強くなる";
+  const usable = Math.min(p.points, TREE_CAP - spentOf(p.nodes));
+  document.getElementById("treeHint")!.textContent = usable > 0 ? `ポイント ${usable} を使えます` : spentOf(p.nodes) >= TREE_CAP ? "上限まで育った！" : "ポイントで強くなる";
 }
 
 // --- スキルツリー: 中心から7本の枝。丸をタップ → 説明 → 取得 ---
@@ -898,7 +899,7 @@ function boostLines(b: Partial<Boost>): string[] {
 function renderTree() {
   const p = loadProfile();
   document.getElementById("tPoints")!.textContent = String(p.points);
-  document.getElementById("tSpent")!.textContent = `使用 ${spentOf(p.nodes)} ／ 全部とるには ${TREE_TOTAL}`;
+  document.getElementById("tSpent")!.textContent = `使用 ${spentOf(p.nodes)} ／ 上限 ${TREE_CAP}（全部で ${TREE_TOTAL}・ぜんぶは取れないよ）`;
   treeSvg.innerHTML = "";
   const el = (tag: string, attrs: Record<string, string | number>, parent: Element = treeSvg) => {
     const e = document.createElementNS(SVG_NS, tag);
@@ -1005,6 +1006,7 @@ function renderTree() {
     if (owned) row.textContent = "取得済み";
     else if (n.excludes && p.nodes.includes(n.excludes)) row.textContent = "もう片方を えらんだよ（振り直しで えらびなおせる）";
     else if (!can) row.textContent = n.kind === "bridge" ? "となりの枝の ★を 両方 とると ひらくよ" : "1つ内側を先に取ってください";
+    else if (spentOf(p.nodes) + n.cost > TREE_CAP) row.textContent = `上限（${TREE_CAP}）を こえるので 取れません。振り直して ほかの組み合わせも ためしてね`;
     else {
       const btn = document.createElement("button");
       btn.className = "primary inline";

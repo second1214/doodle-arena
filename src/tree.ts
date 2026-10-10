@@ -126,6 +126,8 @@ function label(key: string) { return BRANCHES.find((b) => b.key === key)?.label 
 const BY_ID = new Map(NODES.map((n) => [n.id, n]));
 export const nodeById = (id: string) => BY_ID.get(id);
 export const TREE_TOTAL = NODES.filter((n) => n.kind !== "fork").reduce((a, n) => a + n.cost, 0) + BRANCHES.length * 2; // 分かれ道は片方だけ
+// ツリーに使えるポイントの上限（全部の約6割）。多く取れるが全部は取れない＝どこを伸ばすかで個性が出る
+export const TREE_CAP = 60;
 export const talents = () => NODES.filter((n) => n.kind === "talent");
 export const bridges = () => NODES.filter((n) => n.kind === "bridge");
 
@@ -193,7 +195,7 @@ export function masteredBranches(owned: string[]): Branch[] {
 // 敵や CPU 用: 好みの枝の順に、ポイントを使い切るまで手前から取る（分かれ道は前の方。組み合わせ技も届けば取る＝決まった結果）
 export function autoTree(points: number, prefer: string[]): string[] {
   const owned: string[] = [];
-  let left = points;
+  let left = Math.min(points, TREE_CAP);
   for (let guard = 0; guard < 300 && left > 0; guard++) {
     let took = false;
     for (const key of prefer) {
