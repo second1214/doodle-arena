@@ -6,7 +6,7 @@ export interface Snapshot {
   fmt: 1;
   ver: { shape: number; detect: number; sim: number; tree: number };
   name: string;
-  strokes: { color: string; width: number; points: number[]; fill?: boolean }[];
+  strokes: { color: string; width: number; points: number[]; fill?: boolean; img?: string; mask?: string; timg?: string }[];
   marks?: { color: string; width: number; points: number[] }[]; // 手足レイヤー（color は hand / foot / erase。検知の版 2 から）
   detectParams: Record<string, number>;
   personality: string;
@@ -24,6 +24,8 @@ export function thumbStrokes(strokes: Stroke[] | Snapshot["strokes"], budget = 7
   const total = strokes.reduce((a, s) => a + s.points.length, 0);
   const step = Math.max(1, Math.ceil(total / budget));
   return strokes.map((s) => {
+    // 写真は 小さい方（timg）だけを 一覧に使う
+    if (s.img) return { color: s.color, width: s.width, points: [...s.points], img: s.timg ?? s.img, mask: s.mask };
     if (s.fill || s.points.length <= 4) return { ...s, points: [...s.points] };
     const pts: number[] = [];
     for (let i = 0; i < s.points.length; i += 2 * step) pts.push(s.points[i], s.points[i + 1]);

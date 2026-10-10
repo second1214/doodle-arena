@@ -63,6 +63,17 @@ describe("オンラインのサーバー", () => {
     expect(bad.status).toBe(400);
   });
 
+  it("写真をそのまま貼った線も公開でき、一覧には小さい写真を使う。こわれた写真は弾く", async () => {
+    const photo = { color: "#000000", width: 0, points: [40, 40, 400, 420], img: "data:image/jpeg;base64,/9j/AAAA", mask: "2x2:0,4", timg: "data:image/jpeg;base64,/9j/BB" };
+    const r = await call("POST", "/chars", { owner: OWNER, snap: { ...snap(), strokes: [photo] } });
+    expect(r.status).toBe(200);
+    const g = await call("GET", `/chars/${r.body.id}`);
+    expect(g.body.char.snap.strokes[0].img).toBe(photo.img);
+    expect(g.body.char.thumb[0].img).toBe(photo.timg);
+    const bad = await call("POST", "/chars", { owner: OWNER, snap: { ...snap(), strokes: [{ ...photo, img: "javascript:alert(1)" }] } });
+    expect(bad.status).toBe(400);
+  });
+
   it("名前の禁止語・連絡先は弾く（書き方の違いもそろえて調べる）", async () => {
     for (const bad of ["シネ", "ｂａｋａ", "ば か", "090-1234-5678", "line id abc", "a@b.jp"]) expect(hasNgWord(bad)).toBe(true);
     for (const ok of ["ゆうしゃ", "かすてら", "ばかりマン", "スーパーhero", "はげしいドラゴン", "せんぷうき"]) expect(hasNgWord(ok)).toBe(false);

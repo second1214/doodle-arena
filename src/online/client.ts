@@ -77,7 +77,7 @@ export function makeSnapshot(build: CharacterBuild, name: string, strokes: Strok
     fmt: 1,
     ver: { shape: SHAPE_VERSION, detect: DETECT_VERSION, sim: SIM_VERSION, tree: TREE_VERSION },
     name,
-    strokes: strokes.map((s) => ({ color: s.color, width: s.width, points: [...s.points], ...(s.fill ? { fill: true } : {}) })),
+    strokes: strokes.map((s) => ({ color: s.color, width: s.width, points: [...s.points], ...(s.fill ? { fill: true } : {}), ...(s.img ? { img: s.img, mask: s.mask, timg: s.timg } : {}) })),
     ...(build.marks.length ? { marks: build.marks.map((m) => ({ color: m.color, width: m.width, points: [...m.points] })) } : {}),
     detectParams: { ...params } as unknown as Record<string, number>,
     personality: c.personality ?? "aggressive",

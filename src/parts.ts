@@ -1,5 +1,6 @@
 // 線画の描画と、検知結果に従ったパーツ切り出し（塗りつぶしは検知専用で、表示には元の線画を使う）。
 import { CANVAS_SIZE, labelAt, type DetectResult, type Stroke } from "./detect";
+import { imageCanvas } from "./imagestroke";
 
 // 塗りつぶし: 押した点と似た色でつながった範囲を塗る（線のにじみ部分も1画素広げて塗り、白い縁を残さない）
 function floodFill(c: CanvasRenderingContext2D, sx: number, sy: number, color: string) {
@@ -41,6 +42,11 @@ function floodFill(c: CanvasRenderingContext2D, sx: number, sy: number, color: s
 
 export function drawStroke(c: CanvasRenderingContext2D, st: Stroke) {
   const p = st.points;
+  if (st.img) {
+    const im = imageCanvas(st); // 写真（読みこみ中なら まだ描かない）
+    if (im && p.length >= 4) c.drawImage(im, p[0], p[1], p[2], p[3]);
+    return;
+  }
   if (p.length < 2) return;
   if (st.fill) { floodFill(c, p[0], p[1], st.color); return; }
   c.save();

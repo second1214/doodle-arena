@@ -111,7 +111,7 @@ function nearestOnSeg(p: Pt, a: Pt, b: Pt): Pt {
   return [a[0] + t * dx, a[1] + t * dy];
 }
 
-const isLine = (s: Stroke) => !s.fill && s.color !== "erase" && s.points.length >= 4;
+const isLine = (s: Stroke) => !s.fill && !s.img && s.color !== "erase" && s.points.length >= 4;
 
 // ④ きれいにする: 線をなめらかにして、線の端を近くの線（自分の反対の端も）へつなぐ
 export function beautify(strokes: Stroke[]): Stroke[] {

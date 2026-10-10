@@ -11,10 +11,43 @@ export interface Stroke {
   width: number; // CANVAS_SIZE 座標系での太さ
   points: number[]; // [x0, y0, x1, y1, ...]（CANVAS_SIZE 座標系）。塗りつぶしは [x, y] の1点
   fill?: boolean; // 塗りつぶし（その点から、線で囲まれた範囲を塗る）
+  // 写真をそのまま貼る（points = [x, y, 幅, 高さ]）。img = JPEG の data URL、mask = 写っている所（下の maskText の形）、timg = 一覧用の小さな JPEG
+  img?: string;
+  mask?: string;
+  timg?: string;
+}
+
+// 写真の「写っている所」: "幅x高さ:" ＋ 0 と 1 が交互に続く長さ（36進数、0 から始まる）
+export function maskText(m: Uint8Array, w: number, h: number): string {
+  const runs: string[] = [];
+  let cur = 0, len = 0;
+  for (let i = 0; i < w * h; i++) {
+    const v = m[i] ? 1 : 0;
+    if (v === cur) len++;
+    else { runs.push(len.toString(36)); cur = v; len = 1; }
+  }
+  runs.push(len.toString(36));
+  return `${w}x${h}:${runs.join(",")}`;
+}
+const maskCache = new Map<string, { w: number; h: number; m: Uint8Array }>();
+export function readMask(t: string): { w: number; h: number; m: Uint8Array } | null {
+  const hit = maskCache.get(t);
+  if (hit) return hit;
+  const mt = /^(\d+)x(\d+):([0-9a-z,]*)$/.exec(t);
+  if (!mt) return null;
+  const w = Number(mt[1]), h = Number(mt[2]);
+  if (!w || !h || w * h > 1_000_000) return null;
+  const m = new Uint8Array(w * h);
+  let i = 0, v = 0;
+  for (const r of mt[3].split(",")) { const n = parseInt(r, 36) || 0; if (v) m.fill(1, i, Math.min(w * h, i + n)); i += n; v ^= 1; }
+  if (maskCache.size > 40) maskCache.clear();
+  const out = { w, h, m };
+  maskCache.set(t, out);
+  return out;
 }
 
 // 手足の検知のしかたの版。検知のアルゴリズムを変えたら上げる（オンラインで、古い版のキャラは保存した手足の結果を使う）
-export const DETECT_VERSION = 2; // 2: 手足レイヤー（marks）で手足を自分で指定できる
+export const DETECT_VERSION = 3; // 2: 手足レイヤー（marks）で手足を自分で指定できる / 3: 写真をそのまま貼る（img）
 
 export interface DetectParams {
   size: number; // 検知解像度
@@ -60,6 +93,19 @@ export function rasterize(strokes: Stroke[], size: number): Uint8Array {
   const mask = new Uint8Array(size * size);
   const s = size / CANVAS_SIZE;
   for (const st of strokes) {
+    if (st.img) {
+      // 写真: 写っている所（mask）を そのまま
+      const mk = st.mask ? readMask(st.mask) : null;
+      const [rx, ry, rw, rh] = st.points;
+      if (!mk || !(rw > 0) || !(rh > 0)) continue;
+      const gx0 = Math.max(0, Math.floor(rx * s)), gy0 = Math.max(0, Math.floor(ry * s));
+      const gx1 = Math.min(size - 1, Math.ceil((rx + rw) * s)), gy1 = Math.min(size - 1, Math.ceil((ry + rh) * s));
+      for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++) {
+        const mx = Math.floor((((gx + 0.5) / s - rx) / rw) * mk.w), my = Math.floor((((gy + 0.5) / s - ry) / rh) * mk.h);
+        if (mx >= 0 && my >= 0 && mx < mk.w && my < mk.h && mk.m[my * mk.w + mx]) mask[gy * size + gx] = 1;
+      }
+      continue;
+    }
     if (st.fill) {
       floodMask(mask, size, Math.floor(st.points[0] * s), Math.floor(st.points[1] * s));
       continue;

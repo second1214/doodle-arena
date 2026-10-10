@@ -2,6 +2,7 @@ import { CANVAS_SIZE, DEFAULT_PARAMS, detect, type DetectParams, type DetectResu
 import { cutParts, drawStroke, renderStrokes } from "./parts";
 import { SAMPLES } from "./samples";
 import { furiganaOn, installFurigana, setFurigana } from "./furigana";
+import { makeImageStroke, onImagesReady, preloadImages } from "./imagestroke";
 import { shareText } from "./share";
 import { beautify, fitShape, mirrorStroke, stabilize } from "./drawassist";
 import { PHOTO_GRID, photoToColorStrokes, photoToStrokes, segmentSubject, type Pixels } from "./photo";
@@ -415,7 +416,7 @@ interface PhotoState {
   beforeMarks: Stroke[];
 }
 let photo: PhotoState | null = null;
-let photoMode: "color" | "line" = "color";
+let photoMode: "photo" | "color" | "line" = "photo"; // そのまま（写真を貼る）／ぬり絵ふう（色を まとめる）／線だけ（紙の絵）
 let photoBrush: "add" | "del" = "add";
 
 // 写真全体を キャンバスの大きさに収める（はみ出さないように 縮める）
@@ -450,22 +451,24 @@ const PHOTO_TEXT: Record<PhotoPhase, [string, string]> = {
 function syncPhoto() {
   if (!photo) return;
   const ph = photo.phase;
+  document.getElementById("pmPhoto")!.classList.toggle("on", photoMode === "photo");
   document.getElementById("pmColor")!.classList.toggle("on", photoMode === "color");
   document.getElementById("pmLine")!.classList.toggle("on", photoMode === "line");
   document.getElementById("photoStep")!.textContent = PHOTO_TEXT[ph][0];
   document.getElementById("photoHint")!.textContent = ph === "done"
-    ? (photoMode === "color" ? "色の こまかさを かえられるよ。形を なおしたい時は「✏️ きりぬきを なおす」。" : "白い紙に こい線で かいた絵 むけ。うすい線が 消えたら 右へ。ゴミが 多かったら 左へ。")
+    ? (photoMode === "photo" ? "しゃしんを そのまま 貼ったよ。上から ペンで かきたしても いいよ。形を なおしたい時は「✏️ きりぬきを なおす」。"
+      : photoMode === "color" ? "色の こまかさを かえられるよ。形を なおしたい時は「✏️ きりぬきを なおす」。" : "白い紙に こい線で かいた絵 むけ。うすい線が 消えたら 右へ。ゴミが 多かったら 左へ。")
     : PHOTO_TEXT[ph][1];
   document.getElementById("photoBrushRow")!.hidden = ph !== "fix";
   document.getElementById("photoBgRow")!.hidden = ph !== "fix";
-  document.getElementById("photoSensRow")!.hidden = ph !== "done";
+  document.getElementById("photoSensRow")!.hidden = ph !== "done" || photoMode === "photo";
   document.getElementById("photoSensName")!.textContent = photoMode === "color" ? "こまかさ" : "うすい線も ひろう";
   document.getElementById("pbAdd")!.classList.toggle("on", photoBrush === "add");
   document.getElementById("pbDel")!.classList.toggle("on", photoBrush === "del");
   photoNext.hidden = ph === "box";
   photoNext.textContent = ph === "fix" ? "▶ 絵に する" : "✅ これで OK";
   photoBack.hidden = ph === "box";
-  photoBack.textContent = ph === "done" && photoMode === "color" ? "✏️ きりぬきを なおす" : "🔄 かこみなおす";
+  photoBack.textContent = ph === "done" && photoMode !== "line" ? "✏️ きりぬきを なおす" : "🔄 かこみなおす";
   document.getElementById("photoSensVal")!.textContent = `${Math.round(Number(photoSens.value) * 100)}`;
   document.getElementById("photoBgVal")!.textContent = `${Math.round(Number(photoBg.value) * 100)}`;
 }
@@ -484,6 +487,14 @@ function setPhotoPhase(ph: PhotoPhase) {
 }
 function makePhotoStrokes() {
   if (!photo?.rect) return;
+  if (photoMode === "photo") {
+    if (!photo.px) photo.px = cropPixels(photo.img, photo.rect, true);
+    if (!photo.mask) photo.mask = segmentSubject(photo.px, Number(photoBg.value));
+    const st = photoImageStroke(photo.img, photo.rect, photo.px.width, photo.mask);
+    strokes = st ? [st] : [];
+    resultEl.textContent = st ? "📷 しゃしんを そのまま 貼ったよ" : "うまく とれなかったよ。かこみなおすか、きりぬきを なおしてね";
+    return;
+  }
   if (photoMode === "color") {
     if (!photo.px) photo.px = cropPixels(photo.img, photo.rect, true);
     strokes = photoToColorStrokes(photo.px, Number(photoSens.value), Number(photoBg.value), photo.mask ?? undefined);
@@ -492,6 +503,41 @@ function makePhotoStrokes() {
   }
   resultEl.textContent = strokes.length ? `📷 線を ${strokes.length}本 つくったよ` : "うまく とれなかったよ。かこみなおすか、きりぬきを なおしてね";
 }
+// 📷 そのまま: きりぬいた所を 写真のまま 1本の「写真の線」にする（中の穴は うめる）
+function photoImageStroke(img: HTMLImageElement, r: { x: number; y: number; w: number; h: number }, n: number, mask0: Uint8Array): Stroke | null {
+  const mask = fillHoles(mask0, n);
+  let gx0 = n, gy0 = n, gx1 = -1, gy1 = -1;
+  for (let i = 0; i < n * n; i++) if (mask[i]) { const x = i % n, y = (i - x) / n; gx0 = Math.min(gx0, x); gx1 = Math.max(gx1, x); gy0 = Math.min(gy0, y); gy1 = Math.max(gy1, y); }
+  if (gx1 < 0) return null;
+  const bw = gx1 - gx0 + 1, bh = gy1 - gy0 + 1;
+  // 正方形の小さな画素（256）↔ 写真の画素
+  const s = n / Math.max(r.w, r.h), dx = (n - r.w * s) / 2, dy = (n - r.h * s) / 2;
+  const ix = r.x + (gx0 - dx) / s, iy = r.y + (gy0 - dy) / s, iw = bw / s, ih = bh / s;
+  const side = 300, k = side / Math.max(iw, ih);
+  const src = document.createElement("canvas");
+  src.width = Math.max(1, Math.round(iw * k));
+  src.height = Math.max(1, Math.round(ih * k));
+  src.getContext("2d")!.drawImage(img, ix, iy, iw, ih, 0, 0, src.width, src.height);
+  const m = new Uint8Array(bw * bh);
+  for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) m[y * bw + x] = mask[(y + gy0) * n + x + gx0];
+  // キャンバスの中央に 大きく
+  const margin = 40, fit = (CANVAS_SIZE - 2 * margin) / Math.max(bw, bh);
+  const w = bw * fit, h = bh * fit;
+  return makeImageStroke(src, m, bw, bh, [(CANVAS_SIZE - w) / 2, (CANVAS_SIZE - h) / 2, w, h]);
+}
+// きりぬきの中の穴（まわりに つながらない所）を うめる
+function fillHoles(m: Uint8Array, n: number): Uint8Array {
+  const out = new Uint8Array(n * n), st: number[] = [];
+  for (let k = 0; k < n; k++) for (const i of [k, (n - 1) * n + k, k * n, k * n + n - 1]) if (!m[i] && !out[i]) { out[i] = 1; st.push(i); }
+  while (st.length) {
+    const i = st.pop()!, x = i % n, y = (i - x) / n;
+    for (const j of [x > 0 ? i - 1 : -1, x < n - 1 ? i + 1 : -1, y > 0 ? i - n : -1, y < n - 1 ? i + n : -1]) if (j >= 0 && !m[j] && !out[j]) { out[j] = 1; st.push(j); }
+  }
+  const res = new Uint8Array(n * n);
+  for (let i = 0; i < n * n; i++) res[i] = out[i] ? 0 : 1;
+  return res;
+}
+
 // ① ② の時は、キャンバスに 写真を出す（描いた絵の代わりに）
 function renderPhoto(): boolean {
   if (!photo || photo.phase === "done") return false;
@@ -540,7 +586,7 @@ function photoPointer(kind: "down" | "move" | "up", x: number, y: number) {
       if (ix1 - ix0 < 20 / s || iy1 - iy0 < 20 / s) { resultEl.textContent = "もう少し 大きく かこんでね"; render(); return; }
       photo.rect = { x: ix0, y: iy0, w: ix1 - ix0, h: iy1 - iy0 };
       photo.mask = null;
-      setPhotoPhase(photoMode === "color" ? "fix" : "done");
+      setPhotoPhase(photoMode !== "line" ? "fix" : "done");
       return;
     }
     render();
@@ -566,12 +612,12 @@ function endPhoto(keep: boolean) {
   save();
   render();
 }
-for (const [id, m] of [["pmColor", "color"], ["pmLine", "line"]] as const) {
+for (const [id, m] of [["pmPhoto", "photo"], ["pmColor", "color"], ["pmLine", "line"]] as const) {
   document.getElementById(id)!.addEventListener("click", () => {
     photoMode = m;
     if (!photo) return;
     if (!photo.rect) { syncPhoto(); return; }
-    setPhotoPhase(m === "color" ? (photo.mask ? "done" : "fix") : "done");
+    setPhotoPhase(m !== "line" ? (photo.mask ? "done" : "fix") : "done");
   });
 }
 document.getElementById("pbAdd")!.addEventListener("click", () => { photoBrush = "add"; syncPhoto(); });
@@ -580,7 +626,7 @@ document.getElementById("pbAuto")!.addEventListener("click", () => { if (photo?.
 photoNext.addEventListener("click", () => { if (photo?.phase === "fix") setPhotoPhase("done"); else endPhoto(true); });
 photoBack.addEventListener("click", () => {
   if (!photo) return;
-  if (photo.phase === "done" && photoMode === "color") setPhotoPhase("fix");
+  if (photo.phase === "done" && photoMode !== "line") setPhotoPhase("fix");
   else setPhotoPhase("box");
 });
 document.getElementById("photoCancel")!.addEventListener("click", () => endPhoto(false));
@@ -1986,6 +2032,10 @@ importBtn.addEventListener("click", async () => {
 requestPersist();
 try { history.replaceState({ screen: "home" }, ""); } catch { /* 無視 */ }
 show("home");
+
+// 写真入りの絵: 読みこめたら 描きなおす（最初に まとめて 読んでおく）
+onImagesReady(() => { committedFor = null; render(); });
+void preloadImages([...strokes, ...loadRoster().flatMap((c) => c.strokes)]);
 
 // 漢字に ふりがな（メイン画面の下のボタンで なし にできる）
 installFurigana();

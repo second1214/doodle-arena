@@ -26,8 +26,10 @@ export const LIMITS = {
   hideAtBad: 3, // 別々の人からのバッドがこの数で自動非表示（消さずに隠すだけ）
   rankingDelayMs: 24 * 3600 * 1000, // 公開から24時間はランキングに出さない（その間にバッドが付く機会を作る）
   maxStrokes: 600, // 左右対称で2倍になる
+  maxImages: 2, // 写真をそのまま貼った線（1キャラ）
+  maxImageChars: 160000, // 写真1枚の data URL の長さ（約120KB）
   maxPoints: 40000, // 線の座標の数（x, y を別に数える＝20,000点。手足レイヤー・左右対称・きれいにする の分も入る）
-  maxBody: 64_000, // 送られてくる中身の大きさ（バイト）
+  maxBody: 450_000, // 送られてくる中身の大きさ（バイト）。写真（約120KB×2）と 線の座標（最大40,000）が入る
   candidates: 3, // ランダム対戦で出す相手の数
 };
 
@@ -52,8 +54,18 @@ export function cleanSnapshot(raw: unknown): { ok: true; snap: Snapshot } | { ok
   if (r.strokes.length > LIMITS.maxStrokes) return { ok: false, error: "線が 多すぎます" };
   let points = 0;
   const strokes: Snapshot["strokes"] = [];
+  let images = 0;
   for (const s of r.strokes as Record<string, unknown>[]) {
     if (!s || typeof s !== "object" || !Array.isArray(s.points)) return { ok: false, error: "絵の データが こわれています" };
+    if (s.img !== undefined) {
+      // 写真: JPEG の data URL と 写っている所（mask）。大きさに上限
+      const okImg = (v: unknown, max: number) => typeof v === "string" && v.startsWith("data:image/jpeg;base64,") && v.length <= max && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(v);
+      const pts = (s.points as unknown[]).map((p) => (finite(p) ? Math.round(clamp(p, -64, 576)) : NaN));
+      if (++images > LIMITS.maxImages || !okImg(s.img, LIMITS.maxImageChars) || (s.timg !== undefined && !okImg(s.timg, 20000))
+        || typeof s.mask !== "string" || s.mask.length > 80000 || !/^\d{1,3}x\d{1,3}:[0-9a-z,]*$/.test(s.mask) || pts.length !== 4 || pts.some(Number.isNaN)) return { ok: false, error: "写真の データが こわれているか 大きすぎます" };
+      strokes.push({ color: "#000000", width: 0, points: pts, img: s.img as string, mask: s.mask, ...(s.timg ? { timg: s.timg as string } : {}) });
+      continue;
+    }
     const color = typeof s.color === "string" && (/^#[0-9a-fA-F]{6}$/.test(s.color) || s.color === "erase") ? s.color : null;
     if (!color || !finite(s.width)) return { ok: false, error: "絵の データが こわれています" };
     const pts = (s.points as unknown[]).map((p) => (finite(p) ? Math.round(clamp(p, -64, 576)) : NaN));

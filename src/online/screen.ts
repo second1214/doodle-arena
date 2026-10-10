@@ -8,6 +8,7 @@ import { buildSpecial, equipCosts, hashStr, makePart, seededRnd, SPECIAL_BUDGET,
 import { addShards, dropPartOfRarity, type DropResult } from "../inventory";
 import { frontierStage, gainExp, loadProfile, totalPoints } from "../progress";
 import { thumbnail } from "../roster";
+import { preloadImages } from "../imagestroke";
 import { sumBoost } from "../sim/stats";
 import { autoTree, boostOf } from "../tree";
 import { api, buildFromSnapshot, makeSnapshot, OnlineError, tooNew, type ListChar } from "./client";
@@ -67,11 +68,16 @@ export function buildGatekeeper(c: CpuChar, tier: number): CharacterBuild {
 }
 
 const thumbCache = new Map<string, string>();
-function thumbOf(key: string, strokes: () => Stroke[]): string {
-  if (!thumbCache.has(key)) thumbCache.set(key, thumbnail(strokes()));
-  return thumbCache.get(key)!;
+// 一覧の小さな絵を出す。写真入りの絵は 写真を読みこんでから 描きなおす
+function setThumb(el: HTMLImageElement, key: string, strokes: () => Stroke[]) {
+  const hit = thumbCache.get(key);
+  if (hit) { el.src = hit; return; }
+  const list = strokes();
+  el.src = thumbnail(list);
+  if (!list.some((s) => s.img)) { thumbCache.set(key, el.src); return; }
+  void preloadImages(list).then(() => { const t = thumbnail(list); thumbCache.set(key, t); el.src = t; });
 }
-const oppThumb = (o: Opp) => (o.kind === "human" ? thumbOf(`h:${o.c.id}`, () => o.c.thumb as Stroke[]) : thumbOf(`c:${o.c.id}`, o.c.strokes));
+const setOppThumb = (el: HTMLImageElement, o: Opp) => (o.kind === "human" ? setThumb(el, `h:${o.c.id}`, () => o.c.thumb as Stroke[]) : setThumb(el, `c:${o.c.id}`, o.c.strokes));
 const oppName = (o: Opp) => o.c.name;
 
 export function initOnline(root: HTMLElement, deps: OnlineDeps) {
@@ -168,7 +174,7 @@ export function initOnline(root: HTMLElement, deps: OnlineDeps) {
     const badge = o.kind === "cpu" ? `<span class="tag cpu">門番</span>` : o.c.games < 10 ? `<span class="tag new">おためし</span>` : "";
     const stat = o.kind === "human" ? `★${o.c.rating}・${o.c.wins}勝${o.c.losses}敗` : `${TIERS[o.tier].name}の 門番`;
     b.innerHTML = `${badge}<img alt=""><b></b><small>${stat}</small>`;
-    b.querySelector("img")!.src = oppThumb(o);
+    setOppThumb(b.querySelector("img")!, o);
     b.querySelector("b")!.textContent = oppName(o);
     b.addEventListener("click", onPick);
     return b;
@@ -178,6 +184,7 @@ export function initOnline(root: HTMLElement, deps: OnlineDeps) {
     if (o.kind === "cpu") return { build: buildGatekeeper(o.c, o.tier) };
     const { char } = await api.get(o.c.id);
     if (tooNew(char.snap)) throw new OnlineError("このキャラと たたかうには ゲームを さいしんに してね（ページを よみこみなおす）", 0);
+    await preloadImages(char.snap.strokes as Stroke[]); // 写真入りの絵は 読みこんでから組み立てる
     return { build: buildFromSnapshot(char.snap), snap: char.snap };
   }
 
@@ -310,7 +317,7 @@ export function initOnline(root: HTMLElement, deps: OnlineDeps) {
       const row = document.createElement("div");
       row.className = "orow";
       row.innerHTML = `<b class="no">${i + 1}</b><img alt=""><span class="nm"></span><small>★${c.rating}・${c.wins}勝${c.losses}敗</small><span class="acts"></span>`;
-      row.querySelector("img")!.src = thumbOf(`h:${c.id}`, () => c.thumb as Stroke[]);
+      setThumb(row.querySelector("img")!, `h:${c.id}`, () => c.thumb as Stroke[]);
       row.querySelector(".nm")!.textContent = c.name;
       const acts = row.querySelector(".acts")!;
       const o: Opp = { kind: "human", c };
@@ -397,7 +404,7 @@ export function initOnline(root: HTMLElement, deps: OnlineDeps) {
       const row = document.createElement("div");
       row.className = "orow";
       row.innerHTML = `<img alt=""><span class="nm"></span><span class="acts"></span>`;
-      if (src) row.querySelector("img")!.src = thumbOf(`p:${ch.value}:${src.strokes.length}`, () => src.strokes);
+      if (src) setThumb(row.querySelector("img")!, `p:${ch.value}:${src.strokes.length}`, () => src.strokes);
       row.querySelector(".nm")!.textContent = ch.label;
       const btn = document.createElement("button");
       btn.className = "primary inline";
@@ -432,7 +439,7 @@ export function initOnline(root: HTMLElement, deps: OnlineDeps) {
           const row = document.createElement("div");
           row.className = "orow";
           row.innerHTML = `<img alt=""><span class="nm"></span><small></small><span class="acts"></span>`;
-          row.querySelector("img")!.src = thumbOf(`h:${c.id}`, () => c.thumb as Stroke[]);
+          setThumb(row.querySelector("img")!, `h:${c.id}`, () => c.thumb as Stroke[]);
           row.querySelector(".nm")!.textContent = c.name;
           row.querySelector("small")!.textContent = `${TIERS[c.tier].name}・★${c.rating}・${c.wins}勝${c.losses}敗${c.hidden ? "・👎で かくれ中" : ""}`;
           const del = document.createElement("button");
