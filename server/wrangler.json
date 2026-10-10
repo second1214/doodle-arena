@@ -1,0 +1,14 @@
+{
+  "name": "doodle-arena-api",
+  "main": "src/app.ts",
+  "compatibility_date": "2025-09-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "doodle-arena",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": { "ALLOWED_ORIGINS": "https://second1214.github.io" }
+}

@@ -1,0 +1,50 @@
+# オンライン対戦のサーバー（Cloudflare Workers + D1）を自動で送り届ける。
+# データベースが無ければ作り、表の変更（migrations）を当ててから、サーバーを入れ替え、動いているか確かめる。
+name: サーバーを公開
+on:
+  push:
+    branches: [proto/character]
+    paths: [server/**, src/sim/**, src/online/**, .github/workflows/server.yml]
+  workflow_dispatch:
+concurrency:
+  group: server
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER: npx --yes wrangler@4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: サーバーのテスト
+        run: npx vitest run tests/server.test.ts
+      - name: データベースを用意（無ければ作る）
+        working-directory: server
+        run: |
+          ID=$($WRANGLER d1 list --json | jq -r '.[] | select(.name=="doodle-arena") | .uuid' | head -1)
+          if [ -z "$ID" ]; then
+            $WRANGLER d1 create doodle-arena
+            ID=$($WRANGLER d1 list --json | jq -r '.[] | select(.name=="doodle-arena") | .uuid' | head -1)
+          fi
+          echo "database: $ID"
+          jq --arg id "$ID" '.d1_databases[0].database_id = $id' wrangler.json > w.tmp && mv w.tmp wrangler.json
+      - name: 表の変更を当てる
+        working-directory: server
+        run: $WRANGLER d1 migrations apply doodle-arena --remote
+      - name: サーバーを入れ替える
+        working-directory: server
+        run: $WRANGLER deploy
+      - name: 動いているか確かめる
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS https://doodle-arena-api.rakugaki000.workers.dev/api/v1/health; then exit 0; fi
+            sleep 10
+          done
+          exit 1

@@ -13,6 +13,9 @@ export interface Stroke {
   fill?: boolean; // 塗りつぶし（その点から、線で囲まれた範囲を塗る）
 }
 
+// 手足の検知のしかたの版。検知のアルゴリズムを変えたら上げる（オンラインで、古い版のキャラは保存した手足の結果を使う）
+export const DETECT_VERSION = 1;
+
 export interface DetectParams {
   size: number; // 検知解像度
   closeRadius: number; // 線の隙間埋め（検知解像度 px）

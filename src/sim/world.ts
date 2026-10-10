@@ -6,6 +6,8 @@ import { DEFAULT_TRAITS, type Hurt, type Traits } from "../shape";
 import { composeMelee, type MeleeEffectId, type MeleeSpec } from "./melee";
 import { BASE_CHARGE_NEED, BASE_DODGE_COST, statEffects, type Boost, type StatEffects } from "./stats";
 
+// 戦闘ルールの版。ルールを変えたら上げる（オンラインの公開キャラに記録し、古い版のキャラも戦えるようにする）
+export const SIM_VERSION = 1;
 export const TICK_HZ = 30;
 export const DT = 1 / TICK_HZ;
 export const ARENA_RADIUS = 9;
