@@ -227,7 +227,8 @@ function setView(v: View) {
   previewEl.hidden = v !== "anim";
   if (v !== "anim") stopPreview();
   document.querySelectorAll<HTMLButtonElement>(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
-  drawTools.hidden = v !== "draw";
+  drawTools.hidden = v !== "draw" || !!photo; // 写真の取り込み中は 描く道具を かくす（取り込みの操作を 写真のすぐ下に出す）
+  photoPanel.hidden = v !== "draw" || !photo;
   legendEl.hidden = v !== "detect";
   const panel = v === "battle" || v === "char";
   stageEl.hidden = panel;
@@ -522,6 +523,7 @@ function syncPhoto() {
 function setPhotoPhase(ph: PhotoPhase) {
   if (!photo) return;
   photo.phase = ph;
+  scheduleEditBar();
   if (ph === "box") { photo.rect = null; photo.px = null; photo.mask = null; resultEl.textContent = "👆 指で なぞって 四角く かこんでね"; }
   if (ph === "fix" && photo.rect) {
     photo.px = cropPixels(photo.img, photo.rect, true);
@@ -658,6 +660,7 @@ function endPhoto(keep: boolean) {
   }
   photo = null;
   photoPanel.hidden = true;
+  drawTools.hidden = view !== "draw";
   resetEditHistory();
   save();
   render();
@@ -712,6 +715,7 @@ document.getElementById("photoInput")!.addEventListener("change", (e) => {
     marks = [];
     setLayer("draw");
     photoPanel.hidden = false;
+    drawTools.hidden = true;
     setPhotoPhase("box");
     photoPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
   };
@@ -1137,7 +1141,7 @@ function refreshEditBar() {
   const st = document.getElementById("ebState")!;
   const dirty = isDirty();
   st.className = dirty ? "dirty" : "clean";
-  st.textContent = !strokes.length ? "まだ 絵が ないよ" : dirty ? "● まだ ほぞんしていない" : "✔ ほぞんずみ";
+  st.textContent = photo ? "📷 しゃしんを とりこみ中" : !strokes.length ? "まだ 絵が ないよ" : dirty ? "● まだ ほぞんしていない" : "✔ ほぞんずみ";
 }
 // たずねる窓（ほぞんしてから／ほぞんしないで／やめる）
 function askBeforeLeave(what: string, proceed: () => void) {

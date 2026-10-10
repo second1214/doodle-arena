@@ -403,6 +403,7 @@
       .pop.recoil { font-size: 15px; color: #ff8787; -webkit-text-stroke: 1.5px #3a0000; }
       .pop.thud { font-size: 30px; color: #fff; -webkit-text-stroke: 2.5px #5a3b12; }
       .pop.thud.big { font-size: 52px; }
+      #photoPanel .seg button { white-space: nowrap; font-size: 14px; padding: 8px 4px; min-width: 0; }
       #partFilter button { white-space: nowrap; padding: 8px 4px; font-size: 14px; min-width: 0; }
       #bulkCombine { white-space: nowrap; }
       .editbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 6px 8px; margin-bottom: 8px; }
@@ -611,6 +612,29 @@
       <div id="preview3d" hidden></div>
     </div>
     <div class="result" id="result"></div>
+    <div id="photoPanel" class="sharebox" hidden>
+        <div class="kidhint" id="photoStep"></div>
+        <div class="seg">
+          <button type="button" id="pmPhoto" class="on">📷 そのまま</button>
+          <button type="button" id="pmColor">🎨 ぬり絵ふう</button>
+          <button type="button" id="pmLine">🖊 線だけ</button>
+        </div>
+        <div class="note" id="photoHint"></div>
+        <div class="row" id="photoAllRow"><button type="button" id="photoAll">🖼 しゃしん ぜんぶを つかう（かこまない）</button></div>
+        <div class="row" id="photoBrushRow">
+          <button type="button" id="pbAdd" class="on">➕ たす</button>
+          <button type="button" id="pbDel">➖ けす</button>
+          <button type="button" id="pbAuto">🤖 自動に もどす</button>
+          <button type="button" id="pbRect">▢ きりぬかない（四角のまま）</button>
+        </div>
+        <label class="slider" id="photoBgRow"><span>背景を けす つよさ（自動）</span><span id="photoBgVal"></span><input id="photoBg" type="range" min="0" max="1" step="0.05" value="0.5" /></label>
+        <label class="slider" id="photoSensRow"><span id="photoSensName"></span><span id="photoSensVal"></span><input id="photoSens" type="range" min="0" max="1" step="0.05" value="0.5" /></label>
+        <div class="row">
+          <button id="photoNext" class="primary inline" type="button"></button>
+          <button id="photoBack" type="button"></button>
+          <button id="photoCancel" type="button">↩ やめる</button>
+        </div>
+      </div>
     <div class="legend" id="legend" hidden>
       <span><i style="background:#9aa0a6"></i>胴体</span>
       <span><i style="background:#e8590c"></i>手</span>
@@ -639,29 +663,6 @@
       </div>
       <div class="row">
         <label class="filebtn">📷 しゃしんから とりこむ<input id="photoInput" type="file" accept="image/*" hidden /></label>
-      </div>
-      <div id="photoPanel" class="sharebox" hidden>
-        <div class="kidhint" id="photoStep"></div>
-        <div class="seg">
-          <button type="button" id="pmPhoto" class="on">📷 そのまま</button>
-          <button type="button" id="pmColor">🎨 ぬり絵ふう</button>
-          <button type="button" id="pmLine">🖊 線だけ</button>
-        </div>
-        <div class="note" id="photoHint"></div>
-        <div class="row" id="photoAllRow"><button type="button" id="photoAll">🖼 しゃしん ぜんぶを つかう（かこまない）</button></div>
-        <div class="row" id="photoBrushRow">
-          <button type="button" id="pbAdd" class="on">➕ たす</button>
-          <button type="button" id="pbDel">➖ けす</button>
-          <button type="button" id="pbAuto">🤖 自動に もどす</button>
-          <button type="button" id="pbRect">▢ きりぬかない（四角のまま）</button>
-        </div>
-        <label class="slider" id="photoBgRow"><span>背景を けす つよさ（自動）</span><span id="photoBgVal"></span><input id="photoBg" type="range" min="0" max="1" step="0.05" value="0.5" /></label>
-        <label class="slider" id="photoSensRow"><span id="photoSensName"></span><span id="photoSensVal"></span><input id="photoSens" type="range" min="0" max="1" step="0.05" value="0.5" /></label>
-        <div class="row">
-          <button id="photoNext" class="primary inline" type="button"></button>
-          <button id="photoBack" type="button"></button>
-          <button id="photoCancel" type="button">↩ やめる</button>
-        </div>
       </div>
       </div>
       <div id="limbTools" hidden>
