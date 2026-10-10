@@ -739,7 +739,8 @@ document.getElementById("photoInput")!.addEventListener("change", (e) => {
     setLayer("draw");
     syncPhotoVisibility();
     setPhotoPhase("box");
-    photoPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // 写真えらびの画面が とじきってから うごかす（すぐだと iPhone では 元の位置に もどされる）
+    setTimeout(() => canvas.scrollIntoView({ block: "start" }), 400);
   };
   img.onerror = () => { URL.revokeObjectURL(url); resultEl.textContent = "その写真は ひらけなかったよ"; };
   img.src = url;
@@ -1582,9 +1583,10 @@ document.getElementById("shareBtn")!.addEventListener("click", () => {
   shareBox.hidden = !shareBox.hidden;
   if (!shareBox.hidden) {
     try { shareTa.value = makeShareText(); } catch (e) { shareTa.value = `文を つくれなかったよ（${(e as Error).message}）`; }
+    toast("📣 じまんの ぶんを つくったよ。下の「📋 コピー」を おしてね");
     shareMsg.hidden = true;
     shareBox.classList.remove("copied");
-    shareBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    setTimeout(() => shareBox.scrollIntoView({ block: "center" }), 50);
   }
 });
 shareCopyBtn.addEventListener("click", async () => {
@@ -2215,7 +2217,30 @@ void preloadImages([...strokes, ...loadRoster().flatMap((c) => c.strokes)]);
 scheduleEditBar();
 
 // 版（古い版が のこっていないか 確かめる用）
-document.getElementById("buildInfo")!.textContent = `ばん: ${typeof __BUILD__ === "string" ? __BUILD__ : "テスト"}`;
+const BUILD = typeof __BUILD__ === "string" ? __BUILD__ : "テスト";
+document.getElementById("buildInfo")!.textContent = `ばん: ${BUILD}`;
+// 公開中の版と くらべて、古ければ 読みこみなおす（iPhone の ホーム画面アプリは 古い版のまま 動きつづけることがあるため）。
+// 開いた時と、アプリに もどってきた時に 調べる。読みこみなおしは 1回だけ（同じ版で くりかえさない）
+async function checkVersion() {
+  if (location.protocol === "file:") return;
+  try {
+    const r = await fetch(`./version.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!r.ok) return;
+    const { build } = (await r.json()) as { build?: string };
+    if (!build || build === BUILD) return;
+    const tried = sessionStorage.getItem("doodle-arena:reloadFor");
+    if (tried === build) { toast(`あたらしい ばん（${build}）が あるよ。アプリを とじて ひらきなおしてね`); return; }
+    sessionStorage.setItem("doodle-arena:reloadFor", build);
+    location.reload();
+  } catch { /* オフラインなど: そのまま遊べる */ }
+}
+void checkVersion();
+document.addEventListener("visibilitychange", () => { if (!document.hidden) void checkVersion(); });
+// iPhone で 何か失敗したら 画面に出す（原因を スクリーンショットで 知るため）
+window.addEventListener("error", (e) => toast(`⚠ エラー: ${(e as ErrorEvent).message ?? ""}`.slice(0, 120)));
+window.addEventListener("unhandledrejection", (e) => toast(`⚠ エラー: ${String((e as PromiseRejectionEvent).reason ?? "")}`.slice(0, 120)));
+// iPhone でも ボタンを 押した時の へこむ見た目を 出す
+document.addEventListener("touchstart", () => {}, { passive: true });
 
 // 漢字に ふりがな（メイン画面の下のボタンで なし にできる）
 installFurigana();
