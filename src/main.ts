@@ -2,6 +2,7 @@ import { CANVAS_SIZE, DEFAULT_PARAMS, detect, type DetectParams, type DetectResu
 import { cutParts, drawStroke, renderStrokes } from "./parts";
 import { SAMPLES } from "./samples";
 import { furiganaOn, installFurigana, setFurigana } from "./furigana";
+import { shareText } from "./share";
 import { beautify, fitShape, mirrorStroke, stabilize } from "./drawassist";
 import { startBattle } from "./battle/battle";
 import { Sfx } from "./battle/audio";
@@ -1093,6 +1094,39 @@ function renderProfile() {
   const usable = Math.min(p.points, TREE_CAP - spentOf(p.nodes));
   document.getElementById("treeHint")!.textContent = usable > 0 ? `ポイント ${usable} を使えます` : spentOf(p.nodes) >= TREE_CAP ? "上限まで育った！" : "ポイントで強くなる";
 }
+
+// --- じまんの文（拡散用）: ストーリーの進み具合とステータスから作って、コピー／共有 ---
+const shareBox = document.getElementById("shareBox")!;
+const shareTa = document.getElementById("shareText") as HTMLTextAreaElement;
+const shareMsg = document.getElementById("shareMsg")!;
+const shareSend = document.getElementById("shareSend") as HTMLButtonElement;
+shareSend.hidden = typeof navigator.share !== "function";
+function makeShareText(): string {
+  const p = loadProfile();
+  const parts = loadInventory().parts;
+  const best = parts.reduce<Part | null>((a, b) => (!a || rarityIndex(b.rarity) > rarityIndex(a.rarity) ? b : a), null);
+  return shareText({
+    level: p.level, spent: spentOf(p.nodes), cap: TREE_CAP, titles: masteredBranches(p.nodes).map((b) => b.title),
+    cleared: loadStory().cleared, chapters: CHAPTERS, partCount: parts.length,
+    bestPart: best ? `${best.rarity} ${kindIcon(best.kind)}${kindInfo(best.kind).name}` : undefined,
+    charName: strokes.length && editor.name ? editor.name : undefined,
+  });
+}
+document.getElementById("shareBtn")!.addEventListener("click", () => {
+  shareBox.hidden = !shareBox.hidden;
+  if (!shareBox.hidden) { shareTa.value = makeShareText(); shareMsg.textContent = ""; }
+});
+document.getElementById("shareCopy")!.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(shareTa.value);
+  } catch {
+    // コピーの許可が無いブラウザ: 文を選んで 昔のやり方でコピー
+    shareTa.select();
+    if (!document.execCommand("copy")) { shareMsg.textContent = "コピー できなかったよ。文を ながおしして コピーしてね"; return; }
+  }
+  shareMsg.textContent = "📋 コピーしたよ！ SNS などに はりつけてね";
+});
+shareSend.addEventListener("click", () => { navigator.share({ text: shareTa.value }).catch(() => { /* やめた時など */ }); });
 
 // --- スキルツリー: 中心から7本の枝。丸をタップ → 説明 → 取得 ---
 const SVG_NS = "http://www.w3.org/2000/svg";

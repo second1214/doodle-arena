@@ -86,6 +86,9 @@
       .menu .big:disabled { opacity: .5; }
       .credit { text-align: center; color: var(--muted); font-size: 11px; margin-top: 18px; }
       .credit a { color: inherit; }
+      .share { width: 100%; margin-top: 10px; font-weight: 800; }
+      .sharebox { background: var(--panel); border: 2px solid var(--line); border-radius: 18px; padding: 10px 12px; margin-top: 8px; }
+      .sharebox textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; border-radius: 12px; border: 2px solid var(--line); padding: 8px; resize: vertical; background: var(--bg, #fff); color: inherit; }
       ruby rt { font-size: .5em; font-weight: 700; letter-spacing: 0; opacity: .85; }
       ruby { ruby-position: over; }
       .chapter { margin-top: 14px; }
@@ -404,6 +407,16 @@
         <div class="lv">Lv <b id="pLevel">1</b></div>
         <div class="exp"><div class="exp-bar"><i id="pExpBar"></i></div><small id="pExp"></small></div>
         <div class="pts">スキルポイント <b id="pPoints">0</b></div>
+      </div>
+      <button id="shareBtn" class="share" type="button">📣 じまんの ぶんを つくる</button>
+      <div id="shareBox" class="sharebox" hidden>
+        <div class="note">コピーして SNS などに はりつけてね（なおしても いいよ）</div>
+        <textarea id="shareText" rows="8"></textarea>
+        <div class="row">
+          <button id="shareCopy" class="primary inline" type="button">📋 コピー</button>
+          <button id="shareSend" type="button" hidden>📤 おくる</button>
+        </div>
+        <div class="note" id="shareMsg" aria-live="polite"></div>
       </div>
       <div class="menu">
         <button class="big story" data-go="story"><b>📖 ストーリー</b><small>てきを たおして つよくなる</small></button>
