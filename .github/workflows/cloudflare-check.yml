@@ -1,0 +1,21 @@
+# Cloudflare とつながるかの確認だけをする（何も作らない）。手動でも動かせる。
+name: Cloudflare 接続確認
+on:
+  workflow_dispatch:
+  push:
+    branches: [proto/character]
+    paths: [.github/workflows/cloudflare-check.yml]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 合い言葉（トークン）とアカウントが使えるか
+        run: npx --yes wrangler@4 whoami
+      - name: データベース（D1）を扱えるか
+        run: npx --yes wrangler@4 d1 list
