@@ -66,7 +66,7 @@ export function dropParts(chapter: number, boss: boolean, rnd: () => number = Ma
 export function dismantle(id: string): number {
   const inv = loadInventory();
   const p = inv.parts.find((x) => x.id === id);
-  if (!p) return 0;
+  if (!p || p.locked) return 0; // 鍵つきは分解しない
   inv.parts = inv.parts.filter((x) => x.id !== id);
   inv.shards += RARITY_INFO[p.rarity].shards;
   saveInventory(inv);
@@ -82,26 +82,69 @@ export function reroll(id: string, rnd: () => number = Math.random): Part | null
   if (i < 0 || inv.shards < rerollCost(inv.parts[i].rarity)) return null;
   const old = inv.parts[i];
   inv.shards -= rerollCost(old.rarity);
-  inv.parts[i] = makePart(old.kind, old.rarity, rnd, old.id);
+  inv.parts[i] = { ...makePart(old.kind, old.rarity, rnd, old.id), ...(old.locked ? { locked: true } : {}) };
   saveInventory(inv);
   return inv.parts[i];
 }
 
-// 合成: 同じ種類・同じレア度を5個 → 1段上を1個（使うのは装備していないもの）
+// 合成: ベース1個＋同じ種類・同じレア度の材料4個 → ベースが1段上のレア度になる（数値は引き直し。id・鍵はそのまま＝装備したままでよい）。
+// 材料にできるのは、装備していない・鍵のかかっていないものだけ（同じパーツを重ねて付けて強くしているのを こわさない）
+export const canBeMaterial = (p: Part, equipped: Set<string>) => !p.locked && !equipped.has(p.id);
 export function combinable(kind: PartKind, rarity: Rarity, equipped: Set<string>): Part[] {
-  return loadInventory().parts.filter((p) => p.kind === kind && p.rarity === rarity && !equipped.has(p.id));
+  return loadInventory().parts.filter((p) => p.kind === kind && p.rarity === rarity && canBeMaterial(p, equipped));
 }
-export function combine(kind: PartKind, rarity: Rarity, equipped: Set<string>, rnd: () => number = Math.random): Part | null {
-  if (rarity === "S") return null;
-  const pool = combinable(kind, rarity, equipped);
-  if (pool.length < COMBINE_COUNT) return null;
-  const use = new Set(pool.slice(0, COMBINE_COUNT).map((p) => p.id));
+export function combineInto(baseId: string, materialIds: string[], equipped: Set<string>, rnd: () => number = Math.random): Part | null {
   const inv = loadInventory();
-  inv.parts = inv.parts.filter((p) => !use.has(p.id));
-  const np = makePart(kind, RARITIES[rarityIndex(rarity) + 1], rnd);
-  inv.parts.push(np);
+  const base = inv.parts.find((p) => p.id === baseId);
+  if (!base || base.rarity === "S" || base.locked) return null;
+  const mats = [...new Set(materialIds)].filter((id) => id !== baseId).map((id) => inv.parts.find((p) => p.id === id));
+  if (mats.length !== COMBINE_COUNT - 1 || mats.some((m) => !m || m.kind !== base.kind || m.rarity !== base.rarity || !canBeMaterial(m, equipped))) return null;
+  const use = new Set(materialIds);
+  const np: Part = makePart(base.kind, RARITIES[rarityIndex(base.rarity) + 1], rnd, base.id);
+  inv.parts = inv.parts.filter((p) => !use.has(p.id)).map((p) => (p.id === base.id ? np : p));
   saveInventory(inv);
   return np;
+}
+
+// まとめて合成の計画: 同じ種類・同じレア度ごとに、ベース＋材料4個の組を作れるだけ作る。
+// ベースは 指定があればそれ、無ければ 装備中のもの→出来のよいもの の順。材料は 出来のわるいものから
+export interface CombinePlan { kind: PartKind; rarity: Rarity; baseId: string; materialIds: string[]; candidates: string[] }
+export function planCombines(parts: Part[], equipped: Set<string>, chosenBases: Record<string, string[]> = {}): CombinePlan[] {
+  const groups = new Map<string, Part[]>();
+  for (const p of parts) {
+    if (p.rarity === "S" || p.locked) continue;
+    const k = `${p.kind}|${p.rarity}`;
+    groups.set(k, [...(groups.get(k) ?? []), p]);
+  }
+  const out: CombinePlan[] = [];
+  for (const [key, list] of groups) {
+    const used = new Set<string>();
+    const byBase = [...list].sort((a, b) => Number(equipped.has(b.id)) - Number(equipped.has(a.id)) || b.roll - a.roll);
+    const byMat = [...list].filter((p) => canBeMaterial(p, equipped)).sort((a, b) => a.roll - b.roll);
+    const wanted = chosenBases[key] ?? [];
+    // その部品をベースにしても 材料が4個そろうか
+    const feasible = (id: string) => byMat.filter((m) => m.id !== id && !used.has(m.id)).length >= COMBINE_COUNT - 1;
+    for (let n = 0; ; n++) {
+      const candidates = byBase.filter((p) => !used.has(p.id) && feasible(p.id)).map((p) => p.id);
+      if (!candidates.length) break;
+      const base = wanted[n] && candidates.includes(wanted[n]) ? wanted[n] : candidates[0];
+      const mats = byMat.filter((m) => m.id !== base && !used.has(m.id)).slice(0, COMBINE_COUNT - 1);
+      used.add(base);
+      mats.forEach((m) => used.add(m.id));
+      out.push({ kind: list[0].kind, rarity: list[0].rarity, baseId: base, materialIds: mats.map((m) => m.id), candidates });
+    }
+  }
+  return out;
+}
+
+// 鍵の付け外し
+export function toggleLock(id: string): boolean {
+  const inv = loadInventory();
+  const p = inv.parts.find((x) => x.id === id);
+  if (!p) return false;
+  p.locked = !p.locked;
+  saveInventory(inv);
+  return !!p.locked;
 }
 
 // 初回だけ: 今までの必殺（効果の選択）を C 相当のパーツに置き換える。最初の手持ちとして 追尾(遠)・竜巻(近) も配る。

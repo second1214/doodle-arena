@@ -96,6 +96,7 @@ export interface Part {
   roll: number; // 手に入れた時の出来（レア度ごとの幅の中）
   cost: number; // 装備コスト
   extras: Extra[];
+  locked?: boolean; // 🔒 鍵（まちがえて 分解・合成の材料にしない）
 }
 
 const round2 = (v: number) => Math.round(v * 100) / 100;

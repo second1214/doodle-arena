@@ -12,8 +12,8 @@ import { Preview3D } from "./battle/preview";
 import { fighterShape, kidTraits } from "./shape";
 import { PERSONAS } from "./sim/ai";
 import { sumBoost, type Boost } from "./sim/stats";
-import { ALL_KINDS, buildSpecial, equipCosts, extraText, fitsType, hashStr, kindIcon, kindInfo, mainText, makePart, seededRnd, RARITY_INFO, rarityIndex, SPECIAL_BUDGET, type BuiltSpecial, type Part, type PartKind } from "./items";
-import { combinable, combine, COMBINE_COUNT, dismantle, dropParts, INVENTORY_CAP, loadInventory, migrateToParts, reroll, rerollCost, type DropResult } from "./inventory";
+import { ALL_KINDS, buildSpecial, equipCosts, extraText, fitsType, hashStr, kindIcon, kindInfo, mainText, makePart, seededRnd, RARITIES, RARITY_INFO, rarityIndex, SPECIAL_BUDGET, type BuiltSpecial, type Part, type PartKind } from "./items";
+import { canBeMaterial, combineInto, COMBINE_COUNT, dismantle, dropParts, INVENTORY_CAP, loadInventory, migrateToParts, planCombines, reroll, rerollCost, toggleLock, type DropResult } from "./inventory";
 import { autoTree, boostOf, BRANCHES, bridges, canTake, masteredBranches, nodeById, nodeId, randomTree, spentOf, talents, TREE_CAP, TREE_TOTAL, type ShapeFlags } from "./tree";
 import type { Personality } from "./sim/world";
 import { deleteCharacter, loadDraft, loadoutOf, loadRoster, normalize, saveCharacter, saveDraft, thumbnail, writeRoster, type CharacterData } from "./roster";
@@ -1406,9 +1406,15 @@ resetBtn.addEventListener("click", () => {
   renderTree();
 });
 
-// --- 必殺パーツ（持ち物）: 一覧・分解・振り直し・合成 ---
+// --- 必殺パーツ（持ち物）: 一覧・ならびかえ・キャラに付け外し・鍵・分解・振り直し・合成 ---
 let partFilter: "all" | "ranged" | "melee" | "both" = "all";
 let selectedPart: string | null = null;
+const PART_SORT_KEY = "doodle-arena:partSort";
+const partSortSel = document.getElementById("partSort") as HTMLSelectElement;
+try { partSortSel.value = localStorage.getItem(PART_SORT_KEY) || "kind"; } catch { /* 無視 */ }
+partSortSel.addEventListener("change", () => { try { localStorage.setItem(PART_SORT_KEY, partSortSel.value); } catch { /* 無視 */ } renderParts(); });
+const equipCharSel = document.getElementById("equipChar") as HTMLSelectElement;
+equipCharSel.addEventListener("change", () => renderParts());
 document.querySelectorAll<HTMLButtonElement>("[data-pf]").forEach((b) => b.addEventListener("click", () => {
   partFilter = b.dataset.pf as typeof partFilter;
   document.querySelectorAll("[data-pf]").forEach((o) => o.classList.toggle("on", o === b));
@@ -1417,22 +1423,68 @@ document.querySelectorAll<HTMLButtonElement>("[data-pf]").forEach((b) => b.addEv
 // どれかのキャラ（編集中・保存済み）が付けているパーツ
 const equippedIds = () => new Set([editor, ...loadRoster()].flatMap((c) => [...c.partsR, ...c.partsM]));
 
+// 付けかえるキャラ: "" = 編集中、"saved:id" = 保存したキャラ
+type CharRef = string;
+function charOf(ref: CharRef): (Pick<CharacterData, "name" | "partsR" | "partsM">) | undefined {
+  if (!ref) return { name: editor.name || "編集中のキャラ", partsR: editor.partsR, partsM: editor.partsM };
+  return loadRoster().find((c) => `saved:${c.id}` === ref);
+}
+function setCharLoadout(ref: CharRef, type: "ranged" | "melee", ids: string[]) {
+  const key = type === "ranged" ? "partsR" : "partsM";
+  const id = ref.startsWith("saved:") ? ref.slice(6) : null;
+  if (id) writeRoster(loadRoster().map((c) => (c.id === id ? { ...c, [key]: ids } : c)));
+  // 編集中のキャラ（保存したキャラを呼び出し中なら そちらも同じに）
+  if (!id || id === editId) { setLoadout(type, ids); persistDraft(); renderEffects(); }
+}
+function refreshEquipChars() {
+  const keep = equipCharSel.value;
+  equipCharSel.innerHTML = "";
+  equipCharSel.add(new Option(`編集中のキャラ（${editor.name || "名無し"}）`, ""));
+  for (const c of loadRoster()) if (c.id !== editId) equipCharSel.add(new Option(c.name, `saved:${c.id}`));
+  equipCharSel.value = [...equipCharSel.options].some((o) => o.value === keep) ? keep : "";
+}
+
+const TYPE_ORDER = { ranged: 0, melee: 1, both: 2 };
+function sortParts(list: Part[], order: string, all: Part[]): Part[] {
+  const name = (p: Part) => kindInfo(p.kind).name;
+  const byRare = (a: Part, b: Part) => rarityIndex(b.rarity) - rarityIndex(a.rarity) || b.roll - a.roll;
+  if (order === "rare") return list.sort((a, b) => byRare(a, b) || name(a).localeCompare(name(b)));
+  if (order === "cost") return list.sort((a, b) => a.cost - b.cost || byRare(a, b));
+  if (order === "new") return list.sort((a, b) => all.indexOf(b) - all.indexOf(a));
+  return list.sort((a, b) => TYPE_ORDER[kindInfo(a.kind).type] - TYPE_ORDER[kindInfo(b.kind).type] || name(a).localeCompare(name(b)) || byRare(a, b));
+}
+const partNote = (p: Part, eq: Set<string>) => [p.locked ? "🔒" : "", eq.has(p.id) ? "装備中" : ""].filter(Boolean).join("・");
+
 function renderParts() {
+  refreshEquipChars();
   const inv = loadInventory();
   document.getElementById("invCount")!.textContent = String(inv.parts.length);
   document.getElementById("invCap")!.textContent = String(INVENTORY_CAP);
   document.getElementById("shards")!.textContent = String(inv.shards);
   const eq = equippedIds();
+  const plans = planCombines(inv.parts, eq);
+  const bulk = document.getElementById("bulkCombine") as HTMLButtonElement;
+  bulk.disabled = !plans.length;
+  bulk.textContent = plans.length ? `🔨 まとめて ごうせい（${plans.length}）` : "🔨 まとめて ごうせい";
   const listEl = document.getElementById("partList")!;
   listEl.innerHTML = "";
-  const shown = inv.parts.filter((p) => partFilter === "all" || kindInfo(p.kind).type === partFilter)
-    .sort((a, b) => rarityIndex(b.rarity) - rarityIndex(a.rarity) || kindInfo(a.kind).name.localeCompare(kindInfo(b.kind).name) || b.roll - a.roll);
+  const shown = sortParts(inv.parts.filter((p) => partFilter === "all" || kindInfo(p.kind).type === partFilter), partSortSel.value, inv.parts);
   if (!shown.length) listEl.textContent = "ありません。ストーリーで勝つと手に入ります。";
+  let lastType = "";
   for (const p of shown) {
+    // しゅるい ごと: 🎯/👊/🔁 の見出し
+    const t = kindInfo(p.kind).type;
+    if (partSortSel.value === "kind" && t !== lastType) {
+      lastType = t;
+      const h = document.createElement("div");
+      h.className = "kidhint";
+      h.textContent = t === "ranged" ? "🎯 とおくの ひっさつ" : t === "melee" ? "👊 ちかくの ひっさつ" : "🔁 どっちにも つかえる";
+      listEl.appendChild(h);
+    }
     const b = document.createElement("button");
     b.type = "button";
     b.classList.toggle("sel", p.id === selectedPart);
-    b.appendChild(partChip(p, p.cost, eq.has(p.id) ? "装備中" : ""));
+    b.appendChild(partChip(p, p.cost, partNote(p, eq)));
     b.addEventListener("click", () => { selectedPart = p.id; renderParts(); });
     listEl.appendChild(b);
   }
@@ -1441,16 +1493,51 @@ function renderParts() {
   const info = document.getElementById("partInfo")!;
   info.innerHTML = "";
   const p = inv.parts.find((x) => x.id === selectedPart);
-  if (!p) { info.textContent = "パーツをタップすると、分解・振り直し・合成ができます。"; return; }
-  info.appendChild(partChip(p, p.cost, eq.has(p.id) ? "装備中" : ""));
+  if (!p) { info.textContent = "パーツを タップすると、キャラに つける・はずす・🔒鍵・振り直し・分解・合成が できます。"; return; }
+  info.appendChild(partChip(p, p.cost, partNote(p, eq)));
   const desc = document.createElement("div");
   desc.className = "note";
   desc.textContent = kindInfo(p.kind).desc;
   info.appendChild(desc);
+
+  // キャラに つける・はずす
+  const ref = equipCharSel.value;
+  const ch = charOf(ref);
+  const users = [editor, ...loadRoster().filter((c) => c.id !== editId)].flatMap((c) => [
+    ...(c.partsR.includes(p.id) ? [`${c.name || "編集中"}🎯`] : []), ...(c.partsM.includes(p.id) ? [`${c.name || "編集中"}👊`] : []),
+  ]);
+  if (ch) {
+    const er = document.createElement("div");
+    er.className = "row";
+    for (const t of ["ranged", "melee"] as const) {
+      if (!fitsType(p, t)) continue;
+      const ids = t === "ranged" ? ch.partsR : ch.partsM;
+      const on = ids.includes(p.id);
+      const active = withinBudget(partsById(ids), t);
+      const used = equipCosts(active).reduce((a, c) => a + c, 0);
+      const add = equipCosts([...active, p]).at(-1)!;
+      const b = document.createElement("button");
+      b.className = on ? "" : "primary inline";
+      const icon = t === "ranged" ? "🎯" : "👊";
+      b.textContent = on ? `${icon} はずす（⚡${used}/${SPECIAL_BUDGET}）` : used + add > SPECIAL_BUDGET ? `${icon} ⚡が たりない（${used}+${add}/${SPECIAL_BUDGET}）` : `${icon} つける（⚡${used}+${add}/${SPECIAL_BUDGET}）`;
+      b.disabled = !on && used + add > SPECIAL_BUDGET;
+      b.addEventListener("click", () => { setCharLoadout(ref, t, on ? ids.filter((x) => x !== p.id) : [...ids, p.id]); renderParts(); });
+      er.appendChild(b);
+    }
+    const who = document.createElement("div");
+    who.className = "note";
+    who.textContent = `「${ch.name || "名無し"}」に つける・はずす（上の「つけかえる キャラ」で かえられる）${users.length ? `　いま つけている: ${users.join("・")}` : ""}`;
+    info.append(who, er);
+  }
+
   const row = document.createElement("div");
   row.className = "row";
   const msg = document.createElement("div");
   msg.className = "note";
+
+  const lk = document.createElement("button");
+  lk.textContent = p.locked ? "🔓 鍵を はずす" : "🔒 鍵を かける";
+  lk.addEventListener("click", () => { toggleLock(p.id); renderParts(); });
 
   const rr = document.createElement("button");
   rr.textContent = `振り直し（かけら ${rerollCost(p.rarity)}）`;
@@ -1459,8 +1546,7 @@ function renderParts() {
 
   const dm = document.createElement("button");
   dm.textContent = `分解（かけら +${RARITY_INFO[p.rarity].shards}）`;
-  dm.disabled = eq.has(p.id);
-  if (eq.has(p.id)) dm.title = "装備中は分解できません";
+  dm.disabled = eq.has(p.id) || !!p.locked;
   let armed = 0;
   dm.addEventListener("click", () => {
     if (!armed) { dm.textContent = "もう一度で分解"; armed = window.setTimeout(() => { armed = 0; renderParts(); }, 2500); return; }
@@ -1470,18 +1556,101 @@ function renderParts() {
     renderParts();
   });
 
-  const same = combinable(p.kind, p.rarity, eq).length;
+  const key = `${p.kind}|${p.rarity}`;
+  const mats = inv.parts.filter((x) => x.kind === p.kind && x.rarity === p.rarity && x.id !== p.id && canBeMaterial(x, eq)).length;
   const cb = document.createElement("button");
-  cb.textContent = p.rarity === "S" ? "合成（S は最高）" : `合成 ${same}/${COMBINE_COUNT}`;
-  cb.disabled = p.rarity === "S" || same < COMBINE_COUNT;
-  cb.addEventListener("click", () => {
-    const np = combine(p.kind, p.rarity, eq);
-    if (np) { selectedPart = np.id; renderParts(); }
-  });
-  row.append(rr, dm, cb);
+  cb.textContent = p.rarity === "S" ? "合成（S は最高）" : `🔨 これを ベースに 合成（材料 ${mats}/${COMBINE_COUNT - 1}）`;
+  cb.disabled = p.rarity === "S" || !!p.locked || mats < COMBINE_COUNT - 1;
+  cb.addEventListener("click", () => openCombine(key, { [key]: [p.id] }));
+  row.append(lk, rr, dm, cb);
   info.append(row, msg);
-  if (eq.has(p.id)) msg.textContent = "装備中のパーツは分解・合成に使えません（振り直しはできます）。";
+  const notes: string[] = [];
+  if (p.locked) notes.push("🔒 鍵つき: 分解・合成（材料にも ベースにも）しません。");
+  if (eq.has(p.id)) notes.push("装備中: 分解・合成の材料には 使いません（ベースには できます）。");
+  msg.textContent = notes.join("");
 }
+
+// --- 合成の確認（まとめて・1組）: 何がなくなり何ができるかを見せ、ベースを えらび直せる ---
+let combineModal: HTMLElement | null = null;
+function openCombine(onlyKey?: string, chosen: Record<string, string[]> = {}) {
+  combineModal?.remove();
+  const off = new Set<number>(); // やめておく組（番号）
+  const modal = document.createElement("div");
+  modal.className = "modal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  combineModal = modal;
+  const close = () => { modal.remove(); combineModal = null; };
+  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+  const draw = () => {
+    const inv = loadInventory();
+    const eq = equippedIds();
+    const byId = new Map(inv.parts.map((p) => [p.id, p]));
+    const plans = planCombines(inv.parts, eq, chosen).filter((pl) => !onlyKey || `${pl.kind}|${pl.rarity}` === onlyKey);
+    box.innerHTML = "";
+    const h = document.createElement("div");
+    h.className = "kidhint";
+    h.textContent = onlyKey ? "🔨 合成の かくにん" : `🔨 まとめて ごうせい（${plans.length}組）`;
+    const warn = document.createElement("div");
+    warn.className = "warn";
+    warn.textContent = "⚠ ベース いがいの 材料4こは なくなるよ。ベースは 1段上の レア度に なって 数値が 引き直しに なる。装備中と 🔒の パーツは 材料に しないよ。おなじ パーツを かさねて つけている時は、ベースと 材料を よく みてね。";
+    box.append(h, warn);
+    if (!plans.length) { const e = document.createElement("div"); e.className = "note"; e.textContent = "合成できる 組が ないよ。"; box.appendChild(e); }
+    plans.forEach((pl, n) => {
+      const key = `${pl.kind}|${pl.rarity}`;
+      const nth = plans.slice(0, n).filter((x) => `${x.kind}|${x.rarity}` === key).length;
+      const base = byId.get(pl.baseId)!;
+      const div = document.createElement("div");
+      div.className = `cplan${off.has(n) ? " off" : ""}`;
+      const head = document.createElement("label");
+      head.className = "head";
+      const cbx = document.createElement("input");
+      cbx.type = "checkbox";
+      cbx.checked = !off.has(n);
+      cbx.addEventListener("change", () => { if (cbx.checked) off.delete(n); else off.add(n); draw(); });
+      const next = RARITIES[rarityIndex(pl.rarity) + 1];
+      head.append(cbx, `${kindIcon(pl.kind)} ${kindInfo(pl.kind).name}　${pl.rarity} ×${COMBINE_COUNT} → ${next}`);
+      const sel = document.createElement("select");
+      for (const id of pl.candidates) {
+        const c = byId.get(id)!;
+        const o = new Option(`ベース: 出来 ${Math.round(c.roll * 100)}%・⚡${c.cost}${c.extras.length ? `・おまけ${c.extras.length}` : ""}${eq.has(id) ? "・装備中" : ""}`, id);
+        sel.add(o);
+      }
+      sel.value = pl.baseId;
+      sel.addEventListener("change", () => { const arr = [...(chosen[key] ?? [])]; arr[nth] = sel.value; chosen[key] = arr; draw(); });
+      const mats = document.createElement("div");
+      mats.className = "mats";
+      mats.textContent = `なくなる 材料: ${pl.materialIds.map((id) => { const m = byId.get(id)!; return `出来${Math.round(m.roll * 100)}%${m.extras.length ? `+${m.extras.length}` : ""}`; }).join("・")}`;
+      div.append(head, partChip(base, base.cost, eq.has(base.id) ? "ベース・装備中" : "ベース"), sel, mats);
+      box.appendChild(div);
+    });
+    const act = plans.filter((_, n) => !off.has(n));
+    const row = document.createElement("div");
+    row.className = "row";
+    const ok = document.createElement("button");
+    ok.className = "primary inline";
+    ok.textContent = `🔨 ${act.length}組 合成する`;
+    ok.disabled = !act.length;
+    ok.addEventListener("click", () => {
+      const eqNow = equippedIds();
+      const made = act.map((pl) => combineInto(pl.baseId, pl.materialIds, eqNow)).filter((x): x is Part => !!x);
+      close();
+      if (made.length) { selectedPart = made[0].id; toast(`🔨 ${made.map((m) => `${m.rarity} ${kindIcon(m.kind)}`).join(" ")} が できたよ！`); }
+      renderParts();
+    });
+    const cancel = document.createElement("button");
+    cancel.textContent = "やめる";
+    cancel.addEventListener("click", close);
+    row.append(ok, cancel);
+    box.appendChild(row);
+  };
+  draw();
+}
+document.getElementById("bulkCombine")!.addEventListener("click", () => openCombine());
 
 // --- ストーリー ---
 const storyCharSel = document.getElementById("storyChar") as HTMLSelectElement;

@@ -394,6 +394,16 @@
       .pop.recoil { font-size: 15px; color: #ff8787; -webkit-text-stroke: 1.5px #3a0000; }
       .pop.thud { font-size: 30px; color: #fff; -webkit-text-stroke: 2.5px #5a3b12; }
       .pop.thud.big { font-size: 52px; }
+      .prow { flex-wrap: wrap; gap: 8px 14px; }
+      .prow label { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; }
+      .modal { position: fixed; inset: 0; z-index: 40; background: rgba(20,20,40,.45); display: grid; place-items: center; padding: 16px; }
+      .modal-box { background: var(--panel); border-radius: 18px; padding: 14px; width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: auto; box-shadow: 0 12px 40px rgba(0,0,0,.3); }
+      .cplan { border: 2px solid var(--line); border-radius: 14px; padding: 8px; margin: 8px 0; display: grid; gap: 6px; }
+      .cplan.off { opacity: .45; }
+      .cplan .head { display: flex; align-items: center; gap: 8px; font-weight: 800; }
+      .cplan select { max-width: 100%; }
+      .cplan .mats { font-size: 13px; color: var(--muted); }
+      .warn { background: #fff3bf; color: #5c3c00; border-radius: 10px; padding: 8px 10px; font-size: 13px; font-weight: 700; }
       .b-err { position: absolute; z-index: 4; left: 8px; right: 8px; bottom: 8px; padding: 6px 8px; border-radius: 8px; background: rgba(200,0,0,.85); color: #fff; font: 11px/1.3 monospace; white-space: pre-wrap; pointer-events: none; }
       .b-close { position: absolute; z-index: 3; top: calc(env(safe-area-inset-top, 0px) + 8px); right: 10px; width: 36px; height: 36px; min-height: 0; padding: 0; border-radius: 50%; background: rgba(255,255,255,.8); color: #222; border: none; font-size: 20px; }
     </style>
@@ -465,16 +475,26 @@
     <section id="partsScreen" hidden>
       <div class="tree-head">
         <div>パーツ <b id="invCount">0</b> / <span id="invCap"></span><div class="note">かけら <b id="shards">0</b></div></div>
+        <button id="bulkCombine" type="button">🔨 まとめて ごうせい</button>
       </div>
       <div class="seg" id="partFilter">
         <button type="button" data-pf="all" class="on">すべて</button>
-        <button type="button" data-pf="ranged">遠距離</button>
-        <button type="button" data-pf="melee">近接</button>
-        <button type="button" data-pf="both">共通</button>
+        <button type="button" data-pf="ranged">🎯 とおく</button>
+        <button type="button" data-pf="melee">👊 ちかく</button>
+        <button type="button" data-pf="both">🔁 きょうつう</button>
+      </div>
+      <div class="row prow">
+        <label>ならびかえ <select id="partSort">
+          <option value="kind">しゅるい ごと</option>
+          <option value="rare">レアな じゅん</option>
+          <option value="cost">⚡ コストの じゅん</option>
+          <option value="new">あたらしい じゅん</option>
+        </select></label>
+        <label>🧑 つけかえる キャラ <select id="equipChar"></select></label>
       </div>
       <div class="node-info" id="partInfo"></div>
       <div class="plist" id="partList"></div>
-      <div class="note">パーツはキャラ作りの「キャラ」で付け外しします。装備コストの合計が20までです。分解するとかけらになり、かけらで数値を振り直せます。同じ種類・同じレア度を5個集めると、1段上のレア度に合成できます。</div>
+      <div class="note">パーツを タップすると、キャラに つける・はずす・🔒鍵・振り直し・分解・合成が できます。装備コストの合計は 🎯と👊 それぞれ 20まで。分解すると かけらになり、かけらで 数値を 振り直せます。同じ種類・同じレア度の 5個（ベース1＋材料4）で、ベースが 1段上の レア度に なります。🔒と 装備中の パーツは 材料に なりません。</div>
     </section>
     <section id="transferScreen" hidden>
       <div class="note">保存したキャラ・レベル・ストーリーの進み具合を1つの「引き継ぎコード」にまとめます。別の端末やブラウザで読み込むと、同じデータで続きを遊べます。ブラウザのデータは消えることがあるので、ときどき書き出しておくと安心です。</div>

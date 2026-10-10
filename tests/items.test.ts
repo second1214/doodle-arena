@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ALL_KINDS, buildSpecial, equipCosts, makePart, RARITIES, RARITY_INFO, rollRarity, seededRnd, type Part } from "../src/items";
-import { combine, dismantle, dropParts, loadInventory, migrateToParts, reroll, saveInventory } from "../src/inventory";
+import { combineInto, dismantle, planCombines, toggleLock, dropParts, loadInventory, migrateToParts, reroll, saveInventory } from "../src/inventory";
 import { composeSpecial } from "../src/sim/special";
 import { createWorld } from "../src/sim/world";
 
@@ -83,8 +83,31 @@ describe("持ち物", () => {
     saveInventory({ v: 1, parts, shards: 0, sinceA: 0 });
     expect(dismantle(parts[0].id)).toBe(4);
     expect(reroll(parts[1].id)).toBeNull(); // かけら不足（8 必要）
-    const np = combine("power", "D", new Set())!;
+    const [base, ...mats] = loadInventory().parts.map((p) => p.id);
+    const np = combineInto(base, mats, new Set())!;
     expect(np.rarity).toBe("C");
+    expect(np.id).toBe(base); // ベースが1段上になる（装備したままでよい）
     expect(loadInventory().parts.length).toBe(1);
+  });
+
+  it("鍵つき・装備中は材料にも分解にも使わない。まとめて合成の計画とベースの入れかえ", () => {
+    const rnd = seededRnd(11);
+    const parts = Array.from({ length: 11 }, () => makePart("power", "C", rnd));
+    saveInventory({ v: 1, parts, shards: 0, sinceA: 0 });
+    toggleLock(parts[0].id);
+    expect(dismantle(parts[0].id)).toBe(0);
+    const eq = new Set([parts[1].id, parts[2].id]);
+    // 鍵1・装備2 → 材料にできるのは8個。ベースは装備中から → 2組
+    const plan = planCombines(loadInventory().parts, eq);
+    expect(plan.length).toBe(2);
+    expect(eq.has(plan[0].baseId)).toBe(true);
+    for (const pl of plan) for (const m of pl.materialIds) { expect(eq.has(m)).toBe(false); expect(m).not.toBe(parts[0].id); }
+    // ベースを入れかえ
+    const other = plan[0].candidates.find((id) => id !== plan[0].baseId && !eq.has(id))!;
+    const re = planCombines(loadInventory().parts, eq, { [`power|C`]: [other] });
+    expect(re[0].baseId).toBe(other);
+    expect(re[0].materialIds).not.toContain(other);
+    expect(combineInto(re[0].baseId, re[0].materialIds, eq)?.rarity).toBe("B");
+    expect(combineInto(parts[0].id, re[1]?.materialIds ?? [], eq)).toBeNull(); // 鍵つきはベースにしない
   });
 });
