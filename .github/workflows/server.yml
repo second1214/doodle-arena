@@ -54,3 +54,4 @@ jobs:
           curl -fsS "$API/ranking?tier=0" > /dev/null
           # ゲームの公開ページから呼べるか（ブラウザが見る CORS の許可）
           curl -fsS -D - -o /dev/null -H "Origin: https://second1214.github.io" "$API/health" | grep -i "access-control-allow-origin: https://second1214.github.io"
+          curl -fsS -D - -o /dev/null -H "Origin: https://rakugaki-arena.pages.dev" "$API/health" | grep -i "access-control-allow-origin: https://rakugaki-arena.pages.dev"

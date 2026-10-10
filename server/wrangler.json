@@ -10,5 +10,5 @@
       "migrations_dir": "migrations"
     }
   ],
-  "vars": { "ALLOWED_ORIGINS": "https://second1214.github.io" }
+  "vars": { "ALLOWED_ORIGINS": "https://second1214.github.io,https://rakugaki-arena.pages.dev" }
 }

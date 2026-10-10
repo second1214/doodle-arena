@@ -29,3 +29,14 @@ jobs:
           publish_dir: ./dist
           publish_branch: gh-pages
           force_orphan: true
+      # Cloudflare Pages（無料）にも置く: https://rakugaki-arena.pages.dev/ （git の名前が入らない アドレス）
+      # 失敗しても GitHub Pages の公開は そのまま（トークンに Cloudflare Pages の権限が無い時など）
+      - name: Cloudflare Pages にも公開
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          rm -f dist/.nojekyll
+          npx --yes wrangler@4 pages project list | grep -q "rakugaki-arena" || npx --yes wrangler@4 pages project create rakugaki-arena --production-branch=main
+          npx --yes wrangler@4 pages deploy dist --project-name=rakugaki-arena --branch=main --commit-dirty=true
