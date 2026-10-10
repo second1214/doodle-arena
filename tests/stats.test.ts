@@ -3,7 +3,7 @@ import { normalize } from "../src/roster";
 import { statEffects } from "../src/sim/stats";
 import { aiInput, createAi } from "../src/sim/ai";
 import { createWorld, step, type FighterConfig } from "../src/sim/world";
-import { autoTree, boostOf, canTake, isRevealed, isValidTree, legacyCost, NODES, spentOf, TREE_CAP, TREE_TOTAL } from "../src/tree";
+import { autoTree, boostOf, canTake, isValidTree, legacyCost, NODES, spentOf, TREE_CAP, TREE_TOTAL } from "../src/tree";
 
 const cfg = (x: Partial<FighterConfig>): FighterConfig => ({ name: "x", reach: 0.5, hasHands: true, hasFeet: true, special: [], ...x });
 
@@ -31,8 +31,6 @@ describe("強化（スキルツリー）", () => {
     const bridge = "x-atk-sp";
     expect(canTake(bridge, ["atk-1", "atk-2", "atk-3"])).toBe(false);
     expect(canTake(bridge, ["atk-1", "atk-2", "atk-3", "sp-1", "sp-2", "sp-3"])).toBe(true);
-    expect(isRevealed("atk-3", [])).toBe(false);
-    expect(isRevealed("atk-2", [])).toBe(true);
   });
 
   it("ツリーに使える上限: 多く取れるが全部は取れない。CPU の自動取得も上限まで", () => {

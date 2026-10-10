@@ -86,6 +86,8 @@
       .menu .big:disabled { opacity: .5; }
       .credit { text-align: center; color: var(--muted); font-size: 11px; margin-top: 18px; }
       .credit a { color: inherit; }
+      ruby rt { font-size: .5em; font-weight: 700; letter-spacing: 0; opacity: .85; }
+      ruby { ruby-position: over; }
       .chapter { margin-top: 14px; }
       .chapter h2 { font-size: 16px; margin: 0 0 8px; }
       .stages { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -166,9 +168,26 @@
       .ptile .nm { font-weight: 800; font-size: 13px; text-align: center; line-height: 1.2; }
       .ptile .pw { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.2; }
       .ptile .ct { position: absolute; top: 4px; right: 6px; font-size: 12px; font-weight: 800; color: var(--muted); }
+      .ptile .ct::before { content: "⚡"; }
       .ptile.off { opacity: .45; }
       .ptile:disabled { opacity: .35; }
       .kidhint { font-weight: 800; font-size: 14px; margin-top: 4px; }
+      .stabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .stab { display: grid; justify-items: center; gap: 2px; padding: 10px 6px; border-radius: 16px; border: 3px solid var(--line); }
+      .stab b { font-size: 30px; line-height: 1.1; }
+      .stab span { font-weight: 800; }
+      .stab small { font-weight: 800; color: var(--muted); }
+      .stab.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); box-shadow: 0 0 0 2px var(--accent); }
+      .stab.on small { color: var(--accent); }
+      .pips { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin: 6px 0; }
+      .pips i { width: 12px; height: 18px; border-radius: 4px; background: var(--line); }
+      .pips b { margin-left: 8px; font-size: 15px; }
+      .pbox { border: 2px dashed var(--line); border-radius: 16px; padding: 8px; margin-top: 8px; }
+      .ptile .badge { position: absolute; bottom: 4px; right: 6px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 11px; font-weight: 900; font-size: 13px; color: #fff; }
+      .ptile .badge.x { background: #e03131; }
+      .ptile .badge.plus { background: #2f9e44; }
+      .ptile:disabled .badge.plus { background: var(--muted); }
+      .ptile .tag { font-size: 10px; font-weight: 800; color: #1971c2; }
       .savebar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
       .savebar button { margin-top: 0; min-height: 56px; font-size: 17px; font-weight: 800; border-radius: 999px; }
       .rgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
@@ -387,14 +406,15 @@
         <div class="pts">スキルポイント <b id="pPoints">0</b></div>
       </div>
       <div class="menu">
-        <button class="big story" data-go="story"><b>ストーリー</b><small>敵を倒して強くなる</small></button>
-        <button class="big online" data-go="online"><b>オンライン</b><small>みんなの キャラと たたかう・こうかい</small></button>
-        <button class="big" data-go="free"><b>自由バトル</b><small>好きな相手と戦う・観戦</small></button>
-        <button class="big" data-go="make"><b>キャラを作る</b><small>描く・検知・動かす・設定</small></button>
-        <button class="big" data-go="tree"><b>スキルツリー</b><small id="treeHint">ポイントで強くなる</small></button>
-        <button class="big" data-go="parts"><b>必殺パーツ</b><small>持ち物・分解・合成</small></button>
-        <button class="big" data-go="transfer"><b>引き継ぎ</b><small>データの書き出し・読み込み</small></button>
+        <button class="big story" data-go="story"><b>📖 ストーリー</b><small>てきを たおして つよくなる</small></button>
+        <button class="big online" data-go="online"><b>🌐 オンライン</b><small>みんなの キャラと たたかう・こうかい</small></button>
+        <button class="big" data-go="free"><b>⚔️ じゆうバトル</b><small>すきな あいてと たたかう・みる</small></button>
+        <button class="big" data-go="make"><b>✏️ キャラを つくる</b><small>かく・しらべる・うごかす</small></button>
+        <button class="big" data-go="tree"><b>🌳 スキルツリー</b><small id="treeHint">ポイントで強くなる</small></button>
+        <button class="big" data-go="parts"><b>🧩 ひっさつパーツ</b><small>もちもの・ぶんかい・ごうせい</small></button>
+        <button class="big" data-go="transfer"><b>📦 ひきつぎ</b><small>データを うつす（おうちの人と）</small></button>
       </div>
+      <div class="row" style="justify-content:center;margin-top:12px"><button id="furigana" type="button"></button></div>
       <p class="credit">3D表示に <a href="./third-party-licenses.txt" target="_blank" rel="noopener">three.js</a>（MIT License）を使っています。</p>
     </section>
     <section id="storyScreen" hidden>
@@ -457,10 +477,10 @@
     </section>
     <div id="workspace" hidden>
     <div class="tabs" id="makeTabs">
-      <button data-view="draw" class="on">描く</button>
-      <button data-view="detect">検知</button>
-      <button data-view="anim">動かす</button>
-      <button data-view="char">キャラ</button>
+      <button data-view="draw" class="on">✏️ かく</button>
+      <button data-view="detect">🔍 しらべる</button>
+      <button data-view="anim">🕺 うごかす</button>
+      <button data-view="char">🧑 キャラ</button>
     </div>
     <section id="charSetup" class="kid" hidden>
       <div class="kcard">
@@ -479,11 +499,7 @@
       </div>
       <div class="kcard">
         <div class="kh"><span class="kn">4</span>ひっさつわざ</div>
-        <div class="seg big" role="radiogroup" aria-label="ひっさつわざのかた">
-          <button type="button" data-stype="ranged" class="on">🎯 とおくから</button>
-          <button type="button" data-stype="melee">👊 ちかくで</button>
-        </div>
-        <div class="meter"><div class="meter-bar"><i id="costBar"></i></div><span id="costInfo"></span></div>
+        <div id="stypeTabs" class="stabs" role="radiogroup" aria-label="ひっさつわざの しゅるい"></div>
         <div id="effects"></div>
       </div>
       <div class="savebar">

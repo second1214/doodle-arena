@@ -2,7 +2,7 @@
 // - 中心から7本の枝。各枝は 小1 → 小2 → ★名前付きの山場（チェックポイント）→ 小4 → 分かれ道（2つのうち1つ）→ 小6 → ◆大技（強いけど損もある）
 // - となり合う枝の山場を両方取ると、間に「組み合わせ技」が開く
 // - 「らくがき才能」: 描いた絵の形に合うキャラにだけ効く強化
-// - 取れる場所の先は「？」で隠れていて、近づくと見える。枝を全部取ると称号
+// - 枝を全部取ると称号（振り直し無料なので、全部のノードは最初から見える）
 // ノード ID は保存に使うので変えない（変えるときは TREE_VERSION を上げる＝読み込み時に全部払い戻して振り直し）。
 import { sumBoost, type Boost } from "./sim/stats";
 
@@ -139,17 +139,6 @@ export function canTake(id: string, owned: string[]): boolean {
   if (!n.requires.every((r) => owned.includes(r))) return false;
   if (n.requiresAny && !n.requiresAny.some((r) => owned.includes(r))) return false;
   return true;
-}
-
-// 見えているか（取った・取れる・1つ手前を取った）。それ以外は「？」
-export function isRevealed(id: string, owned: string[]): boolean {
-  const n = BY_ID.get(id);
-  if (!n) return false;
-  if (owned.includes(id) || canTake(id, owned) || n.kind === "talent") return true;
-  if (n.kind === "bridge") return n.requires.some((r) => owned.includes(r));
-  if (n.excludes && owned.includes(n.excludes)) return true; // 選ばなかった方の分かれ道
-  const pre = [...n.requires, ...(n.requiresAny ?? [])];
-  return pre.some((r) => { const p = BY_ID.get(r); return !!p && (owned.includes(r) || canTake(r, owned)); });
 }
 
 export const spentOf = (owned: string[]) => owned.reduce((a, id) => a + (BY_ID.get(id)?.cost ?? 0), 0);

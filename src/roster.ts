@@ -17,7 +17,11 @@ export interface CharacterData {
   specialType: "ranged" | "melee";
   special: EffectId[];
   melee: MeleeEffectId[];
-  parts: string[]; // 装備している必殺パーツの id（持ち物 inventory の中を指す。型に合うものだけ効く）
+  // 装備している必殺パーツの id（持ち物 inventory の中を指す）。遠距離と近接で別々に組み、ポイントも別々。
+  // 両方に使える共通パーツは、同じ1個を両方に付けられる
+  partsR: string[];
+  partsM: string[];
+  parts?: string[]; // 古い形（遠近で1つの並び）。読み込み時に partsR・partsM へ写す
   thumb?: string; // 一覧用の小さな画像（data URL）
   savedAt: number;
   shapeVersion: number; // 形の性能の計算式の版（将来の変更に備えて記録）
@@ -46,6 +50,9 @@ export function writeRoster(list: CharacterData[]): boolean {
 }
 
 // 古い・壊れたデータでも読めるように整える。能力値は上限と総ポイントを守る
+const ids = (x: unknown): string[] => (Array.isArray(x) ? x.filter((i): i is string => typeof i === "string") : []);
+export const loadoutOf = (c: Pick<CharacterData, "partsR" | "partsM">, type: "ranged" | "melee") => (type === "ranged" ? c.partsR : c.partsM);
+
 export function normalize(c: Partial<CharacterData>): CharacterData {
   const stats = { ...DEFAULT_STATS, ...(c.stats ?? {}) };
   for (const k of STAT_KEYS) stats[k] = Math.max(0, Math.min(STAT_MAX, Math.round(Number(stats[k]) || 0)));
@@ -61,7 +68,8 @@ export function normalize(c: Partial<CharacterData>): CharacterData {
     specialType: c.specialType === "melee" ? "melee" : "ranged",
     special: c.special ?? [],
     melee: c.melee ?? [],
-    parts: Array.isArray(c.parts) ? c.parts.filter((x) => typeof x === "string") : [],
+    partsR: ids(c.partsR ?? c.parts),
+    partsM: ids(c.partsM ?? c.parts),
     thumb: c.thumb,
     savedAt: c.savedAt ?? Date.now(),
     shapeVersion: c.shapeVersion ?? SHAPE_VERSION,

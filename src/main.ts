@@ -1,6 +1,7 @@
 import { CANVAS_SIZE, DEFAULT_PARAMS, detect, type DetectParams, type DetectResult, type Stroke } from "./detect";
 import { cutParts, drawStroke, renderStrokes } from "./parts";
 import { SAMPLES } from "./samples";
+import { furiganaOn, installFurigana, setFurigana } from "./furigana";
 import { beautify, fitShape, mirrorStroke, stabilize } from "./drawassist";
 import { startBattle } from "./battle/battle";
 import { Sfx } from "./battle/audio";
@@ -11,9 +12,9 @@ import { PERSONAS } from "./sim/ai";
 import { sumBoost, type Boost } from "./sim/stats";
 import { ALL_KINDS, buildSpecial, equipCosts, extraText, fitsType, hashStr, kindIcon, kindInfo, mainText, makePart, seededRnd, RARITY_INFO, rarityIndex, SPECIAL_BUDGET, type BuiltSpecial, type Part, type PartKind } from "./items";
 import { combinable, combine, COMBINE_COUNT, dismantle, dropParts, INVENTORY_CAP, loadInventory, migrateToParts, reroll, rerollCost, type DropResult } from "./inventory";
-import { autoTree, boostOf, BRANCHES, bridges, canTake, isRevealed, masteredBranches, nodeById, nodeId, randomTree, spentOf, talents, TREE_CAP, TREE_TOTAL, type ShapeFlags } from "./tree";
+import { autoTree, boostOf, BRANCHES, bridges, canTake, masteredBranches, nodeById, nodeId, randomTree, spentOf, talents, TREE_CAP, TREE_TOTAL, type ShapeFlags } from "./tree";
 import type { Personality } from "./sim/world";
-import { deleteCharacter, loadDraft, loadRoster, normalize, saveCharacter, saveDraft, thumbnail, writeRoster, type CharacterData } from "./roster";
+import { deleteCharacter, loadDraft, loadoutOf, loadRoster, normalize, saveCharacter, saveDraft, thumbnail, writeRoster, type CharacterData } from "./roster";
 import { applyStageResult, expToNext, exportCode, importCode, LEVEL_CAP, loadProfile, loadStory, requestPersist, resetTree, takeNode, totalPoints, type Reward } from "./progress";
 import { CPU_CHARS, CPU_GROUPS, cpuCharById, type CpuChar } from "./cpuChars";
 import { initOnline } from "./online/screen";
@@ -94,6 +95,7 @@ function tint(part: HTMLCanvasElement, col: string): HTMLCanvasElement {
   return c;
 }
 
+let detectText = ""; // 検知の結果の文（画面の文字はふりがなが混ざるので、こちらを使う）
 function runDetect() {
   const res = detect(strokes, params, marks);
   detected = { res, parts: cutParts(strokes, res).canvases };
@@ -102,7 +104,8 @@ function runDetect() {
   const notes: string[] = [];
   if (strokes.length && hands === 0) notes.push("手なし→体当たりで攻撃");
   if (strokes.length && feet === 0) notes.push("足なし→転がって移動");
-  resultEl.textContent = strokes.length ? `${marks.some((m) => m.color !== "erase") ? "🖐 ぬった手足: " : ""}手 ${hands}本・足 ${feet}本${notes.length ? "（" + notes.join("／") + "）" : ""}` : "まだ何も描かれていません";
+  detectText = strokes.length ? `${marks.some((m) => m.color !== "erase") ? "🖐 ぬった手足: " : ""}手 ${hands}本・足 ${feet}本${notes.length ? "（" + notes.join("／") + "）" : ""}` : "まだ何も描かれていません";
+  resultEl.textContent = detectText;
 }
 
 function limbColor(res: DetectResult, k: number) {
@@ -206,7 +209,7 @@ function startPreview() {
   const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
   try {
     preview = new Preview3D(previewEl, buildCharacter(editor.name || "あなた", mine, [], params, strokes.length ? marks : []));
-    if (!resultEl.textContent!.includes("なぞる")) resultEl.textContent += "　👆 指でなぞると くるっと 回せるよ";
+    resultEl.textContent = detectText + "　👆 指でなぞると くるっと 回せるよ";
   } catch {
     resultEl.textContent = "立体の表示に失敗しました（この端末では 3D が使えない可能性があります）";
   }
@@ -225,7 +228,7 @@ function setView(v: View) {
   battleSetup.hidden = v !== "battle";
   charSetup.hidden = v !== "char";
   if (v === "char") {
-    resultEl.textContent = strokes.length ? "" : "まだ絵が ないので「棒人間」で 見せているよ（「描く」で 描いてね）";
+    resultEl.textContent = strokes.length ? "" : "まだ絵が ないので「棒人間」で 見せているよ（「かく」で 描いてね）";
     renderTraits();
     renderRoster();
     return;
@@ -415,7 +418,7 @@ document.getElementById("mAuto")!.addEventListener("click", () => {
   save();
   render();
   runDetect();
-  resultEl.textContent = "🤖 自動で 見つけるように もどしたよ　" + resultEl.textContent;
+  resultEl.textContent = "🤖 自動で 見つけるように もどしたよ　" + detectText;
 });
 const assistBtns = { smooth: document.getElementById("aSmooth")!, mirror: document.getElementById("aMirror")!, shape: document.getElementById("aShape")! };
 const syncAssist = () => { for (const k of Object.keys(assistBtns) as (keyof typeof assistBtns)[]) assistBtns[k].classList.toggle("on", assist[k]); };
@@ -542,8 +545,11 @@ document.getElementById("resetParams")!.addEventListener("click", () => {
   const map = migrateToParts([...roster.flatMap(kindsOf), ...(d ? kindsOf(d) : [])]);
   if (!map) return;
   const toParts = (c: Partial<CharacterData>) => [...new Set(kindsOf(c))].map((k) => map.get(k)).filter((x): x is string => !!x);
-  writeRoster(roster.map((c) => ({ ...c, parts: c.parts.length ? c.parts : toParts(c) })));
-  saveDraft({ ...(d ?? {}), parts: d?.parts?.length ? d.parts : toParts(d ?? { special: ["homing"], melee: ["tornado"] }) });
+  const fill = (ids: string[], c: Partial<CharacterData>) => (ids.length ? ids : toParts(c));
+  writeRoster(roster.map((c) => ({ ...c, partsR: fill(c.partsR, c), partsM: fill(c.partsM, c) })));
+  const nd = normalize(d ?? {});
+  const base = d ?? { special: ["homing"], melee: ["tornado"] };
+  saveDraft({ ...(d ?? {}), parts: undefined, partsR: fill(nd.partsR, base), partsM: fill(nd.partsM, base) });
 })();
 // 新しいキャラに最初から付けるパーツ（配った 追尾(遠)・竜巻(近) が残っていれば）
 const starterParts = () => ["start-r-homing", "start-m-tornado"].filter((id) => loadInventory().parts.some((p) => p.id === id));
@@ -600,16 +606,9 @@ function syncPersonality() {
   });
 }
 
-// 必殺技: 持っているパーツを付け外しして組む（予算内）
-document.querySelectorAll<HTMLButtonElement>("[data-stype]").forEach((b) =>
-  b.addEventListener("click", () => {
-    editor.specialType = b.dataset.stype as "ranged" | "melee";
-    renderEffects();
-    persistDraft();
-  }),
-);
+// 必殺技: 持っているパーツを付け外しして組む（遠距離・近接で別々。ポイントも別々）
+const stypeTabs = document.getElementById("stypeTabs")!;
 const effectsEl = document.getElementById("effects")!;
-const costInfo = document.getElementById("costInfo")!;
 
 // パーツ1つの札（レア度・名前・数値・コスト）
 function partChip(p: Part, cost = p.cost, note = ""): HTMLElement {
@@ -671,50 +670,93 @@ function specialSummary(b: BuiltSpecial, type: "ranged" | "melee"): string {
   return t.join("・");
 }
 
+const TYPE_LABEL = { ranged: ["🎯", "とおくの ひっさつ"], melee: ["👊", "ちかくの ひっさつ"] } as const;
+const setLoadout = (type: "ranged" | "melee", ids: string[]) => { if (type === "ranged") editor.partsR = ids; else editor.partsM = ids; };
+
 function renderEffects() {
-  document.querySelectorAll("[data-stype]").forEach((o) => o.classList.toggle("on", (o as HTMLElement).dataset.stype === editor.specialType));
-  const type = editor.specialType;
   const inv = loadInventory();
-  editor.parts = editor.parts.filter((id) => inv.parts.some((p) => p.id === id)); // 分解したパーツは外す
-  const mine = partsById(editor.parts);
+  const fits = (type: "ranged" | "melee") => (id: string) => { const p = inv.parts.find((x) => x.id === id); return !!p && fitsType(p, type); };
+  // 分解したパーツ・型に合わないパーツは外す
+  editor.partsR = editor.partsR.filter(fits("ranged"));
+  editor.partsM = editor.partsM.filter(fits("melee"));
+  const type = editor.specialType;
+  const usedOf = (t: "ranged" | "melee") => equipCosts(withinBudget(partsById(loadoutOf(editor, t)), t)).reduce((a, c) => a + c, 0);
+
+  // 上: 2つの札（それぞれの のこりポイント）。えらんだ方を たたかいで つかう
+  stypeTabs.innerHTML = "";
+  for (const t of ["ranged", "melee"] as const) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `stab${t === type ? " on" : ""}`;
+    b.setAttribute("role", "radio");
+    b.setAttribute("aria-checked", String(t === type));
+    b.innerHTML = `<b></b><span></span><small></small>`;
+    b.querySelector("b")!.textContent = TYPE_LABEL[t][0];
+    b.querySelector("span")!.textContent = TYPE_LABEL[t][1];
+    b.querySelector("small")!.textContent = `⚡ ${usedOf(t)} / ${SPECIAL_BUDGET}${t === type ? "　⭐ つかう" : ""}`;
+    b.addEventListener("click", () => { editor.specialType = t; renderEffects(); persistDraft(); });
+    stypeTabs.appendChild(b);
+  }
+
+  const ids = loadoutOf(editor, type);
+  const mine = partsById(ids);
   const active = withinBudget(mine, type);
   const costs = equipCosts(active);
   const used = costs.reduce((a, c) => a + c, 0);
-  costInfo.textContent = `${used} / ${SPECIAL_BUDGET}`;
-  const bar = document.getElementById("costBar")!;
-  bar.style.width = `${Math.min(100, (100 * used) / SPECIAL_BUDGET)}%`;
-  bar.classList.toggle("full", used >= SPECIAL_BUDGET);
+  const other = new Set(loadoutOf(editor, type === "ranged" ? "melee" : "ranged"));
   effectsEl.innerHTML = "";
-  const head = (t: string) => { const h = document.createElement("div"); h.className = "kidhint"; h.textContent = t; effectsEl.appendChild(h); };
-  const grid = (empty: string) => { const g = document.createElement("div"); g.className = "tgrid"; effectsEl.appendChild(g); const e = document.createElement("div"); e.className = "empty"; e.textContent = empty; g.appendChild(e); return g; };
+  const add = (cls: string, text: string, parent: HTMLElement = effectsEl) => { const d = document.createElement("div"); d.className = cls; d.textContent = text; parent.appendChild(d); return d; };
 
-  head("つけている パーツ（タップで はずす）");
-  const on = grid(mine.length ? "" : "まだ なにも つけていないよ。下から えらんでね");
-  if (mine.length) on.innerHTML = "";
+  add("kidhint", `⭐ たたかいでは ${TYPE_LABEL[type][0]} ${TYPE_LABEL[type][1]}を つかうよ`);
+  // ポイントの つぶ（1つぶ = 1ポイント。パーツごとに 色を わける）
+  const pips = document.createElement("div");
+  pips.className = "pips";
+  pips.setAttribute("aria-label", `ポイント ${used} / ${SPECIAL_BUDGET}`);
+  let k = 0;
+  active.forEach((p, i) => { for (let j = 0; j < costs[i] && k < SPECIAL_BUDGET; j++, k++) { const d = document.createElement("i"); d.style.background = RARITY_INFO[p.rarity].color; pips.appendChild(d); } });
+  for (; k < SPECIAL_BUDGET; k++) pips.appendChild(document.createElement("i"));
+  const left = document.createElement("b");
+  left.textContent = `のこり ⚡${SPECIAL_BUDGET - used}`;
+  pips.appendChild(left);
+  effectsEl.appendChild(pips);
+
+  const box = (title: string, empty: string) => {
+    const wrap = document.createElement("div");
+    wrap.className = "pbox";
+    add("kidhint", title, wrap);
+    const g = document.createElement("div");
+    g.className = "tgrid";
+    wrap.appendChild(g);
+    effectsEl.appendChild(wrap);
+    if (empty) add("empty", empty, g);
+    return g;
+  };
+  const on = box("🎒 つけている（タップで はずす）", mine.length ? "" : "まだ なにも ついていないよ。下の パーツを タップしてね");
   for (const p of mine) {
-    const k = active.indexOf(p);
-    const t = partTile(p, k >= 0 ? costs[k] : p.cost, !fitsType(p, type) ? "このかたでは つかえない" : k < 0 ? "コストが たりない" : "");
-    if (k < 0) t.classList.add("off");
-    t.addEventListener("click", () => { editor.parts = editor.parts.filter((id) => id !== p.id); renderEffects(); persistDraft(); });
+    const i = active.indexOf(p);
+    const t = partTile(p, i >= 0 ? costs[i] : p.cost, i < 0 ? "⚡が たりなくて きいてない" : "");
+    t.classList.add("equipped");
+    if (i < 0) t.classList.add("off");
+    t.insertAdjacentHTML("beforeend", `<span class="badge x">✖</span>`);
+    t.addEventListener("click", () => { setLoadout(type, ids.filter((id) => id !== p.id)); renderEffects(); persistDraft(); });
     on.appendChild(t);
   }
 
-  head("もっている パーツ（タップで つける）");
-  const cand = inv.parts.filter((p) => fitsType(p, type) && !editor.parts.includes(p.id))
+  const cand = inv.parts.filter((p) => fitsType(p, type) && !ids.includes(p.id))
     .sort((a, b) => rarityIndex(b.rarity) - rarityIndex(a.rarity) || kindInfo(a.kind).name.localeCompare(kindInfo(b.kind).name));
-  const have = grid(cand.length ? "" : "つけられる パーツが ないよ。ストーリーで かつと もらえる！");
-  if (cand.length) have.innerHTML = "";
+  const have = box("🧰 もっている パーツ（タップで つける）", cand.length ? "" : "つけられる パーツが ないよ。ストーリーで かつと もらえる！");
   for (const p of cand) {
-    const add = equipCosts([...active, p]).at(-1)!;
-    const t = partTile(p, add);
-    t.disabled = used + add > SPECIAL_BUDGET;
-    t.addEventListener("click", () => { editor.parts = [...editor.parts, p.id]; renderEffects(); persistDraft(); });
+    const cost = equipCosts([...active, p]).at(-1)!;
+    const short = used + cost > SPECIAL_BUDGET;
+    const both = kindInfo(p.kind).type === "both";
+    const t = partTile(p, cost, short ? `⚡が ${used + cost - SPECIAL_BUDGET} たりない` : "");
+    t.disabled = short;
+    t.insertAdjacentHTML("beforeend", `<span class="badge plus">＋</span>`);
+    if (both) t.insertAdjacentHTML("beforeend", `<span class="tag">${other.has(p.id) ? `${TYPE_LABEL[type === "ranged" ? "melee" : "ranged"][0]}にも つけてる` : "🔁 どっちにも つかえる"}</span>`);
+    t.addEventListener("click", () => { setLoadout(type, [...ids, p.id]); renderEffects(); persistDraft(); });
     have.appendChild(t);
   }
-  const note = document.createElement("div");
-  note.className = "ksub";
-  note.textContent = `右上の数字は「コスト」。ぜんぶで ${SPECIAL_BUDGET} まで つけられるよ。おなじパーツを かさねると こうかも かさなる！（いまの ひっさつ: ${specialSummary(buildSpecial(active, type), type)}）`;
-  effectsEl.appendChild(note);
+  add("ksub", `右上の ⚡は つけるのに いる ポイント。🎯と👊で べつべつに ${SPECIAL_BUDGET}ずつ つけられるよ。🔁の パーツは 1こで 両方に つけられる。おなじ パーツを かさねると こうかも かさなる！（いまの ひっさつ: ${specialSummary(buildSpecial(active, type), type)}）`);
 }
 
 function syncEditor() {
@@ -727,7 +769,7 @@ syncEditor();
 // 保存・新規・一覧
 const saveMsg = document.getElementById("saveMsg")!;
 document.getElementById("saveChar")!.addEventListener("click", () => {
-  if (!strokes.length) { saveMsg.textContent = "まだ絵が ないよ。「描く」で 描いてから ほぞんしてね"; return; }
+  if (!strokes.length) { saveMsg.textContent = "まだ絵が ないよ。「かく」で 描いてから ほぞんしてね"; return; }
   const id = editId ?? normalize({}).id;
   const ok = saveCharacter({ ...editor, id, name: editor.name || "名無し", strokes: strokes.map((s) => ({ ...s, points: [...s.points] })), marks: marks.map((s) => ({ ...s, points: [...s.points] })) });
   editId = id;
@@ -757,7 +799,7 @@ newBtn.addEventListener("click", () => {
   renderTraits();
   renderRoster();
   persistDraft();
-  saveMsg.textContent = "あたらしい キャラを つくろう！「描く」で 絵を 描いてね";
+  saveMsg.textContent = "あたらしい キャラを つくろう！「かく」で 絵を 描いてね";
 });
 
 function resetEditHistory() {
@@ -925,12 +967,12 @@ function buildPlayer(choice: string) {
   const saved = choice.startsWith("saved:") ? loadRoster().find((c) => c.id === choice.slice(6)) : undefined;
   if (saved) {
     const b = buildCharacter(saved.name, saved.strokes, [], params, saved.marks);
-    applyData(b, saved, partsById(saved.parts), myBoost(b));
+    applyData(b, saved, partsById(loadoutOf(saved, saved.specialType)), myBoost(b));
     return b;
   }
   const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
   const b = buildCharacter(editor.name || "あなた", mine, [], params, strokes.length ? marks : []);
-  applyData(b, editor, partsById(editor.parts), myBoost(b));
+  applyData(b, editor, partsById(loadoutOf(editor, editor.specialType)), myBoost(b));
   return b;
 }
 
@@ -946,7 +988,7 @@ document.getElementById("startBattle")!.addEventListener("click", () => {
   const saved = v.startsWith("saved:") ? loadRoster().find((c) => `saved:${c.id}` === v) : undefined;
   if (saved) {
     cpu = buildCharacter(saved.name, saved.strokes, [], params, saved.marks);
-    applyData(cpu, saved, partsById(saved.parts), myBoost(cpu)); // 自分の保存キャラ同士 → 同じ強化
+    applyData(cpu, saved, partsById(loadoutOf(saved, saved.specialType)), myBoost(cpu)); // 自分の保存キャラ同士 → 同じ強化
   } else {
     const c = cpuCharById(v)!;
     cpu = buildCpuChar(c);
@@ -964,7 +1006,7 @@ document.getElementById("startBattle")!.addEventListener("click", () => {
 
 // --- 画面の移動（メイン ⇄ 各画面）。端末やブラウザの「戻る」でも1つ前に戻る ---
 type Screen = "home" | "story" | "make" | "free" | "transfer" | "tree" | "parts" | "online";
-const SCREEN_TITLES: Record<Screen, string> = { home: "", story: "ストーリー", make: "キャラを作る", free: "自由バトル", transfer: "引き継ぎ", tree: "スキルツリー", parts: "必殺パーツ", online: "オンライン" };
+const SCREEN_TITLES: Record<Screen, string> = { home: "", story: "📖 ストーリー", make: "✏️ キャラを つくる", free: "⚔️ じゆうバトル", transfer: "📦 ひきつぎ", tree: "🌳 スキルツリー", parts: "🧩 ひっさつパーツ", online: "🌐 オンライン" };
 const onlineEl = document.getElementById("onlineScreen")!;
 const partsEl = document.getElementById("partsScreen")!;
 const treeEl = document.getElementById("treeScreen")!;
@@ -1140,7 +1182,6 @@ function renderTree() {
     const n = nodeById(id)!;
     const owned = p.nodes.includes(id);
     const can = canTake(id, p.nodes);
-    const shown = isRevealed(id, p.nodes);
     const col = colorOf(id);
     const r = n.kind === "keystone" ? 17 : n.kind === "notable" || n.kind === "bridge" ? 13 : n.kind === "fork" ? 11 : 9;
     const locked = n.kind === "fork" && n.excludes && p.nodes.includes(n.excludes);
@@ -1149,9 +1190,9 @@ function renderTree() {
       : el("circle", { cx: x, cy: y, r, class: `nd ${owned ? "own" : can ? "can" : "lock"}${selectedNode === id ? " sel" : ""}${locked ? " off" : ""}` }, nodes);
     if (owned) shape.setAttribute("style", `fill:${col};stroke:${col}`);
     else if (can) shape.setAttribute("style", `stroke:${col}`);
-    const mark = !shown ? "？" : n.kind === "keystone" ? "◆" : n.kind === "notable" ? "★" : n.kind === "bridge" ? "✦" : n.kind === "fork" ? "⑂" : "";
+    const mark = n.kind === "keystone" ? "◆" : n.kind === "notable" ? "★" : n.kind === "bridge" ? "✦" : n.kind === "fork" ? "⑂" : "";
     if (mark) el("text", { x, y, class: `mk${owned ? " on" : ""}` }, nodes).textContent = mark;
-    const hit = el("circle", { cx: x, cy: y, r: r + 4, class: "hit", role: "button", tabindex: 0, "aria-label": shown ? `${n.name}（${n.desc}）${owned ? "取得済み" : ""}` : "まだ見えない" }, nodes);
+    const hit = el("circle", { cx: x, cy: y, r: r + 4, class: "hit", role: "button", tabindex: 0, "aria-label": `${n.name}（${n.desc}）${owned ? "取得済み" : ""}` }, nodes);
     const pick = () => { selectedNode = id; renderTree(); };
     hit.addEventListener("click", pick);
     hit.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") pick(); });
@@ -1180,13 +1221,12 @@ function renderTree() {
     const n = nodeById(selectedNode)!;
     const owned = p.nodes.includes(n.id);
     const can = canTake(n.id, p.nodes);
-    const shown = isRevealed(n.id, p.nodes);
     const kind = { small: "", notable: "★ 山場", fork: "⑂ 分かれ道（どちらか1つ）", keystone: "◆ 大技", bridge: "✦ 組み合わせ技", talent: "🎨 らくがき才能" }[n.kind];
     const h = document.createElement("div");
     h.innerHTML = `<b></b>　<span class="cost"></span><div></div>`;
-    h.querySelector("b")!.textContent = shown ? n.name : "？？？";
+    h.querySelector("b")!.textContent = n.name;
     h.querySelector(".cost")!.textContent = `${n.cost} ポイント${kind ? `・${kind}` : ""}`;
-    h.querySelector("div")!.textContent = shown ? n.desc : "近くを とると 見えるよ";
+    h.querySelector("div")!.textContent = n.desc;
     nodeInfo.appendChild(h);
     const row = document.createElement("div");
     row.className = "row";
@@ -1204,7 +1244,7 @@ function renderTree() {
     }
     nodeInfo.appendChild(row);
   } else {
-    nodeInfo.textContent = "丸をタップすると説明が出ます。中心から外へ順に取れます。★は山場、⑂は2つから1つえらぶ分かれ道、◆は強いけど損もある大技、✦は となりの枝の★を両方とると ひらく組み合わせ技。？は近くを取ると見えます。";
+    nodeInfo.textContent = "丸をタップすると説明が出ます。中心から外へ順に取れます。★は山場、⑂は2つから1つえらぶ分かれ道、◆は強いけど損もある大技、✦は となりの枝の★を両方とると ひらく組み合わせ技。振り直しは無料なので、全部 見て ためしてね。";
   }
 
   // 称号（枝を全部とる）
@@ -1251,7 +1291,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-pf]").forEach((b) => b.addEv
   renderParts();
 }));
 // どれかのキャラ（編集中・保存済み）が付けているパーツ
-const equippedIds = () => new Set([...editor.parts, ...loadRoster().flatMap((c) => c.parts)]);
+const equippedIds = () => new Set([editor, ...loadRoster()].flatMap((c) => [...c.partsR, ...c.partsM]));
 
 function renderParts() {
   const inv = loadInventory();
@@ -1493,4 +1533,10 @@ importBtn.addEventListener("click", async () => {
 requestPersist();
 try { history.replaceState({ screen: "home" }, ""); } catch { /* 無視 */ }
 show("home");
+
+// 漢字に ふりがな（メイン画面の下のボタンで なし にできる）
+installFurigana();
+const furiBtn = document.getElementById("furigana")!;
+furiBtn.textContent = furiganaOn() ? "あ ふりがな: あり" : "あ ふりがな: なし";
+furiBtn.addEventListener("click", () => { setFurigana(!furiganaOn()); location.reload(); });
 render();

@@ -34,11 +34,11 @@ const HTML = `
   <div class="b-controls">
     <div class="b-stick"><div class="b-knob"></div></div>
     <div class="b-buttons">
-      <button class="b-btn special" data-act="special">必殺</button>
-      <button class="b-btn dodge" data-act="dodge">回避</button>
-      <button class="b-btn shove" data-act="shove">突き<br>飛ばし</button>
-      <button class="b-btn guard" data-act="guard">防御</button>
-      <button class="b-btn attack" data-act="attack">攻撃</button>
+      <button class="b-btn special" data-act="special" aria-label="必殺">✨</button>
+      <button class="b-btn dodge" data-act="dodge" aria-label="回避">💨<br>よける</button>
+      <button class="b-btn shove" data-act="shove" aria-label="突き飛ばし">🫸<br>おす</button>
+      <button class="b-btn guard" data-act="guard" aria-label="防御">🛡️<br>まもる</button>
+      <button class="b-btn attack" data-act="attack" aria-label="攻撃">👊<br>こうげき</button>
     </div>
   </div>
   <div class="b-result" hidden>
@@ -85,7 +85,7 @@ export function startBattle(opts: BattleOptions) {
   if (opts.spectate) q(".b-controls").classList.add("spectate");
 
   const muteBtn = q(".b-mute");
-  const syncMute = () => { muteBtn.textContent = sfx.muted ? "音オフ" : "音オン"; };
+  const syncMute = () => { muteBtn.textContent = sfx.muted ? "🔇" : "🔊"; };
   syncMute();
   muteBtn.addEventListener("click", () => { sfx.unlock(); sfx.setMuted(!sfx.muted); syncMute(); });
   // 観戦の2倍速（戦闘計算の1コマの長さは変えず、1フレームに進めるコマ数を増やすだけ＝結果は同じ）
@@ -204,7 +204,7 @@ export function startBattle(opts: BattleOptions) {
     const me = world.fighters[0];
     const need = me.st.chargeNeed;
     const ready = me.charge >= need;
-    specialBtn.textContent = ready ? "必殺!" : `${me.charge}/${need}`;
+    specialBtn.textContent = ready ? "✨ひっさつ!" : `${me.charge}/${need}`;
     specialBtn.classList.toggle("ready", ready);
     specialBtn.style.setProperty("--cd", String(1 - me.charge / need));
     attackBtn.classList.toggle("low", me.stamina < attackCostOf(me.cfg)); // スタミナ不足で攻撃できない
