@@ -265,7 +265,10 @@
         border: 2px solid var(--line); border-radius: 14px; padding: 8px 12px; min-height: 42px;
         box-shadow: var(--shadow);
       }
+      button { touch-action: manipulation; cursor: pointer; }
       button:active { transform: translateY(2px); box-shadow: none; }
+      button:disabled { opacity: .45; filter: grayscale(1); cursor: not-allowed; box-shadow: none; }
+      button:disabled:active { transform: none; }
       button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
       button.on { border-color: var(--accent); color: var(--accent); font-weight: 800; }
       .stage {
@@ -394,8 +397,11 @@
       .pop.recoil { font-size: 15px; color: #ff8787; -webkit-text-stroke: 1.5px #3a0000; }
       .pop.thud { font-size: 30px; color: #fff; -webkit-text-stroke: 2.5px #5a3b12; }
       .pop.thud.big { font-size: 52px; }
+      #partFilter button { white-space: nowrap; padding: 8px 4px; font-size: 14px; min-width: 0; }
+      #bulkCombine { white-space: nowrap; }
       .prow { flex-wrap: wrap; gap: 8px 14px; }
-      .prow label { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; }
+      .prow label { display: grid; gap: 4px; flex: 1 1 220px; font-weight: 700; font-size: 14px; white-space: nowrap; }
+      .prow select { width: 100%; min-width: 0; }
       .modal { position: fixed; inset: 0; z-index: 40; background: rgba(20,20,40,.45); display: grid; place-items: center; padding: 16px; }
       .modal-box { background: var(--panel); border-radius: 18px; padding: 14px; width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: auto; box-shadow: 0 12px 40px rgba(0,0,0,.3); }
       .cplan { border: 2px solid var(--line); border-radius: 14px; padding: 8px; margin: 8px 0; display: grid; gap: 6px; }
@@ -481,7 +487,7 @@
         <button type="button" data-pf="all" class="on">すべて</button>
         <button type="button" data-pf="ranged">🎯 とおく</button>
         <button type="button" data-pf="melee">👊 ちかく</button>
-        <button type="button" data-pf="both">🔁 きょうつう</button>
+        <button type="button" data-pf="both">🔁 共通</button>
       </div>
       <div class="row prow">
         <label>ならびかえ <select id="partSort">

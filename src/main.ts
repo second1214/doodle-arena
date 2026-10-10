@@ -1200,7 +1200,7 @@ function shareResult(ok: boolean, text: string) {
 document.getElementById("shareBtn")!.addEventListener("click", () => {
   shareBox.hidden = !shareBox.hidden;
   if (!shareBox.hidden) {
-    shareTa.value = makeShareText();
+    try { shareTa.value = makeShareText(); } catch (e) { shareTa.value = `文を つくれなかったよ（${(e as Error).message}）`; }
     shareMsg.hidden = true;
     shareBox.classList.remove("copied");
     shareBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -1466,6 +1466,7 @@ function renderParts() {
   const bulk = document.getElementById("bulkCombine") as HTMLButtonElement;
   bulk.disabled = !plans.length;
   bulk.textContent = plans.length ? `🔨 まとめて ごうせい（${plans.length}）` : "🔨 まとめて ごうせい";
+  bulk.title = plans.length ? "" : "同じ しゅるい・同じ レア度が 5こ（材料4こ＋ベース）そろうと できるよ";
   const listEl = document.getElementById("partList")!;
   listEl.innerHTML = "";
   const shown = sortParts(inv.parts.filter((p) => partFilter === "all" || kindInfo(p.kind).type === partFilter), partSortSel.value, inv.parts);
