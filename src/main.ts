@@ -10,7 +10,7 @@ import { PERSONAS } from "./sim/ai";
 import { sumBoost, type Boost } from "./sim/stats";
 import { ALL_KINDS, buildSpecial, equipCosts, extraText, fitsType, hashStr, kindIcon, kindInfo, mainText, makePart, seededRnd, RARITY_INFO, rarityIndex, SPECIAL_BUDGET, type BuiltSpecial, type Part, type PartKind } from "./items";
 import { combinable, combine, COMBINE_COUNT, dismantle, dropParts, INVENTORY_CAP, loadInventory, migrateToParts, reroll, rerollCost, type DropResult } from "./inventory";
-import { autoTree, boostOf, BRANCHES, canTake, nodeById, randomTree, SMALL_TIERS, spentOf, TREE_TOTAL } from "./tree";
+import { autoTree, boostOf, BRANCHES, bridges, canTake, isRevealed, masteredBranches, nodeById, nodeId, randomTree, spentOf, talents, TREE_TOTAL, type ShapeFlags } from "./tree";
 import type { Personality } from "./sim/world";
 import { deleteCharacter, loadDraft, loadRoster, normalize, saveCharacter, saveDraft, thumbnail, writeRoster, type CharacterData } from "./roster";
 import { applyStageResult, expToNext, exportCode, importCode, LEVEL_CAP, loadProfile, loadStory, requestPersist, resetTree, takeNode, totalPoints, type Reward } from "./progress";
@@ -730,18 +730,20 @@ function applyData(build: ReturnType<typeof buildCharacter>, c: { personality: P
 
 // 自分のキャラ: "" = 編集中のキャラ（絵が無ければ棒人間）/ "saved:id" = 保存したキャラ
 // 自分の強化はプレイヤー共通のスキルツリー（どのキャラで戦っても同じ）
-const myBoost = () => boostOf(loadProfile().nodes);
+// らくがき才能は、戦うキャラの絵の形に合う時だけ効く
+const shapeFlags = (b: ReturnType<typeof buildCharacter>): ShapeFlags => ({ hasFeet: b.cfg.hasFeet, hasHands: b.cfg.hasHands, hits: b.cfg.traits?.hits ?? 1, reach: b.cfg.reach });
+const myBoost = (b: ReturnType<typeof buildCharacter>) => boostOf(loadProfile().nodes, shapeFlags(b));
 
 function buildPlayer(choice: string) {
   const saved = choice.startsWith("saved:") ? loadRoster().find((c) => c.id === choice.slice(6)) : undefined;
   if (saved) {
     const b = buildCharacter(saved.name, saved.strokes, [], params);
-    applyData(b, saved, partsById(saved.parts), myBoost());
+    applyData(b, saved, partsById(saved.parts), myBoost(b));
     return b;
   }
   const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
   const b = buildCharacter(editor.name || "あなた", mine, [], params);
-  applyData(b, editor, partsById(editor.parts), myBoost());
+  applyData(b, editor, partsById(editor.parts), myBoost(b));
   return b;
 }
 
@@ -757,7 +759,7 @@ document.getElementById("startBattle")!.addEventListener("click", () => {
   const saved = v.startsWith("saved:") ? loadRoster().find((c) => `saved:${c.id}` === v) : undefined;
   if (saved) {
     cpu = buildCharacter(saved.name, saved.strokes, [], params);
-    applyData(cpu, saved, partsById(saved.parts), myBoost()); // 自分の保存キャラ同士 → 同じ強化
+    applyData(cpu, saved, partsById(saved.parts), myBoost(cpu)); // 自分の保存キャラ同士 → 同じ強化
   } else {
     const c = cpuCharById(v)!;
     cpu = buildCpuChar(c);
@@ -896,7 +898,7 @@ function boostLines(b: Partial<Boost>): string[] {
 function renderTree() {
   const p = loadProfile();
   document.getElementById("tPoints")!.textContent = String(p.points);
-  document.getElementById("tSpent")!.textContent = `使用 ${spentOf(p.nodes)} ／ 全部取るには ${TREE_TOTAL}`;
+  document.getElementById("tSpent")!.textContent = `使用 ${spentOf(p.nodes)} ／ 全部とるには ${TREE_TOTAL}`;
   treeSvg.innerHTML = "";
   const el = (tag: string, attrs: Record<string, string | number>, parent: Element = treeSvg) => {
     const e = document.createElementNS(SVG_NS, tag);
@@ -904,37 +906,85 @@ function renderTree() {
     parent.appendChild(e);
     return e;
   };
-  const R = (tier: number) => (tier <= SMALL_TIERS ? 36 + tier * 25 : 36 + SMALL_TIERS * 25 + 34);
+  const R = [0, 50, 76, 104, 130, 158, 184, 214]; // 段ごとの中心からの距離
   const links = el("g", {});
   const nodes = el("g", {});
+  const angOf = (k: number) => -Math.PI / 2 + (k * Math.PI * 2) / BRANCHES.length;
+  const pos = new Map<string, [number, number]>();
   BRANCHES.forEach((br, k) => {
-    const ang = -Math.PI / 2 + (k * Math.PI * 2) / BRANCHES.length;
-    const at = (r: number) => [Math.cos(ang) * r, Math.sin(ang) * r];
-    let prev = [0, 0];
-    for (let t = 1; t <= SMALL_TIERS + 1; t++) {
-      const id = `${br.key}${t}`;
-      const n = nodeById(id)!;
-      const [x, y] = at(R(t));
-      const owned = p.nodes.includes(id);
-      const l = el("line", { x1: prev[0], y1: prev[1], x2: x, y2: y, class: "lnk" }, links);
-      if (owned) l.setAttribute("style", `stroke:${br.color}`);
-      prev = [x, y];
-      const can = canTake(id, p.nodes);
-      const r = n.big ? 17 : 10;
-      const c = el("circle", { cx: x, cy: y, r, class: `nd ${owned ? "own" : can ? "can" : "lock"}${selectedNode === id ? " sel" : ""}` }, nodes);
-      if (owned) c.setAttribute("style", `fill:${br.color};stroke:${br.color}`);
-      else if (can) c.setAttribute("style", `stroke:${br.color}`);
-      if (n.big) el("text", { x, y, style: owned ? "fill:#fff" : "" }, nodes).textContent = "★";
-      const hit = el("circle", { cx: x, cy: y, r: n.big ? 20 : 13, class: "hit", role: "button", tabindex: 0, "aria-label": `${n.name}（${n.desc}）${owned ? "取得済み" : ""}` }, nodes);
-      const pick = () => { selectedNode = id; renderTree(); };
-      hit.addEventListener("click", pick);
-      hit.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") pick(); });
+    const a = angOf(k);
+    const at = (r: number, side = 0): [number, number] => [Math.cos(a) * r - Math.sin(a) * side, Math.sin(a) * r + Math.cos(a) * side];
+    for (let t = 1; t <= 7; t++) {
+      if (t === 5) { pos.set(nodeId(br.key, "5a"), at(R[5], -15)); pos.set(nodeId(br.key, "5b"), at(R[5], 15)); }
+      else pos.set(nodeId(br.key, t), at(R[t]));
     }
-    const [lx, ly] = at(R(SMALL_TIERS + 1) + 30);
+    const [lx, ly] = at(R[7] + 30);
     el("text", { x: lx, y: ly, style: `fill:${br.color}` }, nodes).textContent = br.label;
   });
+  // 組み合わせ技は、となり合う2本の枝の★の間
+  for (const n of bridges()) {
+    const [a, b] = n.between!;
+    const ka = BRANCHES.findIndex((x) => x.key === a), kb = BRANCHES.findIndex((x) => x.key === b);
+    let ang = (angOf(ka) + angOf(kb)) / 2;
+    if (Math.abs(angOf(ka) - angOf(kb)) > Math.PI) ang += Math.PI; // 輪の最後と最初
+    pos.set(n.id, [Math.cos(ang) * 128, Math.sin(ang) * 128]);
+  }
+  const colorOf = (id: string) => BRANCHES.find((b) => b.key === nodeById(id)?.branch)?.color ?? "#f08c00";
+  // つながりの線
+  for (const [id, [x, y]] of pos) {
+    const n = nodeById(id)!;
+    const from = [...n.requires, ...(n.requiresAny ?? [])];
+    const owned = p.nodes.includes(id);
+    if (!from.length) {
+      const l = el("line", { x1: 0, y1: 0, x2: x, y2: y, class: "lnk" }, links);
+      if (owned) l.setAttribute("style", `stroke:${colorOf(id)}`);
+      continue;
+    }
+    for (const f of from) {
+      const q = pos.get(f);
+      if (!q) continue;
+      const l = el("line", { x1: q[0], y1: q[1], x2: x, y2: y, class: n.kind === "bridge" ? "lnk bridge" : "lnk" }, links);
+      if (owned && p.nodes.includes(f)) l.setAttribute("style", `stroke:${colorOf(id)}`);
+    }
+  }
+  // ノード
+  for (const [id, [x, y]] of pos) {
+    const n = nodeById(id)!;
+    const owned = p.nodes.includes(id);
+    const can = canTake(id, p.nodes);
+    const shown = isRevealed(id, p.nodes);
+    const col = colorOf(id);
+    const r = n.kind === "keystone" ? 17 : n.kind === "notable" || n.kind === "bridge" ? 13 : n.kind === "fork" ? 11 : 9;
+    const locked = n.kind === "fork" && n.excludes && p.nodes.includes(n.excludes);
+    const shape = n.kind === "bridge"
+      ? el("rect", { x: x - r, y: y - r, width: r * 2, height: r * 2, rx: 4, transform: `rotate(45 ${x} ${y})`, class: `nd ${owned ? "own" : can ? "can" : "lock"}${selectedNode === id ? " sel" : ""}` }, nodes)
+      : el("circle", { cx: x, cy: y, r, class: `nd ${owned ? "own" : can ? "can" : "lock"}${selectedNode === id ? " sel" : ""}${locked ? " off" : ""}` }, nodes);
+    if (owned) shape.setAttribute("style", `fill:${col};stroke:${col}`);
+    else if (can) shape.setAttribute("style", `stroke:${col}`);
+    const mark = !shown ? "？" : n.kind === "keystone" ? "◆" : n.kind === "notable" ? "★" : n.kind === "bridge" ? "✦" : n.kind === "fork" ? "⑂" : "";
+    if (mark) el("text", { x, y, class: `mk${owned ? " on" : ""}` }, nodes).textContent = mark;
+    const hit = el("circle", { cx: x, cy: y, r: r + 4, class: "hit", role: "button", tabindex: 0, "aria-label": shown ? `${n.name}（${n.desc}）${owned ? "取得済み" : ""}` : "まだ見えない" }, nodes);
+    const pick = () => { selectedNode = id; renderTree(); };
+    hit.addEventListener("click", pick);
+    hit.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") pick(); });
+  }
   el("circle", { cx: 0, cy: 0, r: 26, class: "core" }, nodes);
   el("text", { x: 0, y: 0, class: "core-t" }, nodes).textContent = `Lv${p.level}`;
+
+  // らくがき才能（絵の形に合うキャラだけに効く）
+  const tl = document.getElementById("talents")!;
+  tl.innerHTML = "";
+  for (const n of talents()) {
+    const owned = p.nodes.includes(n.id);
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `talent${owned ? " own" : ""}${selectedNode === n.id ? " sel" : ""}`;
+    b.innerHTML = `<b></b><small></small>`;
+    b.querySelector("b")!.textContent = `${owned ? "✔ " : ""}${n.name}`;
+    b.querySelector("small")!.textContent = n.desc.split(":")[0];
+    b.addEventListener("click", () => { selectedNode = n.id; renderTree(); });
+    tl.appendChild(b);
+  }
 
   // 選んだノードの説明
   nodeInfo.innerHTML = "";
@@ -942,16 +992,19 @@ function renderTree() {
     const n = nodeById(selectedNode)!;
     const owned = p.nodes.includes(n.id);
     const can = canTake(n.id, p.nodes);
+    const shown = isRevealed(n.id, p.nodes);
+    const kind = { small: "", notable: "★ 山場", fork: "⑂ 分かれ道（どちらか1つ）", keystone: "◆ 大技", bridge: "✦ 組み合わせ技", talent: "🎨 らくがき才能" }[n.kind];
     const h = document.createElement("div");
     h.innerHTML = `<b></b>　<span class="cost"></span><div></div>`;
-    h.querySelector("b")!.textContent = n.name;
-    h.querySelector(".cost")!.textContent = `${n.cost} ポイント${n.big ? "（大技）" : ""}`;
-    h.querySelector("div")!.textContent = n.desc;
+    h.querySelector("b")!.textContent = shown ? n.name : "？？？";
+    h.querySelector(".cost")!.textContent = `${n.cost} ポイント${kind ? `・${kind}` : ""}`;
+    h.querySelector("div")!.textContent = shown ? n.desc : "近くを とると 見えるよ";
     nodeInfo.appendChild(h);
     const row = document.createElement("div");
     row.className = "row";
     if (owned) row.textContent = "取得済み";
-    else if (!can) row.textContent = "1つ内側を先に取ってください";
+    else if (n.excludes && p.nodes.includes(n.excludes)) row.textContent = "もう片方を えらんだよ（振り直しで えらびなおせる）";
+    else if (!can) row.textContent = n.kind === "bridge" ? "となりの枝の ★を 両方 とると ひらくよ" : "1つ内側を先に取ってください";
     else {
       const btn = document.createElement("button");
       btn.className = "primary inline";
@@ -962,8 +1015,12 @@ function renderTree() {
     }
     nodeInfo.appendChild(row);
   } else {
-    nodeInfo.textContent = "丸をタップすると説明が出ます。中心から外へ順に取れます。先端の★は強い代わりに損もある大技です。";
+    nodeInfo.textContent = "丸をタップすると説明が出ます。中心から外へ順に取れます。★は山場、⑂は2つから1つえらぶ分かれ道、◆は強いけど損もある大技、✦は となりの枝の★を両方とると ひらく組み合わせ技。？は近くを取ると見えます。";
   }
+
+  // 称号（枝を全部とる）
+  const titles = masteredBranches(p.nodes);
+  document.getElementById("treeTitles")!.textContent = titles.length ? `🏅 称号: ${titles.map((b) => b.title).join("・")}` : "🏅 枝を ぜんぶ とると 称号が もらえるよ";
 
   const total = document.getElementById("treeTotal")!;
   total.innerHTML = "";
@@ -971,6 +1028,11 @@ function renderTree() {
   for (const t of lines.length ? lines : ["まだ何も取っていません（ストーリーで勝つとポイントがもらえます）"]) {
     const li = document.createElement("li");
     li.textContent = t;
+    total.appendChild(li);
+  }
+  for (const n of talents().filter((x) => p.nodes.includes(x.id))) {
+    const li = document.createElement("li");
+    li.textContent = `🎨 ${n.desc}`;
     total.appendChild(li);
   }
 }

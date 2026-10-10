@@ -108,6 +108,15 @@
       #treeSvg .hit { fill: transparent; cursor: pointer; }
       #treeSvg text { font: 700 14px "M PLUS Rounded 1c", sans-serif; fill: var(--ink); text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
       #treeSvg .core { fill: var(--accent); }
+      #treeSvg .lnk.bridge { stroke-dasharray: 4 5; stroke-width: 3; }
+      #treeSvg .nd.off { opacity: .35; }
+      #treeSvg .mk { font-size: 12px; fill: var(--muted); }
+      #treeSvg .mk.on { fill: #fff; }
+      .talents { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+      .talent { display: grid; gap: 2px; text-align: left; padding: 8px 10px; border-radius: 14px; min-height: 0; }
+      .talent small { color: var(--muted); font-size: 11px; }
+      .talent.own { border-color: #f08c00; background: #fff4e6; color: #5c3c00; }
+      .talent.sel { box-shadow: 0 0 0 3px var(--accent); }
       #treeSvg .core-t { fill: var(--accent-ink); font-size: 13px; }
       @keyframes glow { to { stroke-width: 5; } }
       .node-info { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 10px 12px; min-height: 64px; font-size: 14px; }
@@ -399,7 +408,10 @@
         <div>スキルポイント <b id="tPoints">0</b><div class="note" id="tSpent"></div></div>
         <button id="treeReset">振り直し</button>
       </div>
-      <svg id="treeSvg" viewBox="-252 -248 504 496" role="group" aria-label="スキルツリー"></svg>
+      <div class="note" id="treeTitles"></div>
+      <svg id="treeSvg" viewBox="-272 -268 544 536" role="group" aria-label="スキルツリー"></svg>
+      <div class="label">🎨 らくがき才能（絵の形に合うキャラだけに効く）</div>
+      <div class="talents" id="talents"></div>
       <div class="node-info" id="nodeInfo">丸をタップすると説明が出ます。中心から外へ順に取れます。先端の大きな丸は強い代わりに損もある大技です。</div>
       <div class="field">
         <div class="label">今の強化（全キャラ共通）</div>

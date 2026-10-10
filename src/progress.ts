@@ -1,6 +1,6 @@
 // プレイヤーの成長（レベル・経験値・スキルポイント）とストーリーの進み具合。ブラウザ内に保存する。
 // 保存形式には版番号 v を付け、読み込み時に古い形から直す。
-import { canTake, isValidTree, nodeById, spentOf } from "./tree";
+import { canTake, isValidTree, legacyCost, nodeById, spentOf } from "./tree";
 const PROFILE_KEY = "doodle-arena:profile";
 const STORY_KEY = "doodle-arena:story";
 
@@ -46,7 +46,7 @@ export function loadProfile(): Profile {
   const nodes = Array.isArray(p?.nodes) ? p.nodes.filter((x): x is string => typeof x === "string") : [];
   // ツリーの形が変わって知らないノードや飛ばし取りがあれば、全部払い戻して振り直してもらう
   if (isValidTree(nodes)) out.nodes = nodes;
-  else out.points += nodes.reduce((a, id) => a + (nodeById(id)?.cost ?? 1), 0);
+  else out.points += nodes.reduce((a, id) => a + (nodeById(id)?.cost ?? legacyCost(id)), 0);
   return out;
 }
 
