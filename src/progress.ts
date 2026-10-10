@@ -158,7 +158,8 @@ export async function exportCode(): Promise<string> {
 
 // 読み込んだ件数を返す。壊れたコードは例外
 export async function importCode(code: string): Promise<number> {
-  const c = code.replace(/\s+/g, "");
+  // 前後に ほかの文が まざっていても、コードの部分（DA1: / DA0: から）だけを 取りだす
+  const c = (/DA[01]:[A-Za-z0-9+/=]+/.exec(code.replace(/\s+/g, ""))?.[0]) ?? "";
   let bytes: Uint8Array;
   if (c.startsWith("DA1:")) {
     if (!canZip) throw new Error("このブラウザでは読み込めないコードです");
