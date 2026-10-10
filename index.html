@@ -399,6 +399,21 @@
       .pop.thud.big { font-size: 52px; }
       #partFilter button { white-space: nowrap; padding: 8px 4px; font-size: 14px; min-width: 0; }
       #bulkCombine { white-space: nowrap; }
+      .editbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 6px 8px; margin-bottom: 8px; }
+      .editbar img { width: 44px; height: 44px; border-radius: 10px; background: #fff; border: 1px solid var(--line); flex: none; object-fit: contain; }
+      .editbar .ebtext { flex: 1 1 140px; min-width: 0; display: grid; }
+      .editbar small { white-space: nowrap; }
+      .editbar .ebbtns { display: flex; gap: 6px; }
+      #makeTabs button { white-space: nowrap; font-size: 14px; padding: 8px 4px; min-width: 0; }
+      .editbar .ebtext b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .editbar small { font-weight: 800; font-size: 12px; }
+      .editbar small.dirty { color: #e8590c; }
+      .editbar small.clean { color: #2f9e44; }
+      .editbar button { padding: 6px 10px; min-height: 38px; font-size: 14px; white-space: nowrap; }
+      .restore { width: 100%; margin-bottom: 8px; font-weight: 800; background: #fff3bf; border-color: #fab005; }
+      .modal-box .pv { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+      .modal-box .pv img { width: 72px; height: 72px; border-radius: 12px; border: 1px solid var(--line); background: #fff; }
+      .modal-box .col { display: grid; gap: 8px; margin-top: 10px; }
       .prow { flex-wrap: wrap; gap: 8px 14px; }
       .prow label { display: grid; gap: 4px; flex: 1 1 220px; font-weight: 700; font-size: 14px; white-space: nowrap; }
       .prow select { width: 100%; min-width: 0; }
@@ -524,6 +539,15 @@
       <div class="note" id="transferMsg"></div>
     </section>
     <div id="workspace" hidden>
+    <div class="editbar" id="editBar">
+      <img id="ebThumb" alt="" />
+      <div class="ebtext"><b id="ebName"></b><small id="ebState"></small></div>
+      <div class="ebbtns">
+        <button id="ebSave" type="button">💾 ほぞん</button>
+        <button id="ebNew" type="button">✏️ あたらしく</button>
+      </div>
+    </div>
+    <button id="restoreBtn" type="button" class="restore" hidden>↩ さっきの 絵に もどす</button>
     <div class="tabs" id="makeTabs">
       <button data-view="draw" class="on">✏️ かく</button>
       <button data-view="detect">🔍 しらべる</button>

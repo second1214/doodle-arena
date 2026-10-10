@@ -85,6 +85,7 @@ function save() {
   } catch {
     /* 保存できない環境では無視 */
   }
+  scheduleEditBar();
 }
 
 function tint(part: HTMLCanvasElement, col: string): HTMLCanvasElement {
@@ -605,7 +606,10 @@ function photoPointer(kind: "down" | "move" | "up", x: number, y: number) {
 function endPhoto(keep: boolean) {
   if (!photo) return;
   if (!keep) { strokes = photo.before; marks = photo.beforeMarks; resultEl.textContent = "もとに もどしたよ"; }
-  else resultEl.textContent = "📷 とりこんだよ！「🖐 手足を きめる」で 手足も なおせるよ";
+  else {
+    resultEl.textContent = "📷 とりこんだよ！「🖐 手足を きめる」で 手足も なおせるよ";
+    if (photo.before.length) { lastCleared = { strokes: photo.before, marks: photo.beforeMarks, editor: { ...editor }, editId }; showRestore(); }
+  }
   photo = null;
   photoPanel.hidden = true;
   resetEditHistory();
@@ -732,6 +736,7 @@ clearBtn.addEventListener("click", () => {
     return;
   }
   clearBtn.textContent = "全部消す";
+  if (strokes.length) { lastCleared = { strokes, marks, editor: { ...editor }, editId }; showRestore(); toast("🗑 けしたよ。「↩ さっきの 絵に もどす」で もどせるよ"); }
   strokes = [];
   marks = []; // 絵が無くなれば手足の塗りも意味がない
   undoSizes.draw = [];
@@ -746,6 +751,7 @@ for (const name of Object.keys(SAMPLES)) sampleSel.add(new Option(name, name));
 sampleSel.addEventListener("change", () => {
   const f = SAMPLES[sampleSel.value];
   if (f) {
+    if (strokes.length) { lastCleared = { strokes, marks, editor: { ...editor }, editId }; showRestore(); }
     strokes = f();
     marks = [];
     undoSizes.draw = [];
@@ -828,7 +834,7 @@ const starterParts = () => ["start-r-homing", "start-m-tornado"].filter((id) => 
 const draft = loadDraft();
 const editor: CharacterData = normalize({ ...(draft ?? {}), name: draft?.name ?? "", special: draft?.special ?? ["homing"], melee: draft?.melee ?? ["tornado"] });
 let editId: string | null = draft?.id && loadRoster().some((c) => c.id === draft.id) ? draft.id : null;
-const persistDraft = () => saveDraft({ ...editor, id: editId ?? undefined, strokes: [], marks: [] });
+const persistDraft = () => { saveDraft({ ...editor, id: editId ?? undefined, strokes: [], marks: [] }); scheduleEditBar(); };
 
 const nameInput = document.getElementById("charName") as HTMLInputElement;
 nameInput.value = editor.name === "名無し" ? "" : editor.name;
@@ -1038,26 +1044,81 @@ syncEditor();
 
 // 保存・新規・一覧
 const saveMsg = document.getElementById("saveMsg")!;
-document.getElementById("saveChar")!.addEventListener("click", () => {
-  if (!strokes.length) { saveMsg.textContent = "まだ絵が ないよ。「かく」で 描いてから ほぞんしてね"; return; }
+function saveCurrent(): boolean {
+  if (!strokes.length) { saveMsg.textContent = "まだ絵が ないよ。「かく」で 描いてから ほぞんしてね"; toast("まだ絵が ないよ"); return false; }
   const id = editId ?? normalize({}).id;
   const ok = saveCharacter({ ...editor, id, name: editor.name || "名無し", strokes: strokes.map((s) => ({ ...s, points: [...s.points] })), marks: marks.map((s) => ({ ...s, points: [...s.points] })) });
   editId = id;
   persistDraft();
   saveMsg.textContent = ok ? `「${editor.name || "名無し"}」を ほぞんしたよ！` : "ほぞんできなかった…（ブラウザの設定で保存が禁止されているかもしれません）";
+  toast(ok ? `💾「${editor.name || "名無し"}」を ほぞんしたよ` : "ほぞんできなかった…");
   renderRoster();
-});
-const newBtn = document.getElementById("newChar")!;
-let newArmed = 0;
-newBtn.addEventListener("click", () => {
-  if (strokes.length && !newArmed) {
-    newBtn.textContent = "もういちど おすと 絵が きえるよ";
-    newArmed = window.setTimeout(() => { newArmed = 0; newBtn.textContent = "✏️ あたらしく"; }, 2500);
-    return;
-  }
-  clearTimeout(newArmed);
-  newArmed = 0;
-  newBtn.textContent = "✏️ あたらしく";
+  return ok;
+}
+document.getElementById("saveChar")!.addEventListener("click", () => saveCurrent());
+document.getElementById("ebSave")!.addEventListener("click", () => saveCurrent());
+
+// --- 今つくっているキャラ: ほぞんしたか（上の帯に出す）。絵が消える前に 必ず たずねる ---
+const sigOf = (c: { strokes: Stroke[]; marks?: Stroke[]; name: string; personality: string; specialType: string; partsR: string[]; partsM: string[] }) =>
+  JSON.stringify([c.strokes, c.marks ?? [], c.name, c.personality, c.specialType, c.partsR, c.partsM]);
+function isDirty(): boolean {
+  const saved = editId ? loadRoster().find((c) => c.id === editId) : undefined;
+  if (!saved) return strokes.length > 0;
+  return sigOf({ ...editor, strokes, marks }) !== sigOf({ ...saved, name: saved.name });
+}
+let editBarTimer = 0;
+function scheduleEditBar() { cancelAnimationFrame(editBarTimer); editBarTimer = requestAnimationFrame(refreshEditBar); }
+function refreshEditBar() {
+  const th = document.getElementById("ebThumb") as HTMLImageElement | null;
+  if (!th) return;
+  th.src = thumbnail(strokes);
+  document.getElementById("ebName")!.textContent = `✏️ ${editor.name || "名無し"}`;
+  const st = document.getElementById("ebState")!;
+  const dirty = isDirty();
+  st.className = dirty ? "dirty" : "clean";
+  st.textContent = !strokes.length ? "まだ 絵が ないよ" : dirty ? "● まだ ほぞんしていない" : "✔ ほぞんずみ";
+}
+// たずねる窓（ほぞんしてから／ほぞんしないで／やめる）
+function askBeforeLeave(what: string, proceed: () => void) {
+  if (!isDirty()) { proceed(); return; }
+  const modal = document.createElement("div");
+  modal.className = "modal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  const close = () => modal.remove();
+  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+  const h = document.createElement("div");
+  h.className = "kidhint";
+  h.textContent = `「${editor.name || "名無し"}」は まだ ほぞんしていないよ`;
+  const pv = document.createElement("div");
+  pv.className = "pv";
+  const im = document.createElement("img");
+  im.src = thumbnail(strokes);
+  im.alt = "";
+  const t = document.createElement("div");
+  t.className = "note";
+  t.textContent = `${what}と、いまの 絵は 画面から きえるよ。ほぞんしておけば「ほぞんした キャラ」から いつでも よびだせるよ。`;
+  pv.append(im, t);
+  const col = document.createElement("div");
+  col.className = "col";
+  const mk = (label: string, cls: string, f: () => void) => { const b = document.createElement("button"); b.type = "button"; b.className = cls; b.textContent = label; b.addEventListener("click", () => { close(); f(); }); col.appendChild(b); };
+  mk(`💾 ほぞんしてから ${what}`, "primary", () => { if (saveCurrent()) proceed(); });
+  mk(`🗑 ほぞんしないで ${what}`, "", () => { lastCleared = { strokes, marks, editor: { ...editor }, editId }; proceed(); toast("「↩ さっきの絵に もどす」で もどせるよ"); showRestore(); });
+  mk("やめる（いまの 絵の まま）", "", () => {});
+  box.append(h, pv, col);
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+}
+// ほぞんしないで 消した絵を 1つだけ 取っておく（まちがえた時に もどせる）
+let lastCleared: { strokes: Stroke[]; marks: Stroke[]; editor: CharacterData; editId: string | null } | null = null;
+function showRestore() {
+  const b = document.getElementById("restoreBtn");
+  if (b) b.hidden = !lastCleared;
+}
+
+function startNew() {
   editId = null;
   Object.assign(editor, normalize({ name: "", parts: starterParts() }));
   editor.name = "";
@@ -1069,8 +1130,34 @@ newBtn.addEventListener("click", () => {
   renderTraits();
   renderRoster();
   persistDraft();
+  render();
   saveMsg.textContent = "あたらしい キャラを つくろう！「かく」で 絵を 描いてね";
+  toast("✏️ あたらしい キャラを つくるよ");
+}
+const newAction = () => askBeforeLeave("あたらしく つくる", startNew);
+document.getElementById("newChar")!.addEventListener("click", newAction);
+document.getElementById("ebNew")!.addEventListener("click", newAction);
+document.getElementById("restoreBtn")?.addEventListener("click", () => {
+  if (!lastCleared) return;
+  const r = lastCleared;
+  askBeforeLeave("さっきの 絵に もどす", () => doRestore(r));
 });
+function doRestore(r: NonNullable<typeof lastCleared>) {
+  if (lastCleared === r) lastCleared = null;
+  strokes = r.strokes;
+  marks = r.marks;
+  Object.assign(editor, r.editor);
+  editId = r.editId;
+  resetEditHistory();
+  save();
+  syncEditor();
+  renderTraits();
+  renderRoster();
+  persistDraft();
+  render();
+  showRestore();
+  toast("↩ さっきの 絵に もどしたよ");
+}
 
 function resetEditHistory() {
   undoSizes.draw = [];
@@ -1117,7 +1204,7 @@ function renderRoster() {
     row.className = "row";
     const edit = document.createElement("button");
     edit.textContent = "なおす";
-    edit.addEventListener("click", () => loadIntoEditor(c));
+    edit.addEventListener("click", () => askBeforeLeave(`「${c.name}」を よびだす`, () => loadIntoEditor(c)));
     const del = document.createElement("button");
     del.textContent = "けす";
     let armed = 0;
@@ -2034,8 +2121,9 @@ try { history.replaceState({ screen: "home" }, ""); } catch { /* 無視 */ }
 show("home");
 
 // 写真入りの絵: 読みこめたら 描きなおす（最初に まとめて 読んでおく）
-onImagesReady(() => { committedFor = null; render(); });
+onImagesReady(() => { committedFor = null; render(); scheduleEditBar(); });
 void preloadImages([...strokes, ...loadRoster().flatMap((c) => c.strokes)]);
+scheduleEditBar();
 
 // 漢字に ふりがな（メイン画面の下のボタンで なし にできる）
 installFurigana();
