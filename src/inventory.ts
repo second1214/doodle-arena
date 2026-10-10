@@ -122,3 +122,22 @@ export function migrateToParts(usedKinds: PartKind[]): Map<PartKind, string> | n
   saveInventory(inv);
   return map;
 }
+
+// 決まったレア度のパーツを1つもらう（オンライン対戦の1日1回の報酬）
+export function dropPartOfRarity(rarity: Rarity, rnd: () => number = Math.random): DropResult {
+  const inv = loadInventory();
+  const owned = new Set(inv.parts.map((x) => x.kind));
+  const pool = ALL_KINDS.flatMap((k) => (owned.has(k) ? [k] : [k, k]));
+  const p = makePart(pool[Math.floor(rnd() * pool.length)], rarity, rnd);
+  if (inv.parts.length >= INVENTORY_CAP) { inv.shards += RARITY_INFO[rarity].shards; saveInventory(inv); return { got: [], shardsInstead: RARITY_INFO[rarity].shards }; }
+  inv.parts.push(p);
+  saveInventory(inv);
+  return { got: [p], shardsInstead: 0 };
+}
+
+export function addShards(n: number) {
+  const inv = loadInventory();
+  inv.shards += n;
+  saveInventory(inv);
+}
+

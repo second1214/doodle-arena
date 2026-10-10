@@ -15,6 +15,7 @@ import type { Personality } from "./sim/world";
 import { deleteCharacter, loadDraft, loadRoster, normalize, saveCharacter, saveDraft, thumbnail, writeRoster, type CharacterData } from "./roster";
 import { applyStageResult, expToNext, exportCode, importCode, LEVEL_CAP, loadProfile, loadStory, requestPersist, resetTree, takeNode, totalPoints, type Reward } from "./progress";
 import { CPU_CHARS, CPU_GROUPS, cpuCharById, type CpuChar } from "./cpuChars";
+import { initOnline } from "./online/screen";
 import { ALL_STAGES, CHAPTERS, chapterOf, enemyParts, isUnlocked, UPCOMING, type Stage } from "./story";
 
 const STORAGE_KEY = "doodle-arena:proto1";
@@ -772,8 +773,9 @@ document.getElementById("startBattle")!.addEventListener("click", () => {
 });
 
 // --- 画面の移動（メイン ⇄ 各画面）。端末やブラウザの「戻る」でも1つ前に戻る ---
-type Screen = "home" | "story" | "make" | "free" | "transfer" | "tree" | "parts";
-const SCREEN_TITLES: Record<Screen, string> = { home: "", story: "ストーリー", make: "キャラを作る", free: "自由バトル", transfer: "引き継ぎ", tree: "スキルツリー", parts: "必殺パーツ" };
+type Screen = "home" | "story" | "make" | "free" | "transfer" | "tree" | "parts" | "online";
+const SCREEN_TITLES: Record<Screen, string> = { home: "", story: "ストーリー", make: "キャラを作る", free: "自由バトル", transfer: "引き継ぎ", tree: "スキルツリー", parts: "必殺パーツ", online: "オンライン" };
+const onlineEl = document.getElementById("onlineScreen")!;
 const partsEl = document.getElementById("partsScreen")!;
 const treeEl = document.getElementById("treeScreen")!;
 const homeEl = document.getElementById("home")!;
@@ -794,6 +796,7 @@ function show(s: Screen) {
   transferEl.hidden = s !== "transfer";
   treeEl.hidden = s !== "tree";
   partsEl.hidden = s !== "parts";
+  onlineEl.hidden = s !== "online";
   workspaceEl.hidden = s !== "make" && s !== "free";
   topbar.hidden = s === "home";
   screenTitle.textContent = SCREEN_TITLES[s];
@@ -803,6 +806,7 @@ function show(s: Screen) {
   else if (s === "story") renderStory();
   else if (s === "tree") renderTree();
   else if (s === "parts") renderParts();
+  else if (s === "online") onlineScreen.open();
   else if (s === "make") setView(view === "battle" ? "draw" : view);
   else if (s === "free") setView("battle");
   window.scrollTo(0, 0);
@@ -1151,6 +1155,28 @@ function startStage(stage: Stage) {
     },
   });
 }
+
+// --- オンライン ---
+// 使うキャラの選択肢（ストーリーと同じ: 編集中のキャラ＋保存したキャラ）
+function playerChoices() {
+  return [
+    { value: "", label: `編集中のキャラ（${editor.name || (strokes.length ? "名無し" : "棒人間")}）` },
+    ...loadRoster().map((c) => ({ value: `saved:${c.id}`, label: c.name })),
+  ];
+}
+const onlineScreen = initOnline(onlineEl, {
+  choices: playerChoices,
+  buildPlayer,
+  strokesOf: (choice) => {
+    const saved = choice.startsWith("saved:") ? loadRoster().find((c) => c.id === choice.slice(6)) : undefined;
+    if (saved) return saved.strokes.length ? { name: saved.name, strokes: saved.strokes } : null;
+    return strokes.length ? { name: editor.name || "名無し", strokes } : null;
+  },
+  params: () => params,
+  runBattle: (o) => runBattle({ ...o, sfx }),
+  partChipHtml: (p) => partChip(p).outerHTML,
+  unlockSound: () => sfx.unlock(),
+});
 
 // --- 引き継ぎ ---
 const transferMsg = document.getElementById("transferMsg")!;

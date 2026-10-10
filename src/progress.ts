@@ -94,9 +94,17 @@ export function applyStageResult(stageNo: number, stageId: string, boss: boolean
   const firstClear = won && !story.cleared[stageId];
   const exp = won ? (firstClear ? base : Math.round(base / 2)) : Math.round(base / 4);
   if (won) story.cleared[stageId] = (story.cleared[stageId] ?? 0) + 1;
-  let points = firstClear && boss ? 1 : 0;
+  saveStory(story);
+  const g = gainExp(exp, firstClear && boss ? 1 : 0);
+  return { exp, levelsUp: g.levelsUp, points: g.points, firstClear };
+}
+
+// 経験値を足してレベルを上げる（オンライン対戦の報酬などでも使う）。bonusPoints はレベルとは別にもらうスキルポイント
+export function gainExp(exp: number, bonusPoints = 0): { levelsUp: number; points: number } {
+  const profile = loadProfile();
+  let points = bonusPoints;
   let levelsUp = 0;
-  profile.exp += exp;
+  profile.exp += Math.max(0, Math.round(exp));
   while (profile.level < LEVEL_CAP && profile.exp >= expToNext(profile.level)) {
     profile.exp -= expToNext(profile.level);
     profile.level++;
@@ -106,8 +114,15 @@ export function applyStageResult(stageNo: number, stageId: string, boss: boolean
   if (profile.level >= LEVEL_CAP) profile.exp = 0;
   profile.points += points;
   saveProfile(profile);
-  saveStory(story);
-  return { exp, levelsUp, points, firstClear };
+  return { levelsUp, points };
+}
+
+// いちばん先までクリアしたステージの番号（オンラインの報酬の基準）
+export function frontierStage(): number {
+  const { cleared } = loadStory();
+  let n = 1;
+  for (const id of Object.keys(cleared)) { const [c, s2] = id.split("-").map(Number); if (c && s2) n = Math.max(n, (c - 1) * 6 + s2); }
+  return n;
 }
 
 // --- 引き継ぎコード: このゲームの保存データ全部を1つの文字列にする（機種変更・データ消失への備え） ---

@@ -200,13 +200,14 @@ export async function handle(req: Request, env: Env, now = Date.now()): Promise<
     // 緊急停止中は、ほかの人のキャラを配らない（ゲーム側は CPU だけで遊べる）
     const isStopped = await stopped(db);
 
-    // ランダムな相手の候補（同じ部屋から。足りなければ近い部屋）。索引の上の乱数の位置から読むので、全部を読まない
+    // ランダムな相手の候補（同じ部屋から。足りなければ1つ上の部屋。下の部屋は選ばない＝弱い部屋での勝ちあさりを防ぐ）。
+    // 索引の上の乱数の位置から読むので、全部を読まない。足りない分はゲーム側が CPU の門番で埋める
     if (path === "/chars/random" && req.method === "GET") {
       if (isStopped) return json({ chars: [], stop: true });
       const tier = clamp(Number(url.searchParams.get("tier")) || 0, 0, TIERS.length - 1);
       const not = new Set((url.searchParams.get("not") ?? "").split(",").filter(Boolean).slice(0, 30));
       const out = new Map<string, CharRow>();
-      for (const t of [tier, tier - 1, tier + 1]) {
+      for (const t of [tier, tier + 1]) {
         if (t < 0 || t >= TIERS.length) continue;
         for (let tries = 0; tries < 3 && out.size < LIMITS.candidates; tries++) {
           const at = rand01();

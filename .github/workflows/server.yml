@@ -41,10 +41,16 @@ jobs:
       - name: サーバーを入れ替える
         working-directory: server
         run: $WRANGLER deploy
-      - name: 動いているか確かめる
+      - name: 動いているか確かめる（読み込みだけ・データは変えない）
         run: |
+          API=https://doodle-arena-api.rakugaki000.workers.dev/api/v1
+          ok=0
           for i in 1 2 3 4 5 6; do
-            if curl -fsS https://doodle-arena-api.rakugaki000.workers.dev/api/v1/health; then exit 0; fi
+            if curl -fsS $API/health; then ok=1; break; fi
             sleep 10
           done
-          exit 1
+          [ $ok = 1 ] || exit 1
+          curl -fsS "$API/chars/random?tier=0" > /dev/null
+          curl -fsS "$API/ranking?tier=0" > /dev/null
+          # ゲームの公開ページから呼べるか（ブラウザが見る CORS の許可）
+          curl -fsS -D - -o /dev/null -H "Origin: https://second1214.github.io" "$API/health" | grep -i "access-control-allow-origin: https://second1214.github.io"

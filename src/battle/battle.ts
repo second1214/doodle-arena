@@ -17,6 +17,8 @@ export interface BattleOptions {
   exitLabel?: string; // 結果画面の「戻る」ボタンの文言
   // 決着のたびに呼ぶ（winner: 0=自分 1=相手 2=引き分け）。返した HTML を結果画面に足す（経験値など）
   onResult?: (winner: number) => string;
+  onResultShown?: (resultEl: HTMLElement) => void; // 結果画面のボタン（👎 など）に動きを付ける
+  fastButton?: boolean; // 観戦用: 2倍速ボタンを出す
 }
 
 const pips = (i: number) => `<div class="b-charge" data-ch="${i}"></div>`; // 中身は必要な命中数ぶん（キャラごとに違う）
@@ -86,6 +88,15 @@ export function startBattle(opts: BattleOptions) {
   const syncMute = () => { muteBtn.textContent = sfx.muted ? "音オフ" : "音オン"; };
   syncMute();
   muteBtn.addEventListener("click", () => { sfx.unlock(); sfx.setMuted(!sfx.muted); syncMute(); });
+  // 観戦の2倍速（戦闘計算の1コマの長さは変えず、1フレームに進めるコマ数を増やすだけ＝結果は同じ）
+  let speed = 1;
+  if (opts.fastButton) {
+    const fast = document.createElement("button");
+    fast.className = "b-mute b-fast";
+    fast.textContent = "▶▶ 2ばい";
+    fast.addEventListener("click", () => { speed = speed === 1 ? 2 : 1; fast.textContent = speed === 1 ? "▶▶ 2ばい" : "▶ ふつう"; });
+    el.appendChild(fast);
+  }
 
   // --- 入力 ---
   const held = { guard: false };
@@ -266,7 +277,7 @@ export function startBattle(opts: BattleOptions) {
         sfx.beep(true);
         setTimeout(() => { countEl.hidden = true; }, 600);
       }
-      acc += dtSec;
+      acc += dtSec * speed;
       while (acc >= DT) {
         acc -= DT;
         const p0 = opts.spectate ? aiInput(world, 0, ais[0]) : playerInput();
@@ -296,6 +307,7 @@ export function startBattle(opts: BattleOptions) {
         row("必殺 命中/発射", (s) => `${s.specialHits}/${s.shots}`) +
         row("ガード", (s) => s.guards);
       q(".b-reward").innerHTML = opts.onResult ? opts.onResult(win === -1 ? 2 : win) : "";
+      opts.onResultShown?.(q(".b-reward"));
       resultEl.hidden = false;
     }
     raf = requestAnimationFrame(frame);
