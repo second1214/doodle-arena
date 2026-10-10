@@ -405,6 +405,7 @@
       .pop.recoil { font-size: 15px; color: #ff8787; -webkit-text-stroke: 1.5px #3a0000; }
       .pop.thud { font-size: 30px; color: #fff; -webkit-text-stroke: 2.5px #5a3b12; }
       .pop.thud.big { font-size: 52px; }
+      .movekey { font-size: 34px; font-weight: 900; letter-spacing: .12em; text-align: center; background: #fff; border: 3px dashed var(--accent); border-radius: 16px; padding: 10px; margin-top: 8px; font-family: ui-monospace, monospace; }
       .movebar { background: #fff3bf; border: 2px solid #fab005; border-radius: 16px; padding: 10px 12px; margin: 4px 0 10px; display: grid; gap: 8px; font-weight: 700; }
       .movebar button { font-weight: 800; }
       .photobar { position: fixed; left: 8px; right: 8px; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); z-index: 30; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 18px; background: var(--panel); border: 2px solid var(--accent); box-shadow: 0 8px 24px rgba(0,0,0,.2); }
@@ -525,23 +526,17 @@
       <div class="note">パーツを タップすると、キャラに つける・はずす・🔒鍵・振り直し・分解・合成が できます。装備コストの合計は 🎯と👊 それぞれ 20まで。分解すると かけらになり、かけらで 数値を 振り直せます。同じ種類・同じレア度の 5個（ベース1＋材料4）で、ベースが 1段上の レア度に なります。🔒と 装備中の パーツは 材料に なりません。</div>
     </section>
     <section id="transferScreen" hidden>
-      <div class="note">保存したキャラ・レベル・ストーリーの進み具合を1つの「引き継ぎコード」にまとめます。別の端末やブラウザで読み込むと、同じデータで続きを遊べます。ブラウザのデータは消えることがあるので、ときどき書き出しておくと安心です。</div>
+      <div class="note">保存したキャラ・レベル・ストーリー・パーツを、8文字の「ひっこし番号」で べつの 端末や アドレスへ うつせます（機種変更・データが消えた時の そなえにも）。番号は 1回 つかうと 消えます。24時間で 消えます。</div>
       <div class="field">
-        <div class="label">書き出す</div>
-        <button id="moveKeyBtn" class="primary">🔢 ひっこし番号を つくる（かんたん）</button>
-        <button id="exportBtn">引き継ぎコードを作る</button>
-        <textarea id="exportCode" class="text code" rows="4" readonly hidden></textarea>
-        <div class="row" id="exportActions" hidden>
-          <button id="copyCode">コピー</button>
-          <button id="downloadCode">ファイルに保存</button>
-        </div>
+        <div class="label">① うつす前の 端末で</div>
+        <button id="moveKeyBtn" class="primary">🔢 ひっこし番号を つくる</button>
+        <div class="movekey" id="moveKeyShow" hidden></div>
       </div>
       <div class="field">
-        <div class="label">読み込む（今のデータは置き換わります）</div>
-        <textarea id="importCode" class="text code" rows="4" placeholder="ひっこし番号（8文字）か 引き継ぎコードを入れる"></textarea>
+        <div class="label">② うつした先の 端末で（今のデータは 置きかわります）</div>
+        <input id="importCode" class="text big" maxlength="12" autocomplete="off" autocapitalize="characters" placeholder="れい: K7QM-3XPA" />
         <div class="row">
-          <button id="importBtn">読み込む</button>
-          <label class="filebtn">ファイルから<input type="file" id="importFile" accept=".txt,text/plain" hidden /></label>
+          <button id="importBtn">🚚 うけとる</button>
         </div>
       </div>
       <div class="note" id="transferMsg"></div>

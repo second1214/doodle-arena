@@ -2187,60 +2187,29 @@ const onlineScreen = initOnline(onlineEl, {
 
 // --- 引き継ぎ ---
 const transferMsg = document.getElementById("transferMsg")!;
-const exportArea = document.getElementById("exportCode") as HTMLTextAreaElement;
-const importArea = document.getElementById("importCode") as HTMLTextAreaElement;
-document.getElementById("exportBtn")!.addEventListener("click", async () => {
-  try {
-    exportArea.value = await exportCode();
-    exportArea.hidden = false;
-    document.getElementById("exportActions")!.hidden = false;
-    exportArea.select();
-    transferMsg.textContent = `引き継ぎコードを作りました（${exportArea.value.length.toLocaleString()} 文字）。コピーするかファイルに保存してください。`;
-  } catch {
-    transferMsg.textContent = "コードを作れませんでした。";
-  }
-});
-document.getElementById("copyCode")!.addEventListener("click", async () => {
-  try {
-    await navigator.clipboard.writeText(exportArea.value);
-    transferMsg.textContent = "コピーしました。";
-  } catch {
-    exportArea.select();
-    transferMsg.textContent = "自動でコピーできませんでした。選択された文字を長押しでコピーしてください。";
-  }
-});
-document.getElementById("downloadCode")!.addEventListener("click", () => {
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([exportArea.value], { type: "text/plain" }));
-  a.download = `rakugaki-arena-${new Date().toISOString().slice(0, 10)}.txt`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-});
-document.getElementById("importFile")!.addEventListener("change", async (e) => {
-  const f = (e.target as HTMLInputElement).files?.[0];
-  if (!f) return;
-  importArea.value = (await f.text()).trim();
-  transferMsg.textContent = "ファイルを読み込みました。「読み込む」を押すと入れ替わります。";
-});
+const importArea = document.getElementById("importCode") as HTMLInputElement;
 document.getElementById("moveKeyBtn")!.addEventListener("click", async () => {
+  const show = document.getElementById("moveKeyShow")!;
   transferMsg.textContent = "番号を つくっているよ…";
   try {
     const key = await makeMoveKey();
-    transferMsg.textContent = `🔢 ひっこし番号: ${showKey(key)}　べつの 端末・アドレスの「読み込む」に この 8文字を 入れてね（1回だけ・24時間で 消えるよ）`;
-  } catch (e) { transferMsg.textContent = `番号を つくれなかったよ（${(e as Error).message}）。「引き継ぎコードを作る」を つかってね`; }
+    show.textContent = showKey(key);
+    show.hidden = false;
+    transferMsg.textContent = "🔢 この 8文字を、うつした先の「② うけとる」に 入れてね（1回だけ・24時間で 消えるよ）";
+  } catch (e) { show.hidden = true; transferMsg.textContent = `番号を つくれなかったよ（${(e as Error).message}）。インターネットに つないで もう一度 おしてね`; }
 });
 const importBtn = document.getElementById("importBtn")!;
 let importArmed = 0;
 importBtn.addEventListener("click", async () => {
-  if (!importArea.value.trim()) { transferMsg.textContent = "引き継ぎコードか ひっこし番号（8文字）を入れてください。"; return; }
+  if (!importArea.value.trim()) { transferMsg.textContent = "ひっこし番号（8文字）を 入れてね"; return; }
   if (!importArmed) {
-    importBtn.textContent = "もう一度押すと今のデータと入れ替え";
-    importArmed = window.setTimeout(() => { importArmed = 0; importBtn.textContent = "読み込む"; }, 3000);
+    importBtn.textContent = "もう一度 おすと 今の データと 入れかわるよ";
+    importArmed = window.setTimeout(() => { importArmed = 0; importBtn.textContent = "🚚 うけとる"; }, 3000);
     return;
   }
   clearTimeout(importArmed);
   importArmed = 0;
-  importBtn.textContent = "読み込む";
+  importBtn.textContent = "🚚 うけとる";
   try {
     const n = await importAny(importArea.value);
     transferMsg.textContent = `読み込みました（${n} 件）。画面を読み込み直します…`;
@@ -2279,37 +2248,17 @@ function setupMove() {
   const bar = document.getElementById("moveBar")!;
   const btn = (label: string, cls: string, f: () => void) => { const b = document.createElement("button"); b.type = "button"; b.className = cls; b.textContent = label; b.addEventListener("click", f); return b; };
   if (location.origin === OLD_HOME) {
-    // 前のアドレス: データを コピーして 新しいアドレスへ
+    // 前のアドレス: データを ひっこし番号で 新しいアドレスへ
     const t = document.createElement("div");
     t.textContent = "🏠 らくがきアリーナは あたらしい アドレスに ひっこしたよ: rakugaki-arena.pages.dev";
-    bar.append(t, btn("🚚 データを もって ひっこす", "primary", async () => {
+    bar.append(t, btn("🚚 データを もって ひっこす（ひっこし番号）", "primary", async () => {
       const codeP = exportCode();
-      // iPhone の Safari は ボタンを おした その場で コピーしないと ことわるので、作りかけの中身を わたして すぐ コピーを 始める
-      let copied = false;
+      // データは サーバーに あずけて 8文字の「ひっこし番号」で わたす（新しい アドレスが 自動で うけとる）
       try {
-        if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
-          await navigator.clipboard.write([new ClipboardItem({ "text/plain": codeP.then((c) => new Blob([c], { type: "text/plain" })) })]);
-        } else await navigator.clipboard.writeText(await codeP);
-        copied = true;
-      } catch { /* コピーできない時は リンクで わたす */ }
-      let code = "";
-      try { code = await codeP; } catch { toast("データを まとめられなかったよ。「ひきつぎ」を つかってね"); show("transfer"); return; }
-      // 大きすぎなければ、新しいアドレスを ひらく リンクに データを 入れて わたす（コピーと はりつけが いらない）
-      if (code.length <= 60000) { location.href = `${NEW_HOME}/#move=${code}`; return; }
-      // 大きい時（写真入りの キャラなど）は サーバーに あずけて 8文字の番号で わたす
-      try {
-        const key = (await api.moveUp(code)).key;
+        const key = (await api.moveUp(await codeP)).key;
         toast(`🚚 ひっこし番号 ${showKey(key)}（あたらしい アドレスで 自動で うけとるよ）`);
         setTimeout(() => { location.href = `${NEW_HOME}/#movekey=${key}`; }, 1500);
-        return;
-      } catch { /* オフラインなど: コピーで わたす */ }
-      if (copied) {
-        toast("🚚 データを コピーしたよ。あたらしい アドレスで「はりつけ」してね");
-        setTimeout(() => { location.href = `${NEW_HOME}/?from=old`; }, 900);
-      } else {
-        toast("コピー できなかったよ。「ひきつぎ」で コードを つくって うつしてね");
-        show("transfer");
-      }
+      } catch (e) { toast(`ひっこし番号を つくれなかったよ（${(e as Error).message}）。インターネットに つないで もう一度 おしてね`); }
     }));
     bar.hidden = false;
     return;
@@ -2346,17 +2295,18 @@ function setupMove() {
   // 新しいアドレス: まだ データが 無い時（または 前のアドレスから 来た時）は、はりつけて うつせる
   if (location.origin === NEW_HOME && (empty || new URLSearchParams(location.search).has("from"))) {
     const t = document.createElement("div");
-    t.textContent = "🚚 前の アドレス（github.io）で あそんでいた？ そこで「データを もって ひっこす」を おすと 出る 8文字の「ひっこし番号」（または 引き継ぎコード）を ここに 入れてね";
-    const ta = document.createElement("textarea");
-    ta.className = "sharetext";
-    ta.rows = 2;
+    t.textContent = "🚚 前の アドレス（github.io）で あそんでいた？ そこで「データを もって ひっこす」を おすと 出る 8文字の「ひっこし番号」を ここに 入れてね";
+    const ta = document.createElement("input");
+    ta.className = "text big";
+    ta.maxLength = 12;
+    ta.autocomplete = "off";
     ta.placeholder = "れい: K7QM-3XPA";
     bar.append(t, ta, btn("🚚 データを うつす", "primary", async () => {
       try {
         const n = await importAny(ta.value);
         toast(`🚚 ${n}こ うつしたよ！`);
         setTimeout(() => { location.href = `${NEW_HOME}/`; }, 900);
-      } catch (e) { toast((e as Error).message === "引き継ぎコードではありません" ? "はりつけた 文が コードじゃ なかったよ。前の アドレスで もう一度「🚚 データを もって ひっこす」を おしてね" : `うつせなかったよ（${(e as Error).message}）`); }
+      } catch (e) { toast((e as Error).message === "引き継ぎコードではありません" ? "8文字の ひっこし番号を 入れてね（前の アドレスで「🚚 データを もって ひっこす」を おすと 出るよ）" : `うつせなかったよ（${(e as Error).message}）`); }
     }), btn("とじる", "", () => { bar.hidden = true; }));
     bar.hidden = false;
   }
