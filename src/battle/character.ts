@@ -14,10 +14,11 @@ export interface CharacterBuild {
   originX: number; // 足元中心（CANVAS_SIZE 座標の x）
   cfg: FighterConfig;
   features: ShapeFeatures;
+  marks: Stroke[]; // 手足レイヤー（空なら自動検知）
 }
 
-export function buildCharacter(name: string, strokes: Stroke[], special: EffectId[], params: DetectParams = DEFAULT_PARAMS): CharacterBuild {
-  const res = detect(strokes, params);
+export function buildCharacter(name: string, strokes: Stroke[], special: EffectId[], params: DetectParams = DEFAULT_PARAMS, marks: Stroke[] = []): CharacterBuild {
+  const res = detect(strokes, params, marks);
   const parts = cutParts(strokes, res);
   const b = parts.bounds;
   const scale = VISUAL_SIZE / Math.max(40, b.x1 - b.x0, b.y1 - b.y0);
@@ -29,6 +30,7 @@ export function buildCharacter(name: string, strokes: Stroke[], special: EffectI
     scale,
     originX: res.centroid[0] * g,
     features: shape.features,
+    marks,
     cfg: {
       name,
       reach: shape.reach,

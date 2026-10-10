@@ -7,6 +7,7 @@ export interface Snapshot {
   ver: { shape: number; detect: number; sim: number; tree: number };
   name: string;
   strokes: { color: string; width: number; points: number[]; fill?: boolean }[];
+  marks?: { color: string; width: number; points: number[] }[]; // 手足レイヤー（color は hand / foot / erase。検知の版 2 から）
   detectParams: Record<string, number>;
   personality: string;
   specialType: "ranged" | "melee";

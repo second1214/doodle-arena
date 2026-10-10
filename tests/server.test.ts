@@ -54,6 +54,15 @@ describe("オンラインのサーバー", () => {
     expect(g.body.char.thumb.length).toBe(2);
   });
 
+  it("手足レイヤー（手ペン・足ペン）も一緒に公開でき、壊れた塗りは弾く", async () => {
+    const marks = [{ color: "foot", width: 30, points: [150, 300, 150, 340] }, { color: "erase", width: 39, points: [10, 10] }];
+    const r = await call("POST", "/chars", { owner: OWNER, snap: { ...snap(), marks } });
+    expect(r.status).toBe(200);
+    expect((await call("GET", `/chars/${r.body.id}`)).body.char.snap.marks).toEqual(marks);
+    const bad = await call("POST", "/chars", { owner: OWNER, snap: { ...snap(), marks: [{ color: "#ff0000", width: 30, points: [1, 2] }] } });
+    expect(bad.status).toBe(400);
+  });
+
   it("名前の禁止語・連絡先は弾く（書き方の違いもそろえて調べる）", async () => {
     for (const bad of ["シネ", "ｂａｋａ", "ば か", "090-1234-5678", "line id abc", "a@b.jp"]) expect(hasNgWord(bad)).toBe(true);
     for (const ok of ["ゆうしゃ", "かすてら", "ばかりマン", "スーパーhero", "はげしいドラゴン", "せんぷうき"]) expect(hasNgWord(ok)).toBe(false);

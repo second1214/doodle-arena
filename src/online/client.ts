@@ -78,6 +78,7 @@ export function makeSnapshot(build: CharacterBuild, name: string, strokes: Strok
     ver: { shape: SHAPE_VERSION, detect: DETECT_VERSION, sim: SIM_VERSION, tree: TREE_VERSION },
     name,
     strokes: strokes.map((s) => ({ color: s.color, width: s.width, points: [...s.points], ...(s.fill ? { fill: true } : {}) })),
+    ...(build.marks.length ? { marks: build.marks.map((m) => ({ color: m.color, width: m.width, points: [...m.points] })) } : {}),
     detectParams: { ...params } as unknown as Record<string, number>,
     personality: c.personality ?? "aggressive",
     specialType: c.specialType ?? "ranged",
@@ -93,7 +94,7 @@ export function makeSnapshot(build: CharacterBuild, name: string, strokes: Strok
 // 受け取ったスナップショットから戦うキャラを作る。検知や形の計算の版が違う時は、公開した時の手足の結果を使う（作った人と同じ強さで戦う）
 export function buildFromSnapshot(s: Snapshot): CharacterBuild {
   const params = { ...DEFAULT_PARAMS, ...(s.detectParams as Partial<DetectParams>) };
-  const b = buildCharacter(s.name, s.strokes as Stroke[], [], params);
+  const b = buildCharacter(s.name, s.strokes as Stroke[], [], params, (s.marks ?? []) as Stroke[]);
   const cfg: FighterConfig = b.cfg;
   if (s.limbs && (s.ver.detect !== DETECT_VERSION || s.ver.shape !== SHAPE_VERSION)) {
     cfg.reach = s.limbs.reach;

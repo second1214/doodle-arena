@@ -25,8 +25,8 @@ export const LIMITS = {
   badsPerDay: 10,
   hideAtBad: 3, // 別々の人からのバッドがこの数で自動非表示（消さずに隠すだけ）
   rankingDelayMs: 24 * 3600 * 1000, // 公開から24時間はランキングに出さない（その間にバッドが付く機会を作る）
-  maxStrokes: 300,
-  maxPoints: 16000, // 線の座標の数（x, y を別に数える＝8,000点）
+  maxStrokes: 600, // 左右対称で2倍になる
+  maxPoints: 40000, // 線の座標の数（x, y を別に数える＝20,000点。手足レイヤー・左右対称・きれいにする の分も入る）
   maxBody: 64_000, // 送られてくる中身の大きさ（バイト）
   candidates: 3, // ランダム対戦で出す相手の数
 };
@@ -61,6 +61,18 @@ export function cleanSnapshot(raw: unknown): { ok: true; snap: Snapshot } | { ok
     points += pts.length;
     strokes.push({ color, width: clamp(Math.round(s.width), 0, 40), points: pts, ...(s.fill === true ? { fill: true } : {}) });
   }
+  // 手足レイヤー（手ペン・足ペン・消しゴム）
+  const marks: NonNullable<Snapshot["marks"]> = [];
+  if (Array.isArray(r.marks)) {
+    if (r.marks.length > LIMITS.maxStrokes) return { ok: false, error: "線が 多すぎます" };
+    for (const s of r.marks as Record<string, unknown>[]) {
+      if (!s || typeof s !== "object" || !Array.isArray(s.points) || !["hand", "foot", "erase"].includes(s.color as string) || !finite(s.width)) return { ok: false, error: "手足の データが こわれています" };
+      const pts = (s.points as unknown[]).map((p) => (finite(p) ? Math.round(clamp(p, -64, 576)) : NaN));
+      if (pts.some(Number.isNaN) || pts.length < 2 || pts.length % 2) return { ok: false, error: "手足の データが こわれています" };
+      points += pts.length;
+      marks.push({ color: s.color as string, width: clamp(Math.round(s.width), 1, 80), points: pts });
+    }
+  }
   if (points > LIMITS.maxPoints) return { ok: false, error: "絵が 大きすぎます" };
   const ids = (x: unknown, ok: Set<string>) => (Array.isArray(x) ? x.filter((i): i is string => typeof i === "string" && ok.has(i)).slice(0, 20) : []);
   const nums = (x: unknown, keys: readonly string[], lo: number, hi: number) => {
@@ -76,6 +88,7 @@ export function cleanSnapshot(raw: unknown): { ok: true; snap: Snapshot } | { ok
     ver: { shape: int(v.shape), detect: int(v.detect), sim: int(v.sim), tree: int(v.tree) },
     name,
     strokes,
+    ...(marks.length ? { marks } : {}),
     detectParams: nums(r.detectParams, PARAM_KEYS, -100, 100),
     personality: typeof r.personality === "string" && PERSONALITIES.has(r.personality) ? r.personality : "aggressive",
     specialType: r.specialType === "melee" ? "melee" : "ranged",

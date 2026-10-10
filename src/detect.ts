@@ -14,7 +14,7 @@ export interface Stroke {
 }
 
 // 手足の検知のしかたの版。検知のアルゴリズムを変えたら上げる（オンラインで、古い版のキャラは保存した手足の結果を使う）
-export const DETECT_VERSION = 1;
+export const DETECT_VERSION = 2; // 2: 手足レイヤー（marks）で手足を自分で指定できる
 
 export interface DetectParams {
   size: number; // 検知解像度
@@ -198,7 +198,17 @@ function components(mask: Uint8Array, size: number): number[][] {
   return comps;
 }
 
-export function detect(strokes: Stroke[], params: DetectParams = DEFAULT_PARAMS): DetectResult {
+// 手足レイヤー: 絵の上を「手ペン」「足ペン」で雑に塗った線（color は "hand" / "foot" / "erase"）。
+// 1本でも塗ってあれば自動検知の代わりに使う（絵の形と重なった所だけが手足になる）
+export type MarkColor = "hand" | "foot" | "erase";
+export const hasMarks = (marks?: Stroke[]) => !!marks?.some((m) => m.color === "hand" || m.color === "foot");
+
+// 塗った範囲（後から塗った方が勝つ。消しゴムは両方消す）
+function markMask(marks: Stroke[], kind: "hand" | "foot", size: number): Uint8Array {
+  return rasterize(marks.map((m) => ({ ...m, fill: false, color: m.color === kind ? "#000000" : "erase" })), size);
+}
+
+export function detect(strokes: Stroke[], params: DetectParams = DEFAULT_PARAMS, marks?: Stroke[]): DetectResult {
   const N = params.size;
   const total = N * N;
   const labels = new Int16Array(total);
@@ -219,6 +229,11 @@ export function detect(strokes: Stroke[], params: DetectParams = DEFAULT_PARAMS)
   let cx = 0, cy = 0;
   for (const i of silComps[0]) { cx += i % N; cy += Math.floor(i / N); }
   const centroid: [number, number] = [cx / silComps[0].length, cy / silComps[0].length];
+
+  if (hasMarks(marks)) {
+    const r = detectMarked(sil, labels, centroid, marks!, params);
+    if (r) return r; // 消しゴムで全部消してあれば自動にもどる
+  }
 
   const dt = edt(invert(main), N); // 背景までの二乗距離
   let maxD2 = 0;
@@ -276,6 +291,44 @@ export function detect(strokes: Stroke[], params: DetectParams = DEFAULT_PARAMS)
     addLimb(comp, [px, py], [tx, ty]);
   }
 
+  return { size: N, labels, limbs, silhouette: sil, core, centroid };
+}
+
+// 手足レイヤーで指定した手足: 絵（シルエット）と塗った範囲が重なった塊を、それぞれ1本の手足にする。
+// 関節は胴体と接している所の真ん中（離れていれば胴体の中心にいちばん近い所）、先端は関節からいちばん遠い所
+function detectMarked(sil: Uint8Array, labels: Int16Array, centroid: [number, number], marks: Stroke[], params: DetectParams): DetectResult | null {
+  const N = params.size, total = N * N;
+  const limbs: Limb[] = [];
+  const limbMask = new Uint8Array(total);
+  let silArea = 0;
+  for (let i = 0; i < total; i++) silArea += sil[i];
+  const minArea = Math.max(4, params.minAreaRatio * silArea * 0.5);
+  const found: { kind: LimbKind; comp: number[] }[] = [];
+  const masks = (["hand", "foot"] as const).map((kind) => ({ kind, m: markMask(marks, kind, N) }));
+  if (masks.every(({ m }) => !m.some((v) => v))) return null;
+  for (const { kind, m } of masks) {
+    for (let i = 0; i < total; i++) m[i] &= sil[i];
+    for (const comp of components(m, N)) if (comp.length >= minArea) { found.push({ kind, comp }); for (const i of comp) limbMask[i] = 1; }
+  }
+  const core = new Uint8Array(total);
+  for (let i = 0; i < total; i++) core[i] = sil[i] && !limbMask[i] ? 1 : 0;
+  for (const { kind, comp } of found) {
+    let px = 0, py = 0, n = 0;
+    for (const i of comp) {
+      const x = i % N, y = (i - x) / N;
+      if ((x > 0 && core[i - 1]) || (x < N - 1 && core[i + 1]) || (y > 0 && core[i - N]) || (y < N - 1 && core[i + N])) { px += x; py += y; n++; }
+    }
+    if (n) { px /= n; py /= n; }
+    else {
+      let best = Infinity;
+      for (const i of comp) { const x = i % N, y = (i - x) / N, d = (x - centroid[0]) ** 2 + (y - centroid[1]) ** 2; if (d < best) { best = d; px = x; py = y; } }
+    }
+    let far = -1, tx = px, ty = py;
+    for (const i of comp) { const x = i % N, y = (i - x) / N, d = (x - px) ** 2 + (y - py) ** 2; if (d > far) { far = d; tx = x; ty = y; } }
+    const id = limbs.length + 2;
+    for (const i of comp) labels[i] = id;
+    limbs.push({ kind, pivot: [px, py], tip: [tx, ty], length: Math.sqrt(far), area: comp.length });
+  }
   return { size: N, labels, limbs, silhouette: sil, core, centroid };
 }
 

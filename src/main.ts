@@ -1,6 +1,7 @@
 import { CANVAS_SIZE, DEFAULT_PARAMS, detect, type DetectParams, type DetectResult, type Stroke } from "./detect";
 import { cutParts, drawStroke, renderStrokes } from "./parts";
 import { SAMPLES } from "./samples";
+import { beautify, fitShape, mirrorStroke, stabilize } from "./drawassist";
 import { startBattle } from "./battle/battle";
 import { Sfx } from "./battle/audio";
 import { buildCharacter } from "./battle/character";
@@ -37,6 +38,22 @@ const battleSetup = document.getElementById("battleSetup")!;
 const charSetup = document.getElementById("charSetup")!;
 
 let strokes: Stroke[] = load();
+// 手足レイヤー（手ペン・足ペンで塗った所）。絵とは別に保存する
+const MARKS_KEY = "doodle-arena:proto1-marks";
+const ASSIST_KEY = "doodle-arena:assist";
+let marks: Stroke[] = readJson<Stroke[]>(MARKS_KEY, []);
+let layer: "draw" | "limb" = "draw";
+let markTool: "hand" | "foot" | "erase" = "hand";
+const MARK_WIDTH = 30;
+const MARK_COLORS = { hand: "#ff7a1a", foot: "#228be6" };
+// 描き補正（①手ぶれ補正・②左右対称・③かたち補正）。手ぶれ補正とかたち補正は最初から入
+const assist = { smooth: true, mirror: false, shape: true, ...readJson<Partial<{ smooth: boolean; mirror: boolean; shape: boolean }>>(ASSIST_KEY, {}) };
+// 1つ戻す: 左右対称は2本で1回ぶん
+const undoSizes: Record<"draw" | "limb", number[]> = { draw: [], limb: [] };
+let beforeBeautify: Stroke[] | null = null; // ④きれいにする の直前（もう一度押すと戻す）
+function readJson<T>(key: string, d: T): T {
+  try { const s = localStorage.getItem(key); return s ? (JSON.parse(s) as T) : d; } catch { return d; }
+}
 let params: DetectParams = { ...DEFAULT_PARAMS };
 let color = COLORS[0];
 let width = 9;
@@ -60,6 +77,7 @@ function load(): Stroke[] {
 function save() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(strokes));
+    localStorage.setItem(MARKS_KEY, JSON.stringify(marks));
   } catch {
     /* 保存できない環境では無視 */
   }
@@ -77,14 +95,14 @@ function tint(part: HTMLCanvasElement, col: string): HTMLCanvasElement {
 }
 
 function runDetect() {
-  const res = detect(strokes, params);
+  const res = detect(strokes, params, marks);
   detected = { res, parts: cutParts(strokes, res).canvases };
   const hands = res.limbs.filter((l) => l.kind === "hand").length;
   const feet = res.limbs.filter((l) => l.kind === "foot").length;
   const notes: string[] = [];
   if (strokes.length && hands === 0) notes.push("手なし→体当たりで攻撃");
   if (strokes.length && feet === 0) notes.push("足なし→転がって移動");
-  resultEl.textContent = strokes.length ? `手 ${hands}本・足 ${feet}本${notes.length ? "（" + notes.join("／") + "）" : ""}` : "まだ何も描かれていません";
+  resultEl.textContent = strokes.length ? `${marks.some((m) => m.color !== "erase") ? "🖐 ぬった手足: " : ""}手 ${hands}本・足 ${feet}本${notes.length ? "（" + notes.join("／") + "）" : ""}` : "まだ何も描かれていません";
 }
 
 function limbColor(res: DetectResult, k: number) {
@@ -103,8 +121,27 @@ function render() {
       committedFor = strokes;
       committedLen = strokes.length;
     }
-    ctx.drawImage(committed, 0, 0);
-    if (current) drawStroke(ctx, current);
+    if (layer === "limb") {
+      // 絵を少し薄くして、その上に塗った手足を半透明で重ねる
+      ctx.globalAlpha = 0.55;
+      ctx.drawImage(committed, 0, 0);
+      ctx.globalAlpha = 0.5;
+      ctx.drawImage(renderMarks(current ? [...marks, current, ...(assist.mirror ? [mirrorStroke(current)] : [])] : marks), 0, 0);
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.drawImage(committed, 0, 0);
+      if (current) { drawStroke(ctx, current); if (assist.mirror) drawStroke(ctx, mirrorStroke(current)); }
+    }
+    if (assist.mirror) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(120,120,160,.45)";
+      ctx.setLineDash([8, 8]);
+      ctx.beginPath();
+      ctx.moveTo(CANVAS_SIZE / 2, 0);
+      ctx.lineTo(CANVAS_SIZE / 2, CANVAS_SIZE);
+      ctx.stroke();
+      ctx.restore();
+    }
     return;
   }
   if (!detected) return;
@@ -153,6 +190,10 @@ function render() {
   // 動かす: 立体プレビュー（Preview3D）が描くので、ここでは何もしない
 }
 
+function renderMarks(list: Stroke[]): HTMLCanvasElement {
+  return renderStrokes(list.map((m) => (m.color === "erase" ? m : { ...m, color: MARK_COLORS[m.color as "hand" | "foot"] ?? "#888888" })));
+}
+
 // 「動かす」: 戦闘と同じ膨らませた立体で動かす
 const previewEl = document.getElementById("preview3d")!;
 let preview: Preview3D | null = null;
@@ -164,7 +205,7 @@ function startPreview() {
   stopPreview();
   const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
   try {
-    preview = new Preview3D(previewEl, buildCharacter(editor.name || "あなた", mine, [], params));
+    preview = new Preview3D(previewEl, buildCharacter(editor.name || "あなた", mine, [], params, strokes.length ? marks : []));
     if (!resultEl.textContent!.includes("なぞる")) resultEl.textContent += "　👆 指でなぞると くるっと 回せるよ";
   } catch {
     resultEl.textContent = "立体の表示に失敗しました（この端末では 3D が使えない可能性があります）";
@@ -209,33 +250,89 @@ function toCanvas(e: PointerEvent): [number, number] {
   const r = canvas.getBoundingClientRect();
   return [((e.clientX - r.left) / r.width) * CANVAS_SIZE, ((e.clientY - r.top) / r.height) * CANVAS_SIZE];
 }
+// 描いている線の状態: 手ぶれ補正の点・補正前の点（かたち補正を取り消す用）・少し止まったかの見張り
+let smoothPt: [number, number] = [0, 0];
+let lastRaw: [number, number] = [0, 0];
+let rawPoints: number[] = [];
+let snapped: { at: [number, number] } | null = null;
+let holdTimer = 0;
+const HOLD_MS = 450;
+function armHold() {
+  clearTimeout(holdTimer);
+  if (!current || layer !== "draw" || !assist.shape || current.color === "erase") return;
+  holdTimer = window.setTimeout(() => {
+    if (!current || snapped) return;
+    const fit = fitShape([...rawPoints, ...lastRaw]);
+    if (!fit) return;
+    current.points = fit.points;
+    snapped = { at: [...lastRaw] };
+    resultEl.textContent = fit.kind === "line" ? "📏 まっすぐに したよ" : fit.kind === "circle" ? "⭕ まるに したよ" : "⬭ だ円に したよ";
+    render();
+  }, HOLD_MS);
+}
+// 1本ぶん（左右対称なら2本）を、今のレイヤーに足す
+function commit(s: Stroke) {
+  const list = layer === "limb" ? marks : strokes;
+  list.push(s);
+  if (assist.mirror) list.push(mirrorStroke(s));
+  undoSizes[layer].push(assist.mirror ? 2 : 1);
+  if (layer === "draw") beforeBeautify = null;
+  syncBeautify();
+  save();
+  render();
+  if (layer === "limb") runDetect(); // 塗った結果（手 ○本・足 ○本）をすぐ見せる
+}
 canvas.addEventListener("pointerdown", (e) => {
   if (view !== "draw") return;
   const [x, y] = toCanvas(e);
-  if (filling) {
-    strokes.push({ color, width: 0, points: [Math.round(x), Math.round(y)], fill: true });
-    save();
-    render();
+  if (filling && layer === "draw") {
+    commit({ color, width: 0, points: [Math.round(x), Math.round(y)], fill: true });
     return;
   }
   canvas.setPointerCapture(e.pointerId);
-  current = { color: erasing ? "erase" : color, width: erasing ? width * 2 : width, points: [Math.round(x), Math.round(y)] };
+  const pt = [Math.round(x), Math.round(y)];
+  smoothPt = [x, y];
+  lastRaw = [x, y];
+  rawPoints = [...pt];
+  snapped = null;
+  current = layer === "limb"
+    ? { color: markTool, width: markTool === "erase" ? MARK_WIDTH * 1.3 : MARK_WIDTH, points: pt }
+    : { color: erasing ? "erase" : color, width: erasing ? width * 2 : width, points: pt };
+  armHold();
   render();
 });
 canvas.addEventListener("pointermove", (e) => {
   if (!current) return;
   const [x, y] = toCanvas(e);
+  if (snapped) {
+    // 形に直した後も大きく動いたら、元の線に戻して描き続ける
+    if (Math.hypot(x - snapped.at[0], y - snapped.at[1]) < 12) return;
+    current.points = [...rawPoints];
+    snapped = null;
+    resultEl.textContent = "";
+  }
+  if (Math.hypot(x - lastRaw[0], y - lastRaw[1]) < 2) return;
+  lastRaw = [x, y];
+  rawPoints.push(Math.round(x), Math.round(y));
+  const smoothOn = assist.smooth && layer === "draw";
+  if (smoothOn) smoothPt = stabilize(smoothPt, [x, y]);
+  const [px, py] = smoothOn ? smoothPt : [x, y];
   const p = current.points;
-  if (Math.hypot(x - p[p.length - 2], y - p[p.length - 1]) < 2) return;
-  p.push(Math.round(x), Math.round(y));
+  if (Math.hypot(px - p[p.length - 2], py - p[p.length - 1]) >= 1.5) p.push(Math.round(px), Math.round(py));
+  armHold();
   render();
 });
 const endStroke = () => {
   if (!current) return;
-  strokes.push(current);
+  clearTimeout(holdTimer);
+  const s = current;
   current = null;
-  save();
-  render();
+  // 手ぶれ補正で遅れた分、最後は指の位置まで伸ばす
+  if (!snapped && assist.smooth && layer === "draw" && s.points.length >= 2) {
+    const n = s.points.length;
+    if (s.points[n - 2] !== Math.round(lastRaw[0]) || s.points[n - 1] !== Math.round(lastRaw[1])) s.points.push(Math.round(lastRaw[0]), Math.round(lastRaw[1]));
+  }
+  commit(s);
 };
 canvas.addEventListener("pointerup", endStroke);
 canvas.addEventListener("pointercancel", endStroke);
@@ -277,7 +374,67 @@ eraserBtn.addEventListener("click", () => {
   eraserBtn.classList.toggle("on", erasing);
 });
 document.getElementById("undo")!.addEventListener("click", () => {
-  strokes.pop();
+  const list = layer === "limb" ? marks : strokes;
+  const n = Math.min(list.length, undoSizes[layer].pop() ?? 1);
+  list.splice(list.length - n, n);
+  if (layer === "draw") beforeBeautify = null;
+  syncBeautify();
+  save();
+  render();
+  if (layer === "limb") runDetect();
+});
+
+// --- レイヤー（絵 / 手足）と描き補正 ---
+const layerDrawBtn = document.getElementById("layerDraw")!;
+const layerLimbBtn = document.getElementById("layerLimb")!;
+const paintTools = document.getElementById("paintTools")!;
+const limbTools = document.getElementById("limbTools")!;
+function setLayer(l: "draw" | "limb") {
+  layer = l;
+  layerDrawBtn.classList.toggle("on", l === "draw");
+  layerLimbBtn.classList.toggle("on", l === "limb");
+  paintTools.hidden = l !== "draw";
+  limbTools.hidden = l !== "limb";
+  clearBtn.textContent = l === "limb" ? "手足を全部消す" : "全部消す";
+  if (l === "limb") { if (strokes.length) runDetect(); else resultEl.textContent = "先に「絵を かく」で 絵を 描いてね"; }
+  else resultEl.textContent = "";
+  render();
+}
+layerDrawBtn.addEventListener("click", () => setLayer("draw"));
+layerLimbBtn.addEventListener("click", () => setLayer("limb"));
+const markBtns = { hand: document.getElementById("mHand")!, foot: document.getElementById("mFoot")!, erase: document.getElementById("mErase")! };
+for (const k of Object.keys(markBtns) as (keyof typeof markBtns)[]) {
+  markBtns[k].addEventListener("click", () => {
+    markTool = k;
+    for (const j of Object.keys(markBtns) as (keyof typeof markBtns)[]) markBtns[j].classList.toggle("on", j === k);
+  });
+}
+document.getElementById("mAuto")!.addEventListener("click", () => {
+  marks = [];
+  undoSizes.limb = [];
+  save();
+  render();
+  runDetect();
+  resultEl.textContent = "🤖 自動で 見つけるように もどしたよ　" + resultEl.textContent;
+});
+const assistBtns = { smooth: document.getElementById("aSmooth")!, mirror: document.getElementById("aMirror")!, shape: document.getElementById("aShape")! };
+const syncAssist = () => { for (const k of Object.keys(assistBtns) as (keyof typeof assistBtns)[]) assistBtns[k].classList.toggle("on", assist[k]); };
+for (const k of Object.keys(assistBtns) as (keyof typeof assistBtns)[]) {
+  assistBtns[k].addEventListener("click", () => {
+    assist[k] = !assist[k];
+    syncAssist();
+    try { localStorage.setItem(ASSIST_KEY, JSON.stringify(assist)); } catch { /* 無視 */ }
+    render();
+  });
+}
+syncAssist();
+const beautifyBtn = document.getElementById("beautify")!;
+function syncBeautify() { beautifyBtn.textContent = beforeBeautify ? "↩ もとに もどす" : "✨ きれいにする"; }
+beautifyBtn.addEventListener("click", () => {
+  if (beforeBeautify) { strokes = beforeBeautify; beforeBeautify = null; resultEl.textContent = "もとに もどしたよ"; }
+  else if (strokes.length) { beforeBeautify = strokes; strokes = beautify(strokes); resultEl.textContent = "✨ 線を なめらかにして、すき間を つないだよ（もう一度 おすと もとに もどる）"; }
+  undoSizes.draw = [];
+  syncBeautify();
   save();
   render();
 });
@@ -285,15 +442,29 @@ document.getElementById("undo")!.addEventListener("click", () => {
 const clearBtn = document.getElementById("clear")!;
 let clearArmed = 0;
 clearBtn.addEventListener("click", () => {
-  if (strokes.length && !clearArmed) {
+  if ((layer === "limb" ? marks : strokes).length && !clearArmed) {
     clearBtn.textContent = "もう一度押すと消えます";
-    clearArmed = window.setTimeout(() => { clearArmed = 0; clearBtn.textContent = "全部消す"; }, 2500);
+    clearArmed = window.setTimeout(() => { clearArmed = 0; clearBtn.textContent = layer === "limb" ? "手足を全部消す" : "全部消す"; }, 2500);
     return;
   }
   clearTimeout(clearArmed);
   clearArmed = 0;
+  if (layer === "limb") {
+    clearBtn.textContent = "手足を全部消す";
+    marks = [];
+    undoSizes.limb = [];
+    save();
+    render();
+    runDetect();
+    return;
+  }
   clearBtn.textContent = "全部消す";
   strokes = [];
+  marks = []; // 絵が無くなれば手足の塗りも意味がない
+  undoSizes.draw = [];
+  undoSizes.limb = [];
+  beforeBeautify = null;
+  syncBeautify();
   save();
   render();
 });
@@ -303,6 +474,11 @@ sampleSel.addEventListener("change", () => {
   const f = SAMPLES[sampleSel.value];
   if (f) {
     strokes = f();
+    marks = [];
+    undoSizes.draw = [];
+    undoSizes.limb = [];
+    beforeBeautify = null;
+    syncBeautify();
     save();
     render();
   }
@@ -376,7 +552,7 @@ const starterParts = () => ["start-r-homing", "start-m-tornado"].filter((id) => 
 const draft = loadDraft();
 const editor: CharacterData = normalize({ ...(draft ?? {}), name: draft?.name ?? "", special: draft?.special ?? ["homing"], melee: draft?.melee ?? ["tornado"] });
 let editId: string | null = draft?.id && loadRoster().some((c) => c.id === draft.id) ? draft.id : null;
-const persistDraft = () => saveDraft({ ...editor, id: editId ?? undefined, strokes: [] });
+const persistDraft = () => saveDraft({ ...editor, id: editId ?? undefined, strokes: [], marks: [] });
 
 const nameInput = document.getElementById("charName") as HTMLInputElement;
 nameInput.value = editor.name === "名無し" ? "" : editor.name;
@@ -386,7 +562,7 @@ function renderTraits() {
   const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
   const traitsEl = document.getElementById("myTraits")!;
   traitsEl.innerHTML = "";
-  for (const [icon, text] of kidTraits(fighterShape(detect(mine, params)))) {
+  for (const [icon, text] of kidTraits(fighterShape(detect(mine, params, strokes.length ? marks : [])))) {
     const b = document.createElement("span");
     const i = document.createElement("b");
     i.textContent = icon;
@@ -553,7 +729,7 @@ const saveMsg = document.getElementById("saveMsg")!;
 document.getElementById("saveChar")!.addEventListener("click", () => {
   if (!strokes.length) { saveMsg.textContent = "まだ絵が ないよ。「描く」で 描いてから ほぞんしてね"; return; }
   const id = editId ?? normalize({}).id;
-  const ok = saveCharacter({ ...editor, id, name: editor.name || "名無し", strokes: strokes.map((s) => ({ ...s, points: [...s.points] })) });
+  const ok = saveCharacter({ ...editor, id, name: editor.name || "名無し", strokes: strokes.map((s) => ({ ...s, points: [...s.points] })), marks: marks.map((s) => ({ ...s, points: [...s.points] })) });
   editId = id;
   persistDraft();
   saveMsg.textContent = ok ? `「${editor.name || "名無し"}」を ほぞんしたよ！` : "ほぞんできなかった…（ブラウザの設定で保存が禁止されているかもしれません）";
@@ -574,6 +750,8 @@ newBtn.addEventListener("click", () => {
   Object.assign(editor, normalize({ name: "", parts: starterParts() }));
   editor.name = "";
   strokes = [];
+  marks = [];
+  resetEditHistory();
   save();
   syncEditor();
   renderTraits();
@@ -582,10 +760,19 @@ newBtn.addEventListener("click", () => {
   saveMsg.textContent = "あたらしい キャラを つくろう！「描く」で 絵を 描いてね";
 });
 
+function resetEditHistory() {
+  undoSizes.draw = [];
+  undoSizes.limb = [];
+  beforeBeautify = null;
+  syncBeautify();
+}
+
 function loadIntoEditor(c: CharacterData) {
   editId = c.id;
   Object.assign(editor, normalize(c));
   strokes = c.strokes.map((s) => ({ ...s, points: [...s.points] }));
+  marks = (c.marks ?? []).map((s) => ({ ...s, points: [...s.points] }));
+  resetEditHistory();
   save();
   syncEditor();
   renderTraits();
@@ -737,12 +924,12 @@ const myBoost = (b: ReturnType<typeof buildCharacter>) => boostOf(loadProfile().
 function buildPlayer(choice: string) {
   const saved = choice.startsWith("saved:") ? loadRoster().find((c) => c.id === choice.slice(6)) : undefined;
   if (saved) {
-    const b = buildCharacter(saved.name, saved.strokes, [], params);
+    const b = buildCharacter(saved.name, saved.strokes, [], params, saved.marks);
     applyData(b, saved, partsById(saved.parts), myBoost(b));
     return b;
   }
   const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
-  const b = buildCharacter(editor.name || "あなた", mine, [], params);
+  const b = buildCharacter(editor.name || "あなた", mine, [], params, strokes.length ? marks : []);
   applyData(b, editor, partsById(editor.parts), myBoost(b));
   return b;
 }
@@ -758,7 +945,7 @@ document.getElementById("startBattle")!.addEventListener("click", () => {
   let cpuLine: string | undefined;
   const saved = v.startsWith("saved:") ? loadRoster().find((c) => `saved:${c.id}` === v) : undefined;
   if (saved) {
-    cpu = buildCharacter(saved.name, saved.strokes, [], params);
+    cpu = buildCharacter(saved.name, saved.strokes, [], params, saved.marks);
     applyData(cpu, saved, partsById(saved.parts), myBoost(cpu)); // 自分の保存キャラ同士 → 同じ強化
   } else {
     const c = cpuCharById(v)!;

@@ -11,6 +11,7 @@ export interface CharacterData {
   id: string;
   name: string;
   strokes: Stroke[];
+  marks?: Stroke[]; // 手足レイヤー（手ペン・足ペンで塗った所。無ければ自動で見つける）
   stats: Stats;
   personality: Personality;
   specialType: "ranged" | "melee";
@@ -54,6 +55,7 @@ export function normalize(c: Partial<CharacterData>): CharacterData {
     id: c.id ?? newId(),
     name: (c.name ?? "").slice(0, 16) || "名無し",
     strokes: Array.isArray(c.strokes) ? c.strokes : [],
+    marks: Array.isArray(c.marks) ? c.marks : [],
     stats,
     personality: c.personality ?? "aggressive",
     specialType: c.specialType === "melee" ? "melee" : "ranged",

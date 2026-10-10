@@ -255,6 +255,8 @@
       .swatch.on { box-shadow: 0 0 0 3px var(--accent); transform: scale(1.08); }
       .result { margin-top: 10px; font-size: 16px; font-weight: 600; min-height: 1.4em; }
       .note { color: var(--muted); font-size: 13px; margin-top: 4px; }
+      .layers button { flex: 1; font-size: 16px; padding: 10px; }
+      .assist button { font-size: 13px; }
       details { margin-top: 12px; background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 8px 12px; }
       summary { cursor: pointer; font-weight: 600; }
       label.slider { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin-top: 10px; font-size: 13px; }
@@ -521,6 +523,11 @@
       <span>● 関節　・ 先端</span>
     </div>
     <div id="drawTools">
+      <div class="row seg layers">
+        <button id="layerDraw" class="on">✏️ 絵を かく</button>
+        <button id="layerLimb">🖐 手足を きめる</button>
+      </div>
+      <div id="paintTools">
       <div class="row" id="palette"></div>
       <div class="row">
         <button data-width="4">細</button>
@@ -528,6 +535,22 @@
         <button data-width="18">太</button>
         <button id="fillTool">塗りつぶし</button>
         <button id="eraser">消しゴム</button>
+      </div>
+      <div class="row assist">
+        <button id="aSmooth" title="ガタガタの線を なめらかにする">〰 手ぶれ補正</button>
+        <button id="aMirror" title="左半分に かくと 右にも 同じ線が でる">🪞 左右対称</button>
+        <button id="aShape" title="かき終わりで 少し 止めると まる・まっすぐに なる">⭕ かたち補正</button>
+        <button id="beautify" title="全部の線を なめらかにして すき間を つなぐ">✨ きれいにする</button>
+      </div>
+      </div>
+      <div id="limbTools" hidden>
+        <div class="row">
+          <button id="mHand" class="on">🖐 手ペン</button>
+          <button id="mFoot">🦶 足ペン</button>
+          <button id="mErase">消しゴム</button>
+          <button id="mAuto">🤖 自動に もどす</button>
+        </div>
+        <div class="note">絵の 手に なる所を 手ペン、足に なる所を 足ペンで ざっくり ぬってね（はみ出しても 大丈夫）。1つでも ぬると、手足は ぬった所だけに なるよ。何も ぬらなければ 自動で 見つけるよ。</div>
       </div>
       <div class="row">
         <button id="undo">1つ戻す</button>
