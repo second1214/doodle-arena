@@ -87,6 +87,11 @@
       .credit { text-align: center; color: var(--muted); font-size: 11px; margin-top: 18px; }
       .credit a { color: inherit; }
       .share { width: 100%; margin-top: 10px; font-weight: 800; }
+      .sharemsg { margin-top: 8px; padding: 10px 12px; border-radius: 12px; font-weight: 800; background: #d3f9d8; color: #1b5e20; }
+      .sharemsg.ng { background: #ffe3e3; color: #8a1c1c; }
+      .sharebox.copied textarea { border-color: #40c057; box-shadow: 0 0 0 3px #b2f2bb; }
+      .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 28px); transform: translateX(-50%); z-index: 50; padding: 14px 22px; border-radius: 999px; background: #2b2d42; color: #fff; font-weight: 800; font-size: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.25); animation: toast-in .2s ease-out; max-width: calc(100vw - 32px); text-align: center; }
+      @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
       .sharebox { background: var(--panel); border: 2px solid var(--line); border-radius: 18px; padding: 10px 12px; margin-top: 8px; }
       .sharebox textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; border-radius: 12px; border: 2px solid var(--line); padding: 8px; resize: vertical; background: var(--bg, #fff); color: inherit; }
       ruby rt { font-size: .5em; font-weight: 700; letter-spacing: 0; opacity: .85; }
@@ -279,6 +284,7 @@
       .note { color: var(--muted); font-size: 13px; margin-top: 4px; }
       .layers button { flex: 1; font-size: 16px; padding: 10px; }
       .assist button { font-size: 13px; }
+      .filebtn { display: inline-flex; align-items: center; justify-content: center; flex: 1; padding: 10px 14px; border-radius: 14px; border: 2px solid var(--line); background: var(--panel); font-weight: 800; cursor: pointer; }
       details { margin-top: 12px; background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 8px 12px; }
       summary { cursor: pointer; font-weight: 600; }
       label.slider { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin-top: 10px; font-size: 13px; }
@@ -408,16 +414,18 @@
         <div class="exp"><div class="exp-bar"><i id="pExpBar"></i></div><small id="pExp"></small></div>
         <div class="pts">スキルポイント <b id="pPoints">0</b></div>
       </div>
-      <button id="shareBtn" class="share" type="button">📣 じまんの ぶんを つくる</button>
+      <button id="shareBtn" class="share" type="button">📣 SNS用 じまんの ぶんを つくる</button>
       <div id="shareBox" class="sharebox" hidden>
-        <div class="note">コピーして SNS などに はりつけてね（なおしても いいよ）</div>
+        <div class="kidhint">📣 SNS用の じまんの ぶん</div>
+        <div class="note">①「📋 コピー」を おす → ② X・LINE・インスタ などを ひらく → ③ はりつける（文は なおしても いいよ）</div>
         <textarea id="shareText" rows="8"></textarea>
         <div class="row">
           <button id="shareCopy" class="primary inline" type="button">📋 コピー</button>
           <button id="shareSend" type="button" hidden>📤 おくる</button>
         </div>
-        <div class="note" id="shareMsg" aria-live="polite"></div>
+        <div class="sharemsg" id="shareMsg" aria-live="polite" hidden></div>
       </div>
+      <div class="toast" id="toast" role="status" hidden></div>
       <div class="menu">
         <button class="big story" data-go="story"><b>📖 ストーリー</b><small>てきを たおして つよくなる</small></button>
         <button class="big online" data-go="online"><b>🌐 オンライン</b><small>みんなの キャラと たたかう・こうかい</small></button>
@@ -570,6 +578,18 @@
         <button id="aMirror" title="左半分に かくと 右にも 同じ線が でる">🪞 左右対称</button>
         <button id="aShape" title="かき終わりで 少し 止めると まる・まっすぐに なる">⭕ かたち補正</button>
         <button id="beautify" title="全部の線を なめらかにして すき間を つなぐ">✨ きれいにする</button>
+      </div>
+      <div class="row">
+        <label class="filebtn">📷 しゃしんから とりこむ<input id="photoInput" type="file" accept="image/*" hidden /></label>
+      </div>
+      <div id="photoPanel" class="sharebox" hidden>
+        <div class="kidhint">📷 紙に かいた絵を とりこんだよ</div>
+        <div class="note">白い紙に こい線で かくと きれいに とれるよ。うすい線が 消えたら ↓を 右へ。ゴミが 多かったら 左へ。</div>
+        <label class="slider"><span>うすい線も ひろう</span><span id="photoSensVal"></span><input id="photoSens" type="range" min="0" max="1" step="0.05" value="0.5" /></label>
+        <div class="row">
+          <button id="photoOk" class="primary inline" type="button">✅ これで OK</button>
+          <button id="photoCancel" type="button">↩ やめる</button>
+        </div>
       </div>
       </div>
       <div id="limbTools" hidden>

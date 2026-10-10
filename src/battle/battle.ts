@@ -262,6 +262,8 @@ export function startBattle(opts: BattleOptions) {
   beginCountdown(t0);
 
   const frame = (now: number) => {
+    // 先に次のコマを頼む（このコマの中で何かが失敗しても、画面が止まったままにならない）
+    raf = requestAnimationFrame(frame);
     const dtSec = Math.min(0.25, (now - last) / 1000);
     last = now;
     const events: BattleEvent[] = [];
@@ -306,11 +308,15 @@ export function startBattle(opts: BattleOptions) {
         row("通常攻撃 命中", (s) => s.melee) +
         row("必殺 命中/発射", (s) => `${s.specialHits}/${s.shots}`) +
         row("ガード", (s) => s.guards);
-      q(".b-reward").innerHTML = opts.onResult ? opts.onResult(win === -1 ? 2 : win) : "";
-      opts.onResultShown?.(q(".b-reward"));
-      resultEl.hidden = false;
+      resultEl.hidden = false; // ごほうびの計算より先に出す（失敗しても「もう一回」「もどる」は押せる）
+      try {
+        q(".b-reward").innerHTML = opts.onResult ? opts.onResult(win === -1 ? 2 : win) : "";
+        opts.onResultShown?.(q(".b-reward"));
+      } catch (e) {
+        console.error(e);
+        q(".b-reward").textContent = "ごほうびの けいさんで エラーが おきました（ごめんね）";
+      }
     }
-    raf = requestAnimationFrame(frame);
   };
   raf = requestAnimationFrame(frame);
 

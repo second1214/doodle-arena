@@ -746,6 +746,9 @@ export class BattleScene {
     for (const v of this.proj.values()) v.dispose();
     this.popups.clear();
     this.renderer.dispose();
+    // 3D の描画の場（WebGL コンテキスト）をすぐ返す。返さないと戦うたび・ヘッダーの試合ごとに たまり、
+    // iPad などで上限を超えると 使っている画面の描画が止まる（固まって見える）
+    this.renderer.forceContextLoss();
     this.renderer.domElement.remove();
     this.overlay.remove();
   }

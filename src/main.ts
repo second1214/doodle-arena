@@ -4,6 +4,7 @@ import { SAMPLES } from "./samples";
 import { furiganaOn, installFurigana, setFurigana } from "./furigana";
 import { shareText } from "./share";
 import { beautify, fitShape, mirrorStroke, stabilize } from "./drawassist";
+import { PHOTO_GRID, photoToStrokes, type Pixels } from "./photo";
 import { startBattle } from "./battle/battle";
 import { Sfx } from "./battle/audio";
 import { buildCharacter } from "./battle/character";
@@ -387,6 +388,69 @@ document.getElementById("undo")!.addEventListener("click", () => {
   render();
   if (layer === "limb") runDetect();
 });
+
+// --- 写真の取り込み: 紙に描いた絵の写真 → 線 ---
+const photoPanel = document.getElementById("photoPanel")!;
+const photoSens = document.getElementById("photoSens") as HTMLInputElement;
+let photo: { px: Pixels; before: Stroke[]; beforeMarks: Stroke[] } | null = null;
+// 写真を 正方形の小さな画素にする（はみ出す所は 紙の色＝四すみの平均でうめる）
+function photoPixels(img: HTMLImageElement): Pixels {
+  const n = PHOTO_GRID;
+  const c = document.createElement("canvas");
+  c.width = c.height = n;
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  const w = img.naturalWidth, h = img.naturalHeight, s = n / Math.max(w, h);
+  g.drawImage(img, (n - w * s) / 2, (n - h * s) / 2, w * s, h * s);
+  const d = g.getImageData(0, 0, n, n);
+  // 四すみ（写真の中）の平均色
+  const x0 = Math.ceil((n - w * s) / 2) + 2, x1 = Math.floor((n + w * s) / 2) - 3, y0 = Math.ceil((n - h * s) / 2) + 2, y1 = Math.floor((n + h * s) / 2) - 3;
+  let r = 0, gg = 0, b = 0;
+  for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) { const o = (y * n + x) * 4; r += d.data[o]; gg += d.data[o + 1]; b += d.data[o + 2]; }
+  g.globalCompositeOperation = "destination-over";
+  g.fillStyle = `rgb(${r / 4},${gg / 4},${b / 4})`;
+  g.fillRect(0, 0, n, n);
+  return g.getImageData(0, 0, n, n);
+}
+function applyPhoto() {
+  if (!photo) return;
+  strokes = beautify(photoToStrokes(photo.px, Number(photoSens.value))); // かくかくした線を なめらかに・すき間を つなぐ
+  document.getElementById("photoSensVal")!.textContent = `${Math.round(Number(photoSens.value) * 100)}`;
+  resultEl.textContent = strokes.length ? `📷 線を ${strokes.length}本 つくったよ` : "線が 見つからなかったよ。うすい線も ひろう を 右へ うごかしてね";
+  render();
+}
+function endPhoto(keep: boolean) {
+  if (!photo) return;
+  if (!keep) { strokes = photo.before; marks = photo.beforeMarks; resultEl.textContent = "もとに もどしたよ"; }
+  else resultEl.textContent = "📷 とりこんだよ！「🖐 手足を きめる」で 手足も なおせるよ";
+  photo = null;
+  photoPanel.hidden = true;
+  resetEditHistory();
+  save();
+  render();
+}
+document.getElementById("photoInput")!.addEventListener("change", (e) => {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = ""; // 同じ写真を もう一度 えらんでも 動くように
+  if (!file) return;
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    photo = { px: photoPixels(img), before: strokes, beforeMarks: marks };
+    marks = [];
+    setLayer("draw");
+    photoPanel.hidden = false;
+    applyPhoto();
+    photoPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); resultEl.textContent = "その写真は ひらけなかったよ"; };
+  img.src = url;
+});
+let photoTimer = 0;
+photoSens.addEventListener("input", () => { clearTimeout(photoTimer); photoTimer = window.setTimeout(applyPhoto, 120); });
+document.getElementById("photoOk")!.addEventListener("click", () => endPhoto(true));
+document.getElementById("photoCancel")!.addEventListener("click", () => endPhoto(false));
 
 // --- レイヤー（絵 / 手足）と描き補正 ---
 const layerDrawBtn = document.getElementById("layerDraw")!;
@@ -1112,19 +1176,45 @@ function makeShareText(): string {
     charName: strokes.length && editor.name ? editor.name : undefined,
   });
 }
+const shareCopyBtn = document.getElementById("shareCopy")!;
+const toastEl = document.getElementById("toast")!;
+let toastTimer = 0;
+// 画面の下に しばらく出る お知らせ（どの画面でも見える）
+function toast(text: string) {
+  toastEl.textContent = text;
+  toastEl.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => { toastEl.hidden = true; }, 2600);
+}
+function shareResult(ok: boolean, text: string) {
+  shareMsg.hidden = false;
+  shareMsg.className = `sharemsg${ok ? "" : " ng"}`;
+  shareMsg.textContent = text;
+  shareBox.classList.toggle("copied", ok);
+  if (ok) {
+    shareCopyBtn.textContent = "✅ コピーしたよ！";
+    setTimeout(() => { shareCopyBtn.textContent = "📋 コピー"; }, 2600);
+  }
+  toast(text);
+}
 document.getElementById("shareBtn")!.addEventListener("click", () => {
   shareBox.hidden = !shareBox.hidden;
-  if (!shareBox.hidden) { shareTa.value = makeShareText(); shareMsg.textContent = ""; }
+  if (!shareBox.hidden) {
+    shareTa.value = makeShareText();
+    shareMsg.hidden = true;
+    shareBox.classList.remove("copied");
+    shareBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
 });
-document.getElementById("shareCopy")!.addEventListener("click", async () => {
+shareCopyBtn.addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(shareTa.value);
   } catch {
     // コピーの許可が無いブラウザ: 文を選んで 昔のやり方でコピー
     shareTa.select();
-    if (!document.execCommand("copy")) { shareMsg.textContent = "コピー できなかったよ。文を ながおしして コピーしてね"; return; }
+    if (!document.execCommand("copy")) { shareResult(false, "コピー できなかったよ。文を ながおしして「コピー」を えらんでね"); return; }
   }
-  shareMsg.textContent = "📋 コピーしたよ！ SNS などに はりつけてね";
+  shareResult(true, "📋 クリップボードに コピーしたよ！ SNS に はりつけてね");
 });
 shareSend.addEventListener("click", () => { navigator.share({ text: shareTa.value }).catch(() => { /* やめた時など */ }); });
 

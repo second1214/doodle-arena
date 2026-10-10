@@ -335,7 +335,7 @@ function detectMarked(sil: Uint8Array, labels: Int16Array, centroid: [number, nu
 const NB8 = [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]]; // 時計回り
 
 // Zhang-Suen 細線化。
-function thin(mask: Uint8Array, w: number, h: number): Uint8Array {
+export function thin(mask: Uint8Array, w: number, h: number): Uint8Array {
   const m = mask.slice();
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : m[y * w + x]);
   let changed = true;

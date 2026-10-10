@@ -113,6 +113,7 @@ export class Preview3D {
     this.ro.disconnect();
     for (const d of this.disposables) d.dispose();
     this.renderer.dispose();
+    this.renderer.forceContextLoss(); // 3D の描画の場をすぐ返す（BattleScene と同じ理由）
     this.renderer.domElement.remove();
   }
 }
