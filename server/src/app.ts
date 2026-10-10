@@ -29,6 +29,9 @@ export const LIMITS = {
   maxImages: 2, // 写真をそのまま貼った線（1キャラ）
   maxImageChars: 160000, // 写真1枚の data URL の長さ（約120KB）
   maxPoints: 40000, // 線の座標の数（x, y を別に数える＝20,000点。手足レイヤー・左右対称・きれいにする の分も入る）
+  maxMove: 1_800_000, // 引っこしで あずける 引き継ぎコードの長さ（写真入りの キャラが 多くても 入る）
+  movesPerDay: 20, // 1つの回線が 1日に あずけられる回数
+  moveTtlMs: 24 * 3600 * 1000, // あずけた データが 消えるまで
   maxBody: 450_000, // 送られてくる中身の大きさ（バイト）。写真（約120KB×2）と 線の座標（最大40,000）が入る
   candidates: 3, // ランダム対戦で出す相手の数
 };
@@ -178,9 +181,9 @@ function cors(req: Request, env: Env): Record<string, string> {
 }
 
 // 端末から送られる本文（text/plain の JSON）。持ち主の合い言葉や端末の印も本文に入れる（ヘッダーを使うと事前確認の通信が起きるため）
-async function body(req: Request): Promise<Record<string, unknown> | null> {
+async function body(req: Request, max: number = LIMITS.maxBody): Promise<Record<string, unknown> | null> {
   const text = await req.text();
-  if (text.length > LIMITS.maxBody) return null;
+  if (text.length > max) return null;
   try { const v = JSON.parse(text); return v && typeof v === "object" ? (v as Record<string, unknown>) : null; } catch { return null; }
 }
 
@@ -194,6 +197,28 @@ export async function handle(req: Request, env: Env, now = Date.now()): Promise<
   try {
     if (path === "/health") return json({ ok: true, stop: await stopped(db), tiers: TIERS.map((t) => t.name) });
     const ipHash = async () => sha256(`${await salt(db)}:${today(now)}:${req.headers.get("CF-Connecting-IP") ?? "0.0.0.0"}`);
+
+    // 引っこし: 引き継ぎコードを あずけて 8文字の番号を もらう（打ちまちがえやすい I O 0 1 は使わない）
+    if (path === "/moves" && req.method === "POST") {
+      const b = await body(req, LIMITS.maxMove + 1000);
+      const code = typeof b?.code === "string" ? b.code : "";
+      if (!code || code.length > LIMITS.maxMove || !/^DA[01]:[A-Za-z0-9+/=]+$/.test(code)) return json({ error: "引き継ぎコードが こわれているか 大きすぎます" }, 400);
+      if (!(await takeQuota(db, `move:${await ipHash()}`, LIMITS.movesPerDay, now))) return json({ error: "今日は もう あずけられないよ。また明日ね" }, 429);
+      await db.prepare("DELETE FROM moves WHERE created_at < ?").bind(now - LIMITS.moveTtlMs).run();
+      const a = new Uint8Array(8);
+      crypto.getRandomValues(a);
+      const key = [...a].map((x) => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[x % 32]).join("");
+      await db.prepare("INSERT INTO moves (key, code, created_at) VALUES (?, ?, ?)").bind(key, code, now).run();
+      return json({ key });
+    }
+    // 引っこし: 番号で 受けとる（1回だけ。受けとったら 消す）
+    const mv = path.match(/^\/moves\/([A-Z2-9]{8})$/);
+    if (mv && req.method === "GET") {
+      const row = await db.prepare("SELECT code, created_at FROM moves WHERE key = ?").bind(mv[1]).first<{ code: string; created_at: number }>();
+      if (!row || row.created_at < now - LIMITS.moveTtlMs) return json({ error: "その番号は 見つからないよ（1回 うけとると 消えるよ。24時間で 消えるよ）" }, 404);
+      await db.prepare("DELETE FROM moves WHERE key = ?").bind(mv[1]).run();
+      return json({ code: row.code });
+    }
 
     // キャラを公開
     if (path === "/chars" && req.method === "POST") {

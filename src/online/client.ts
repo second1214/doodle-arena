@@ -67,6 +67,8 @@ export const api = {
   get: (id: string) => request<{ char: ListChar & { snap: Snapshot } }>("GET", `/chars/${id}`),
   remove: (id: string) => request<{ ok: boolean }>("POST", `/chars/${id}/delete`, { owner: ownerToken() }),
   report: (opponentId: string, result: "win" | "lose" | "draw", challengerRating: number) => request<{ rating: number }>("POST", "/matches", { opponentId, result, challengerRating }),
+  moveUp: (code: string) => request<{ key: string }>("POST", "/moves", { code }),
+  moveGet: (key: string) => request<{ code: string }>("GET", `/moves/${key}`),
   bad: (id: string) => request<{ ok: boolean; already?: boolean }>("POST", `/chars/${id}/bad`, { device: deviceId() }),
 };
 

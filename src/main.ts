@@ -21,6 +21,7 @@ import { deleteCharacter, loadDraft, loadoutOf, loadRoster, normalize, saveChara
 import { applyStageResult, expToNext, exportCode, importCode, LEVEL_CAP, loadProfile, loadStory, requestPersist, resetTree, takeNode, totalPoints, type Reward } from "./progress";
 import { CPU_CHARS, CPU_GROUPS, cpuCharById, type CpuChar } from "./cpuChars";
 import { initOnline } from "./online/screen";
+import { api } from "./online/client";
 import { AttractHeader } from "./battle/attract";
 import { ALL_STAGES, CHAPTERS, chapterOf, enemyParts, isUnlocked, UPCOMING, type Stage } from "./story";
 
@@ -2221,10 +2222,17 @@ document.getElementById("importFile")!.addEventListener("change", async (e) => {
   importArea.value = (await f.text()).trim();
   transferMsg.textContent = "ファイルを読み込みました。「読み込む」を押すと入れ替わります。";
 });
+document.getElementById("moveKeyBtn")!.addEventListener("click", async () => {
+  transferMsg.textContent = "番号を つくっているよ…";
+  try {
+    const key = await makeMoveKey();
+    transferMsg.textContent = `🔢 ひっこし番号: ${showKey(key)}　べつの 端末・アドレスの「読み込む」に この 8文字を 入れてね（1回だけ・24時間で 消えるよ）`;
+  } catch (e) { transferMsg.textContent = `番号を つくれなかったよ（${(e as Error).message}）。「引き継ぎコードを作る」を つかってね`; }
+});
 const importBtn = document.getElementById("importBtn")!;
 let importArmed = 0;
 importBtn.addEventListener("click", async () => {
-  if (!importArea.value.trim()) { transferMsg.textContent = "引き継ぎコードを貼り付けてください。"; return; }
+  if (!importArea.value.trim()) { transferMsg.textContent = "引き継ぎコードか ひっこし番号（8文字）を入れてください。"; return; }
   if (!importArmed) {
     importBtn.textContent = "もう一度押すと今のデータと入れ替え";
     importArmed = window.setTimeout(() => { importArmed = 0; importBtn.textContent = "読み込む"; }, 3000);
@@ -2234,7 +2242,7 @@ importBtn.addEventListener("click", async () => {
   importArmed = 0;
   importBtn.textContent = "読み込む";
   try {
-    const n = await importCode(importArea.value);
+    const n = await importAny(importArea.value);
     transferMsg.textContent = `読み込みました（${n} 件）。画面を読み込み直します…`;
     setTimeout(() => location.reload(), 900);
   } catch (err) {
@@ -2255,6 +2263,18 @@ scheduleEditBar();
 // ブラウザの保存はアドレスごとに別なので、データ（キャラ・レベルなど）は 引き継ぎコードで 運ぶ ---
 const NEW_HOME = "https://rakugaki-arena.pages.dev";
 const OLD_HOME = "https://second1214.github.io";
+// 8文字の ひっこし番号（例: K7QM-3XPA）か、引き継ぎコードそのものか
+const moveKeyOf = (text: string) => { const k = text.toUpperCase().replace(/[^A-Z0-9]/g, ""); return /^[A-HJ-NP-Z2-9]{8}$/.test(k) ? k : null; };
+const showKey = (k: string) => `${k.slice(0, 4)}-${k.slice(4)}`;
+// 番号なら サーバーから 受けとって、コードなら そのまま 読みこむ
+async function importAny(text: string): Promise<number> {
+  const key = moveKeyOf(text);
+  if (key && !/DA[01]:/.test(text)) return importCode((await api.moveGet(key)).code);
+  return importCode(text);
+}
+// 引き継ぎコードを サーバーに あずけて 8文字の番号を もらう
+async function makeMoveKey(): Promise<string> { return (await api.moveUp(await exportCode())).key; }
+
 function setupMove() {
   const bar = document.getElementById("moveBar")!;
   const btn = (label: string, cls: string, f: () => void) => { const b = document.createElement("button"); b.type = "button"; b.className = cls; b.textContent = label; b.addEventListener("click", f); return b; };
@@ -2276,6 +2296,13 @@ function setupMove() {
       try { code = await codeP; } catch { toast("データを まとめられなかったよ。「ひきつぎ」を つかってね"); show("transfer"); return; }
       // 大きすぎなければ、新しいアドレスを ひらく リンクに データを 入れて わたす（コピーと はりつけが いらない）
       if (code.length <= 60000) { location.href = `${NEW_HOME}/#move=${code}`; return; }
+      // 大きい時（写真入りの キャラなど）は サーバーに あずけて 8文字の番号で わたす
+      try {
+        const key = (await api.moveUp(code)).key;
+        toast(`🚚 ひっこし番号 ${showKey(key)}（あたらしい アドレスで 自動で うけとるよ）`);
+        setTimeout(() => { location.href = `${NEW_HOME}/#movekey=${key}`; }, 1500);
+        return;
+      } catch { /* オフラインなど: コピーで わたす */ }
       if (copied) {
         toast("🚚 データを コピーしたよ。あたらしい アドレスで「はりつけ」してね");
         setTimeout(() => { location.href = `${NEW_HOME}/?from=old`; }, 900);
@@ -2288,12 +2315,13 @@ function setupMove() {
     return;
   }
   const empty = !loadRoster().length && loadProfile().level <= 1 && !Object.keys(loadStory().cleared).length;
-  // リンクで わたされた データ（#move=…）: 聞いてから うつす
-  if (location.hash.startsWith("#move=")) {
-    const code = decodeURIComponent(location.hash.slice(6));
+  // リンクで わたされた データ（#move=コード ／ #movekey=番号）: 聞いてから うつす
+  if (location.hash.startsWith("#move=") || location.hash.startsWith("#movekey=")) {
+    const isKey = location.hash.startsWith("#movekey=");
+    const val = decodeURIComponent(location.hash.slice(isKey ? 9 : 6));
     history.replaceState(null, "", location.pathname + location.search);
     const doMove = async () => {
-      try { const n = await importCode(code); toast(`🚚 ${n}こ うつしたよ！`); setTimeout(() => location.reload(), 900); }
+      try { const n = isKey ? await importAny(val) : await importCode(val); toast(`🚚 ${n}こ うつしたよ！`); setTimeout(() => location.reload(), 900); }
       catch (e) { toast(`うつせなかったよ（${(e as Error).message}）`); }
     };
     if (empty) { void doMove(); return; }
@@ -2318,14 +2346,14 @@ function setupMove() {
   // 新しいアドレス: まだ データが 無い時（または 前のアドレスから 来た時）は、はりつけて うつせる
   if (location.origin === NEW_HOME && (empty || new URLSearchParams(location.search).has("from"))) {
     const t = document.createElement("div");
-    t.textContent = "🚚 前の アドレス（github.io）で あそんでいた？ そこで「データを もって ひっこす」を おしてから、ここに はりつけてね";
+    t.textContent = "🚚 前の アドレス（github.io）で あそんでいた？ そこで「データを もって ひっこす」を おすと 出る 8文字の「ひっこし番号」（または 引き継ぎコード）を ここに 入れてね";
     const ta = document.createElement("textarea");
     ta.className = "sharetext";
-    ta.rows = 3;
-    ta.placeholder = "ここを ながおしして「ペースト」";
+    ta.rows = 2;
+    ta.placeholder = "れい: K7QM-3XPA";
     bar.append(t, ta, btn("🚚 データを うつす", "primary", async () => {
       try {
-        const n = await importCode(ta.value);
+        const n = await importAny(ta.value);
         toast(`🚚 ${n}こ うつしたよ！`);
         setTimeout(() => { location.href = `${NEW_HOME}/`; }, 900);
       } catch (e) { toast((e as Error).message === "引き継ぎコードではありません" ? "はりつけた 文が コードじゃ なかったよ。前の アドレスで もう一度「🚚 データを もって ひっこす」を おしてね" : `うつせなかったよ（${(e as Error).message}）`); }

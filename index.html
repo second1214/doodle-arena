@@ -528,6 +528,7 @@
       <div class="note">保存したキャラ・レベル・ストーリーの進み具合を1つの「引き継ぎコード」にまとめます。別の端末やブラウザで読み込むと、同じデータで続きを遊べます。ブラウザのデータは消えることがあるので、ときどき書き出しておくと安心です。</div>
       <div class="field">
         <div class="label">書き出す</div>
+        <button id="moveKeyBtn" class="primary">🔢 ひっこし番号を つくる（かんたん）</button>
         <button id="exportBtn">引き継ぎコードを作る</button>
         <textarea id="exportCode" class="text code" rows="4" readonly hidden></textarea>
         <div class="row" id="exportActions" hidden>
@@ -537,7 +538,7 @@
       </div>
       <div class="field">
         <div class="label">読み込む（今のデータは置き換わります）</div>
-        <textarea id="importCode" class="text code" rows="4" placeholder="引き継ぎコードを貼り付け"></textarea>
+        <textarea id="importCode" class="text code" rows="4" placeholder="ひっこし番号（8文字）か 引き継ぎコードを入れる"></textarea>
         <div class="row">
           <button id="importBtn">読み込む</button>
           <label class="filebtn">ファイルから<input type="file" id="importFile" accept=".txt,text/plain" hidden /></label>

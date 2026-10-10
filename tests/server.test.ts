@@ -8,7 +8,7 @@ async function memoryDb(): Promise<Db> {
   const { DatabaseSync } = await import(/* @vite-ignore */ mods[0]);
   const { readFileSync } = await import(/* @vite-ignore */ mods[1]);
   const sql = new DatabaseSync(":memory:");
-  sql.exec(readFileSync(new URL("../server/migrations/0001_init.sql", import.meta.url), "utf8"));
+  for (const f of ["0001_init.sql", "0002_moves.sql"]) sql.exec(readFileSync(new URL(`../server/migrations/${f}`, import.meta.url), "utf8"));
   return {
     prepare(q: string) {
       let args: unknown[] = [];
@@ -72,6 +72,21 @@ describe("オンラインのサーバー", () => {
     expect(g.body.char.thumb[0].img).toBe(photo.timg);
     const bad = await call("POST", "/chars", { owner: OWNER, snap: { ...snap(), strokes: [{ ...photo, img: "javascript:alert(1)" }] } });
     expect(bad.status).toBe(400);
+  });
+
+  it("引っこし: コードを あずけて 8文字の番号で 1回だけ 受けとれる", async () => {
+    const code = "DA1:" + "A".repeat(300000);
+    const up = await call("POST", "/moves", { code });
+    expect(up.status).toBe(200);
+    expect(up.body.key).toMatch(/^[A-HJ-NP-Z2-9]{8}$/);
+    const got = await call("GET", `/moves/${up.body.key}`);
+    expect(got.body.code).toBe(code);
+    expect((await call("GET", `/moves/${up.body.key}`)).status).toBe(404); // 2回目は無い
+    expect((await call("POST", "/moves", { code: "hello" })).status).toBe(400);
+    // 24時間で消える
+    const up2 = await call("POST", "/moves", { code: "DA1:AAAA" });
+    clock += 25 * 3600 * 1000;
+    expect((await call("GET", `/moves/${up2.body.key}`)).status).toBe(404);
   });
 
   it("名前の禁止語・連絡先は弾く（書き方の違いもそろえて調べる）", async () => {
