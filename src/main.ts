@@ -4,7 +4,7 @@ import { SAMPLES } from "./samples";
 import { furiganaOn, installFurigana, setFurigana } from "./furigana";
 import { shareText } from "./share";
 import { beautify, fitShape, mirrorStroke, stabilize } from "./drawassist";
-import { PHOTO_GRID, photoToStrokes, type Pixels } from "./photo";
+import { PHOTO_GRID, photoToColorStrokes, photoToStrokes, type Pixels } from "./photo";
 import { startBattle } from "./battle/battle";
 import { Sfx } from "./battle/audio";
 import { buildCharacter } from "./battle/character";
@@ -392,7 +392,22 @@ document.getElementById("undo")!.addEventListener("click", () => {
 // --- 写真の取り込み: 紙に描いた絵の写真 → 線 ---
 const photoPanel = document.getElementById("photoPanel")!;
 const photoSens = document.getElementById("photoSens") as HTMLInputElement;
+const photoBg = document.getElementById("photoBg") as HTMLInputElement;
 let photo: { px: Pixels; before: Stroke[]; beforeMarks: Stroke[] } | null = null;
+let photoMode: "color" | "line" = "color";
+function syncPhotoMode() {
+  document.getElementById("pmColor")!.classList.toggle("on", photoMode === "color");
+  document.getElementById("pmLine")!.classList.toggle("on", photoMode === "line");
+  document.getElementById("photoBgRow")!.hidden = photoMode !== "color";
+  document.getElementById("photoSensName")!.textContent = photoMode === "color" ? "こまかさ" : "うすい線も ひろう";
+  document.getElementById("photoHint")!.textContent = photoMode === "color"
+    ? "まわりの けしきを けして、色を まとめて ぬった絵に するよ。けしきが のこったら「背景を けす つよさ」を 右へ。からだが 消えたら 左へ。"
+    : "白い紙に こい線で かいた絵 むけ。うすい線が 消えたら 右へ。ゴミが 多かったら 左へ。";
+}
+for (const [id, m] of [["pmColor", "color"], ["pmLine", "line"]] as const) {
+  document.getElementById(id)!.addEventListener("click", () => { photoMode = m; syncPhotoMode(); applyPhoto(); });
+}
+syncPhotoMode();
 // 写真を 正方形の小さな画素にする（はみ出す所は 紙の色＝四すみの平均でうめる）
 function photoPixels(img: HTMLImageElement): Pixels {
   const n = PHOTO_GRID;
@@ -413,8 +428,11 @@ function photoPixels(img: HTMLImageElement): Pixels {
 }
 function applyPhoto() {
   if (!photo) return;
-  strokes = beautify(photoToStrokes(photo.px, Number(photoSens.value))); // かくかくした線を なめらかに・すき間を つなぐ
+  strokes = photoMode === "color"
+    ? photoToColorStrokes(photo.px, Number(photoSens.value), Number(photoBg.value))
+    : beautify(photoToStrokes(photo.px, Number(photoSens.value))); // かくかくした線を なめらかに・すき間を つなぐ
   document.getElementById("photoSensVal")!.textContent = `${Math.round(Number(photoSens.value) * 100)}`;
+  document.getElementById("photoBgVal")!.textContent = `${Math.round(Number(photoBg.value) * 100)}`;
   resultEl.textContent = strokes.length ? `📷 線を ${strokes.length}本 つくったよ` : "線が 見つからなかったよ。うすい線も ひろう を 右へ うごかしてね";
   render();
 }
@@ -448,7 +466,7 @@ document.getElementById("photoInput")!.addEventListener("change", (e) => {
   img.src = url;
 });
 let photoTimer = 0;
-photoSens.addEventListener("input", () => { clearTimeout(photoTimer); photoTimer = window.setTimeout(applyPhoto, 120); });
+for (const el of [photoSens, photoBg]) el.addEventListener("input", () => { clearTimeout(photoTimer); photoTimer = window.setTimeout(applyPhoto, 150); });
 document.getElementById("photoOk")!.addEventListener("click", () => endPhoto(true));
 document.getElementById("photoCancel")!.addEventListener("click", () => endPhoto(false));
 

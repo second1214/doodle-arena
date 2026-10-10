@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { detect } from "../src/detect";
-import { inkMask, photoToStrokes, PHOTO_GRID, type Pixels } from "../src/photo";
+import { inkMask, photoToColorStrokes, photoToStrokes, PHOTO_GRID, type Pixels } from "../src/photo";
 
 // 紙の写真のまね: 影でうす暗くなる紙に、黒ペンで まる（胴）＋ 2本の足＋ 2本の手、赤いクレヨンのほっぺ、紙の小さなゴミ
 function fakePhoto(): Pixels {
@@ -53,5 +53,41 @@ describe("写真の取り込み", () => {
   it("白い紙だけなら 何も作らない", () => {
     const n = PHOTO_GRID, data = new Uint8ClampedArray(n * n * 4).fill(240);
     expect(photoToStrokes({ width: n, height: n, data })).toEqual([]);
+  });
+});
+
+// 写真のまね: 壁と床（ノイズあり）の前に、しまもようの茶トラ猫（胴・頭・耳・4本足・しっぽ）
+function fakeCatPhoto(): Pixels {
+  const n = PHOTO_GRID, data = new Uint8ClampedArray(n * n * 4);
+  let seed = 7; const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
+  const inEll = (x: number, y: number, cx: number, cy: number, rx: number, ry: number) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const i = (y * n + x) * 4;
+    let c = y < 170 ? [200, 205, 215] : [150, 120, 90]; // 壁・床
+    const cat = inEll(x, y, 135, 130, 70, 32) || inEll(x, y, 65, 100, 28, 25) || (x > 45 && x < 58 && y > 65 && y < 82 && x - 45 < (82 - y)) || (x > 72 && x < 86 && y > 65 && y < 82 && 86 - x < (82 - y))
+      || [85, 110, 160, 185].some((lx) => x > lx && x < lx + 12 && y > 140 && y < 200) || (x > 195 && x < 205 && y > 70 && y < 120);
+    if (cat) c = Math.floor(x / 9) % 2 ? [215, 120, 40] : [150, 75, 25]; // しま
+    const nz = (rnd() - 0.5) * 24;
+    data[i] = c[0] + nz; data[i + 1] = c[1] + nz; data[i + 2] = c[2] + nz; data[i + 3] = 255;
+  }
+  return { width: n, height: n, data };
+}
+
+describe("写真の取り込み（いろごと）", () => {
+  it("背景を消して、猫だけを 色でぬった絵にする。足4本が見つかる", () => {
+    const s = photoToColorStrokes(fakeCatPhoto());
+    expect(s.length).toBeGreaterThan(20);
+    expect(s.length).toBeLessThanOrEqual(520);
+    expect(s.some((x) => x.color === "#222222")).toBe(true); // ふちどり
+    // 茶色・オレンジ系の色が使われ、壁の色（青みがかった灰色）は使わない
+    const rgb = (h: string) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16));
+    expect(s.filter((x) => x.color !== "#222222").every((x) => { const [r, , b] = rgb(x.color); return r > b + 30; })).toBe(true);
+    const r = detect(s);
+    expect(r.limbs.filter((l) => l.kind === "foot").length).toBeGreaterThanOrEqual(3);
+  });
+  it("背景が無い（写真いっぱい）でも 落ちない", () => {
+    const n = PHOTO_GRID, data = new Uint8ClampedArray(n * n * 4);
+    for (let i = 0; i < n * n; i++) { data[i * 4] = (i % n); data[i * 4 + 1] = 100; data[i * 4 + 2] = 50; data[i * 4 + 3] = 255; }
+    expect(photoToColorStrokes({ width: n, height: n, data }).length).toBeLessThanOrEqual(520);
   });
 });
