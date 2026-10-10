@@ -249,6 +249,23 @@ export function startBattle(opts: BattleOptions) {
     }
   };
 
+  // --- 失敗の知らせ（固まった原因を スクリーンショットで分かるように。同じ所は1回だけ） ---
+  const errEl = document.createElement("div");
+  errEl.className = "b-err";
+  errEl.hidden = true;
+  el.appendChild(errEl);
+  const seenErr = new Set<string>();
+  const guard = (where: string, f: () => void) => {
+    try { f(); } catch (e) {
+      if (seenErr.has(where)) return;
+      seenErr.add(where);
+      console.error(e);
+      const err = e as Error;
+      errEl.hidden = false;
+      errEl.textContent += `${errEl.textContent ? "\n" : ""}⚠ ${where}: ${err?.message ?? String(e)} ${(err?.stack ?? "").split("\n").slice(0, 2).join(" / ").slice(0, 160)}`;
+    }
+  };
+
   // --- ループ ---
   let last = performance.now();
   let acc = 0;
@@ -280,17 +297,20 @@ export function startBattle(opts: BattleOptions) {
         setTimeout(() => { countEl.hidden = true; }, 600);
       }
       acc += dtSec * speed;
-      while (acc >= DT) {
-        acc -= DT;
-        const p0 = opts.spectate ? aiInput(world, 0, ais[0]) : playerInput();
-        const p1 = aiInput(world, 1, ais[1]);
-        step(world, [p0, p1]);
-        events.push(...world.events);
-      }
+      guard("sim", () => {
+        while (acc >= DT) {
+          acc -= DT;
+          const p0 = opts.spectate ? aiInput(world, 0, ais[0]) : playerInput();
+          const p1 = aiInput(world, 1, ais[1]);
+          step(world, [p0, p1]);
+          events.push(...world.events);
+        }
+      });
     }
-    for (const e of events) onEvent(e);
-    scene.render(world, (now - t0) / 1000, events);
-    updateHud();
+    // 音・3D表示・表示の数字は、どれかが失敗しても 試合は進めて 結果まで出す（失敗は画面の下に小さく出す）
+    guard("sound", () => { for (const e of events) onEvent(e); });
+    guard("render", () => scene.render(world, (now - t0) / 1000, events));
+    guard("hud", updateHud);
     if (world.winner !== -1 && !ended && !endAt) endAt = now + 1600; // KO の演出を見せてから結果を出す
     if (endAt && now >= endAt && !ended) {
       ended = true;
@@ -313,7 +333,7 @@ export function startBattle(opts: BattleOptions) {
         q(".b-reward").innerHTML = opts.onResult ? opts.onResult(win === -1 ? 2 : win) : "";
         opts.onResultShown?.(q(".b-reward"));
       } catch (e) {
-        console.error(e);
+        guard("reward", () => { throw e; });
         q(".b-reward").textContent = "ごほうびの けいさんで エラーが おきました（ごめんね）";
       }
     }
