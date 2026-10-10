@@ -4,7 +4,7 @@ import { SAMPLES } from "./samples";
 import { furiganaOn, installFurigana, setFurigana } from "./furigana";
 import { shareText } from "./share";
 import { beautify, fitShape, mirrorStroke, stabilize } from "./drawassist";
-import { PHOTO_GRID, photoToColorStrokes, photoToStrokes, type Pixels } from "./photo";
+import { PHOTO_GRID, photoToColorStrokes, photoToStrokes, segmentSubject, type Pixels } from "./photo";
 import { startBattle } from "./battle/battle";
 import { Sfx } from "./battle/audio";
 import { buildCharacter } from "./battle/character";
@@ -120,6 +120,7 @@ function render() {
   if (view === "battle" || view === "char") return;
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
   if (view === "draw") {
+    if (renderPhoto()) return; // 写真の取り込み中（かこむ・きりぬき）
     // 確定した線は1枚の画像にまとめておく（塗りつぶしを描くたびに計算し直さない）
     if (committedFor !== strokes || committedLen !== strokes.length) {
       committed = renderStrokes(strokes);
@@ -287,9 +288,11 @@ function commit(s: Stroke) {
   render();
   if (layer === "limb") runDetect(); // 塗った結果（手 ○本・足 ○本）をすぐ見せる
 }
+let photoDown = false;
 canvas.addEventListener("pointerdown", (e) => {
   if (view !== "draw") return;
   const [x, y] = toCanvas(e);
+  if (photo && photo.phase !== "done") { canvas.setPointerCapture(e.pointerId); photoDown = true; photoPointer("down", x, y); return; }
   if (filling && layer === "draw") {
     commit({ color, width: 0, points: [Math.round(x), Math.round(y)], fill: true });
     return;
@@ -307,6 +310,7 @@ canvas.addEventListener("pointerdown", (e) => {
   render();
 });
 canvas.addEventListener("pointermove", (e) => {
+  if (photoDown) { const [x, y] = toCanvas(e); photoPointer("move", x, y); return; }
   if (!current) return;
   const [x, y] = toCanvas(e);
   if (snapped) {
@@ -339,6 +343,9 @@ const endStroke = () => {
   }
   commit(s);
 };
+const photoUp = (e: PointerEvent) => { if (!photoDown) return; photoDown = false; const [x, y] = toCanvas(e); photoPointer("up", x, y); };
+canvas.addEventListener("pointerup", photoUp);
+canvas.addEventListener("pointercancel", photoUp);
 canvas.addEventListener("pointerup", endStroke);
 canvas.addEventListener("pointercancel", endStroke);
 
@@ -389,52 +396,165 @@ document.getElementById("undo")!.addEventListener("click", () => {
   if (layer === "limb") runDetect();
 });
 
-// --- 写真の取り込み: 紙に描いた絵の写真 → 線 ---
+// --- 写真の取り込み: ① 指で四角く かこむ → ② きりぬきを ➕/➖ で なおす（いろごと）→ ③ 絵にする ---
 const photoPanel = document.getElementById("photoPanel")!;
 const photoSens = document.getElementById("photoSens") as HTMLInputElement;
 const photoBg = document.getElementById("photoBg") as HTMLInputElement;
-let photo: { px: Pixels; before: Stroke[]; beforeMarks: Stroke[] } | null = null;
+const photoNext = document.getElementById("photoNext") as HTMLButtonElement;
+const photoBack = document.getElementById("photoBack") as HTMLButtonElement;
+type PhotoPhase = "box" | "fix" | "done";
+interface PhotoState {
+  img: HTMLImageElement;
+  full: HTMLCanvasElement; // 写真全体（キャンバスに収めた絵）
+  rect: { x: number; y: number; w: number; h: number } | null; // かこんだ四角（写真の画素）
+  drag: { x0: number; y0: number; x1: number; y1: number } | null; // かこんでいる途中（キャンバス座標）
+  px: Pixels | null;
+  mask: Uint8Array | null;
+  phase: PhotoPhase;
+  before: Stroke[];
+  beforeMarks: Stroke[];
+}
+let photo: PhotoState | null = null;
 let photoMode: "color" | "line" = "color";
-function syncPhotoMode() {
-  document.getElementById("pmColor")!.classList.toggle("on", photoMode === "color");
-  document.getElementById("pmLine")!.classList.toggle("on", photoMode === "line");
-  document.getElementById("photoBgRow")!.hidden = photoMode !== "color";
-  document.getElementById("photoSensName")!.textContent = photoMode === "color" ? "こまかさ" : "うすい線も ひろう";
-  document.getElementById("photoHint")!.textContent = photoMode === "color"
-    ? "まわりの けしきを けして、色を まとめて ぬった絵に するよ。けしきが のこったら「背景を けす つよさ」を 右へ。からだが 消えたら 左へ。"
-    : "白い紙に こい線で かいた絵 むけ。うすい線が 消えたら 右へ。ゴミが 多かったら 左へ。";
-}
-for (const [id, m] of [["pmColor", "color"], ["pmLine", "line"]] as const) {
-  document.getElementById(id)!.addEventListener("click", () => { photoMode = m; syncPhotoMode(); applyPhoto(); });
-}
-syncPhotoMode();
-// 写真を 正方形の小さな画素にする（はみ出す所は 紙の色＝四すみの平均でうめる）
-function photoPixels(img: HTMLImageElement): Pixels {
+let photoBrush: "add" | "del" = "add";
+
+// 写真全体を キャンバスの大きさに収める（はみ出さないように 縮める）
+const fitOf = (img: HTMLImageElement) => { const s = CANVAS_SIZE / Math.max(img.naturalWidth, img.naturalHeight); return { s, ox: (CANVAS_SIZE - img.naturalWidth * s) / 2, oy: (CANVAS_SIZE - img.naturalHeight * s) / 2 }; };
+// かこんだ所を 正方形の小さな画素にする。四角の外は いろごと＝透明（背景あつかい）、線だけ＝紙の色（四すみの平均）
+function cropPixels(img: HTMLImageElement, r: { x: number; y: number; w: number; h: number }, transparent: boolean): Pixels {
   const n = PHOTO_GRID;
   const c = document.createElement("canvas");
   c.width = c.height = n;
   const g = c.getContext("2d", { willReadFrequently: true })!;
-  const w = img.naturalWidth, h = img.naturalHeight, s = n / Math.max(w, h);
-  g.drawImage(img, (n - w * s) / 2, (n - h * s) / 2, w * s, h * s);
-  const d = g.getImageData(0, 0, n, n);
-  // 四すみ（写真の中）の平均色
-  const x0 = Math.ceil((n - w * s) / 2) + 2, x1 = Math.floor((n + w * s) / 2) - 3, y0 = Math.ceil((n - h * s) / 2) + 2, y1 = Math.floor((n + h * s) / 2) - 3;
-  let r = 0, gg = 0, b = 0;
-  for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) { const o = (y * n + x) * 4; r += d.data[o]; gg += d.data[o + 1]; b += d.data[o + 2]; }
-  g.globalCompositeOperation = "destination-over";
-  g.fillStyle = `rgb(${r / 4},${gg / 4},${b / 4})`;
-  g.fillRect(0, 0, n, n);
+  const s = n / Math.max(r.w, r.h);
+  const dx = (n - r.w * s) / 2, dy = (n - r.h * s) / 2;
+  g.drawImage(img, r.x, r.y, r.w, r.h, dx, dy, r.w * s, r.h * s);
+  if (!transparent) {
+    const d = g.getImageData(0, 0, n, n);
+    const x0 = Math.ceil(dx) + 2, x1 = Math.floor(dx + r.w * s) - 3, y0 = Math.ceil(dy) + 2, y1 = Math.floor(dy + r.h * s) - 3;
+    let cr = 0, cg = 0, cb = 0;
+    for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) { const o = (y * n + x) * 4; cr += d.data[o]; cg += d.data[o + 1]; cb += d.data[o + 2]; }
+    g.globalCompositeOperation = "destination-over";
+    g.fillStyle = `rgb(${cr / 4},${cg / 4},${cb / 4})`;
+    g.fillRect(0, 0, n, n);
+  }
   return g.getImageData(0, 0, n, n);
 }
-function applyPhoto() {
+const pxCanvas = (px: Pixels) => { const c = document.createElement("canvas"); c.width = c.height = px.width; c.getContext("2d")!.putImageData(px as ImageData, 0, 0); return c; };
+
+const PHOTO_TEXT: Record<PhotoPhase, [string, string]> = {
+  box: ["① とりこみたい ものを 指で 四角く かこんでね", "まわりを 少し あけて、ねこや キャラが ぜんぶ 入るように かこむと きれいに とれるよ。"],
+  fix: ["② きりぬきを なおしてね", "明るく 見える所が とりこむ所。足りない所は ➕たす、よけいな所は ➖けす で 指で ぬってね。"],
+  done: ["③ できあがり！", ""],
+};
+function syncPhoto() {
   if (!photo) return;
-  strokes = photoMode === "color"
-    ? photoToColorStrokes(photo.px, Number(photoSens.value), Number(photoBg.value))
-    : beautify(photoToStrokes(photo.px, Number(photoSens.value))); // かくかくした線を なめらかに・すき間を つなぐ
+  const ph = photo.phase;
+  document.getElementById("pmColor")!.classList.toggle("on", photoMode === "color");
+  document.getElementById("pmLine")!.classList.toggle("on", photoMode === "line");
+  document.getElementById("photoStep")!.textContent = PHOTO_TEXT[ph][0];
+  document.getElementById("photoHint")!.textContent = ph === "done"
+    ? (photoMode === "color" ? "色の こまかさを かえられるよ。形を なおしたい時は「✏️ きりぬきを なおす」。" : "白い紙に こい線で かいた絵 むけ。うすい線が 消えたら 右へ。ゴミが 多かったら 左へ。")
+    : PHOTO_TEXT[ph][1];
+  document.getElementById("photoBrushRow")!.hidden = ph !== "fix";
+  document.getElementById("photoBgRow")!.hidden = ph !== "fix";
+  document.getElementById("photoSensRow")!.hidden = ph !== "done";
+  document.getElementById("photoSensName")!.textContent = photoMode === "color" ? "こまかさ" : "うすい線も ひろう";
+  document.getElementById("pbAdd")!.classList.toggle("on", photoBrush === "add");
+  document.getElementById("pbDel")!.classList.toggle("on", photoBrush === "del");
+  photoNext.hidden = ph === "box";
+  photoNext.textContent = ph === "fix" ? "▶ 絵に する" : "✅ これで OK";
+  photoBack.hidden = ph === "box";
+  photoBack.textContent = ph === "done" && photoMode === "color" ? "✏️ きりぬきを なおす" : "🔄 かこみなおす";
   document.getElementById("photoSensVal")!.textContent = `${Math.round(Number(photoSens.value) * 100)}`;
   document.getElementById("photoBgVal")!.textContent = `${Math.round(Number(photoBg.value) * 100)}`;
-  resultEl.textContent = strokes.length ? `📷 線を ${strokes.length}本 つくったよ` : "線が 見つからなかったよ。うすい線も ひろう を 右へ うごかしてね";
+}
+function setPhotoPhase(ph: PhotoPhase) {
+  if (!photo) return;
+  photo.phase = ph;
+  if (ph === "box") { photo.rect = null; photo.px = null; photo.mask = null; resultEl.textContent = "👆 指で なぞって 四角く かこんでね"; }
+  if (ph === "fix" && photo.rect) {
+    photo.px = cropPixels(photo.img, photo.rect, true);
+    if (!photo.mask) photo.mask = segmentSubject(photo.px, Number(photoBg.value));
+    resultEl.textContent = "明るい所が とりこむ所だよ";
+  }
+  if (ph === "done") makePhotoStrokes();
+  syncPhoto();
   render();
+}
+function makePhotoStrokes() {
+  if (!photo?.rect) return;
+  if (photoMode === "color") {
+    if (!photo.px) photo.px = cropPixels(photo.img, photo.rect, true);
+    strokes = photoToColorStrokes(photo.px, Number(photoSens.value), Number(photoBg.value), photo.mask ?? undefined);
+  } else {
+    strokes = beautify(photoToStrokes(cropPixels(photo.img, photo.rect, false), Number(photoSens.value))); // かくかくした線を なめらかに・すき間を つなぐ
+  }
+  resultEl.textContent = strokes.length ? `📷 線を ${strokes.length}本 つくったよ` : "うまく とれなかったよ。かこみなおすか、きりぬきを なおしてね";
+}
+// ① ② の時は、キャンバスに 写真を出す（描いた絵の代わりに）
+function renderPhoto(): boolean {
+  if (!photo || photo.phase === "done") return false;
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  if (photo.phase === "box") {
+    ctx.drawImage(photo.full, 0, 0);
+    const d = photo.drag;
+    if (d) {
+      const x = Math.min(d.x0, d.x1), y = Math.min(d.y0, d.y1), w = Math.abs(d.x1 - d.x0), h = Math.abs(d.y1 - d.y0);
+      ctx.fillStyle = "rgba(0,0,0,.35)";
+      ctx.fillRect(0, 0, CANVAS_SIZE, y); ctx.fillRect(0, y + h, CANVAS_SIZE, CANVAS_SIZE - y - h); ctx.fillRect(0, y, x, h); ctx.fillRect(x + w, y, CANVAS_SIZE - x - w, h);
+      ctx.strokeStyle = "#ff7a59"; ctx.lineWidth = 4; ctx.setLineDash([10, 8]); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
+    }
+    return true;
+  }
+  // ② きりぬき: 写真の上に、とりこまない所を くらく かぶせる
+  const px = photo.px!, m = photo.mask!, n = px.width;
+  const ov = new ImageData(n, n);
+  for (let i = 0; i < n * n; i++) {
+    if (px.data[i * 4 + 3] === 0) continue;
+    if (!m[i]) ov.data.set([20, 20, 40, 170], i * 4);
+  }
+  const oc = document.createElement("canvas");
+  oc.width = oc.height = n;
+  oc.getContext("2d")!.putImageData(ov, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(pxCanvas(px), 0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  ctx.drawImage(oc, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  return true;
+}
+// 写真の時の指の動き: ① 四角を かこむ ／ ② ➕/➖ で ぬる
+const PHOTO_BRUSH = 7; // 画素（256 の中）
+function photoPointer(kind: "down" | "move" | "up", x: number, y: number) {
+  if (!photo) return;
+  if (photo.phase === "box") {
+    if (kind === "down") photo.drag = { x0: x, y0: y, x1: x, y1: y };
+    else if (photo.drag) { photo.drag.x1 = x; photo.drag.y1 = y; }
+    if (kind === "up" && photo.drag) {
+      const d = photo.drag;
+      photo.drag = null;
+      const { s, ox, oy } = fitOf(photo.img);
+      const W = photo.img.naturalWidth, H = photo.img.naturalHeight;
+      const ix0 = Math.max(0, (Math.min(d.x0, d.x1) - ox) / s), iy0 = Math.max(0, (Math.min(d.y0, d.y1) - oy) / s);
+      const ix1 = Math.min(W, (Math.max(d.x0, d.x1) - ox) / s), iy1 = Math.min(H, (Math.max(d.y0, d.y1) - oy) / s);
+      if (ix1 - ix0 < 20 / s || iy1 - iy0 < 20 / s) { resultEl.textContent = "もう少し 大きく かこんでね"; render(); return; }
+      photo.rect = { x: ix0, y: iy0, w: ix1 - ix0, h: iy1 - iy0 };
+      photo.mask = null;
+      setPhotoPhase(photoMode === "color" ? "fix" : "done");
+      return;
+    }
+    render();
+    return;
+  }
+  if (photo.phase === "fix" && kind !== "up" && photo.px && photo.mask) {
+    const n = photo.px.width, k = n / CANVAS_SIZE, gx = x * k, gy = y * k;
+    for (let yy = Math.floor(gy - PHOTO_BRUSH); yy <= gy + PHOTO_BRUSH; yy++) for (let xx = Math.floor(gx - PHOTO_BRUSH); xx <= gx + PHOTO_BRUSH; xx++) {
+      if (xx < 0 || yy < 0 || xx >= n || yy >= n || (xx - gx) ** 2 + (yy - gy) ** 2 > PHOTO_BRUSH ** 2) continue;
+      const i = yy * n + xx;
+      if (photo.px.data[i * 4 + 3]) photo.mask[i] = photoBrush === "add" ? 1 : 0;
+    }
+    render();
+  }
 }
 function endPhoto(keep: boolean) {
   if (!photo) return;
@@ -446,6 +566,24 @@ function endPhoto(keep: boolean) {
   save();
   render();
 }
+for (const [id, m] of [["pmColor", "color"], ["pmLine", "line"]] as const) {
+  document.getElementById(id)!.addEventListener("click", () => {
+    photoMode = m;
+    if (!photo) return;
+    if (!photo.rect) { syncPhoto(); return; }
+    setPhotoPhase(m === "color" ? (photo.mask ? "done" : "fix") : "done");
+  });
+}
+document.getElementById("pbAdd")!.addEventListener("click", () => { photoBrush = "add"; syncPhoto(); });
+document.getElementById("pbDel")!.addEventListener("click", () => { photoBrush = "del"; syncPhoto(); });
+document.getElementById("pbAuto")!.addEventListener("click", () => { if (photo?.px) { photo.mask = segmentSubject(photo.px, Number(photoBg.value)); render(); } });
+photoNext.addEventListener("click", () => { if (photo?.phase === "fix") setPhotoPhase("done"); else endPhoto(true); });
+photoBack.addEventListener("click", () => {
+  if (!photo) return;
+  if (photo.phase === "done" && photoMode === "color") setPhotoPhase("fix");
+  else setPhotoPhase("box");
+});
+document.getElementById("photoCancel")!.addEventListener("click", () => endPhoto(false));
 document.getElementById("photoInput")!.addEventListener("change", (e) => {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -455,20 +593,23 @@ document.getElementById("photoInput")!.addEventListener("change", (e) => {
   const url = URL.createObjectURL(file);
   img.onload = () => {
     URL.revokeObjectURL(url);
-    photo = { px: photoPixels(img), before: strokes, beforeMarks: marks };
+    const full = document.createElement("canvas");
+    full.width = full.height = CANVAS_SIZE;
+    const { s, ox, oy } = fitOf(img);
+    full.getContext("2d")!.drawImage(img, ox, oy, img.naturalWidth * s, img.naturalHeight * s);
+    photo = { img, full, rect: null, drag: null, px: null, mask: null, phase: "box", before: photo?.before ?? strokes, beforeMarks: photo?.beforeMarks ?? marks };
     marks = [];
     setLayer("draw");
     photoPanel.hidden = false;
-    applyPhoto();
+    setPhotoPhase("box");
     photoPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
   };
   img.onerror = () => { URL.revokeObjectURL(url); resultEl.textContent = "その写真は ひらけなかったよ"; };
   img.src = url;
 });
 let photoTimer = 0;
-for (const el of [photoSens, photoBg]) el.addEventListener("input", () => { clearTimeout(photoTimer); photoTimer = window.setTimeout(applyPhoto, 150); });
-document.getElementById("photoOk")!.addEventListener("click", () => endPhoto(true));
-document.getElementById("photoCancel")!.addEventListener("click", () => endPhoto(false));
+photoSens.addEventListener("input", () => { clearTimeout(photoTimer); photoTimer = window.setTimeout(() => { if (photo?.phase === "done") { makePhotoStrokes(); render(); } syncPhoto(); }, 150); });
+photoBg.addEventListener("input", () => { clearTimeout(photoTimer); photoTimer = window.setTimeout(() => { if (photo?.px && photo.phase === "fix") { photo.mask = segmentSubject(photo.px, Number(photoBg.value)); render(); } syncPhoto(); }, 150); });
 
 // --- レイヤー（絵 / 手足）と描き補正 ---
 const layerDrawBtn = document.getElementById("layerDraw")!;

@@ -610,16 +610,22 @@
         <label class="filebtn">📷 しゃしんから とりこむ<input id="photoInput" type="file" accept="image/*" hidden /></label>
       </div>
       <div id="photoPanel" class="sharebox" hidden>
-        <div class="kidhint">📷 しゃしんを とりこんだよ</div>
+        <div class="kidhint" id="photoStep"></div>
         <div class="seg">
           <button type="button" id="pmColor" class="on">🎨 いろごと（写真・色の絵）</button>
           <button type="button" id="pmLine">🖊 線だけ（紙の絵）</button>
         </div>
         <div class="note" id="photoHint"></div>
-        <label class="slider"><span id="photoSensName"></span><span id="photoSensVal"></span><input id="photoSens" type="range" min="0" max="1" step="0.05" value="0.5" /></label>
-        <label class="slider" id="photoBgRow"><span>背景を けす つよさ</span><span id="photoBgVal"></span><input id="photoBg" type="range" min="0" max="1" step="0.05" value="0.5" /></label>
+        <div class="row" id="photoBrushRow">
+          <button type="button" id="pbAdd" class="on">➕ たす</button>
+          <button type="button" id="pbDel">➖ けす</button>
+          <button type="button" id="pbAuto">🤖 自動に もどす</button>
+        </div>
+        <label class="slider" id="photoBgRow"><span>背景を けす つよさ（自動）</span><span id="photoBgVal"></span><input id="photoBg" type="range" min="0" max="1" step="0.05" value="0.5" /></label>
+        <label class="slider" id="photoSensRow"><span id="photoSensName"></span><span id="photoSensVal"></span><input id="photoSens" type="range" min="0" max="1" step="0.05" value="0.5" /></label>
         <div class="row">
-          <button id="photoOk" class="primary inline" type="button">✅ これで OK</button>
+          <button id="photoNext" class="primary inline" type="button"></button>
+          <button id="photoBack" type="button"></button>
           <button id="photoCancel" type="button">↩ やめる</button>
         </div>
       </div>

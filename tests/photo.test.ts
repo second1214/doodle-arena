@@ -68,13 +68,15 @@ function fakeCatPhoto(): Pixels {
       || [85, 110, 160, 185].some((lx) => x > lx && x < lx + 12 && y > 140 && y < 200) || (x > 195 && x < 205 && y > 70 && y < 120);
     if (cat) c = Math.floor(x / 9) % 2 ? [215, 120, 40] : [150, 75, 25]; // しま
     const nz = (rnd() - 0.5) * 24;
-    data[i] = c[0] + nz; data[i + 1] = c[1] + nz; data[i + 2] = c[2] + nz; data[i + 3] = 255;
+    // 指で かこんだ四角（猫のまわり）の外は 透明
+    const boxed = x >= 25 && x <= 220 && y >= 55 && y <= 215;
+    data[i] = c[0] + nz; data[i + 1] = c[1] + nz; data[i + 2] = c[2] + nz; data[i + 3] = boxed ? 255 : 0;
   }
   return { width: n, height: n, data };
 }
 
 describe("写真の取り込み（いろごと）", () => {
-  it("背景を消して、猫だけを 色でぬった絵にする。足4本が見つかる", () => {
+  it("かこんだ四角の中で 背景を消して、猫だけを 色でぬった絵にする。足も見つかる", () => {
     const s = photoToColorStrokes(fakeCatPhoto());
     expect(s.length).toBeGreaterThan(20);
     expect(s.length).toBeLessThanOrEqual(520);
