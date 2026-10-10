@@ -16,6 +16,7 @@ import { deleteCharacter, loadDraft, loadRoster, normalize, saveCharacter, saveD
 import { applyStageResult, expToNext, exportCode, importCode, LEVEL_CAP, loadProfile, loadStory, requestPersist, resetTree, takeNode, totalPoints, type Reward } from "./progress";
 import { CPU_CHARS, CPU_GROUPS, cpuCharById, type CpuChar } from "./cpuChars";
 import { initOnline } from "./online/screen";
+import { AttractHeader } from "./battle/attract";
 import { ALL_STAGES, CHAPTERS, chapterOf, enemyParts, isUnlocked, UPCOMING, type Stage } from "./story";
 
 const STORAGE_KEY = "doodle-arena:proto1";
@@ -786,6 +787,7 @@ const topbar = document.getElementById("topbar")!;
 const screenTitle = document.getElementById("screenTitle")!;
 const makeTabs = document.getElementById("makeTabs")!;
 let screen: Screen = "home";
+const attract = new AttractHeader(document.getElementById("heroView")!, document.getElementById("heroLabel")!);
 let pushed = 0; // 自分で積んだ履歴の数（0 なら「戻る」はメインへ）
 let battleHandle: { close: () => void } | null = null;
 
@@ -802,6 +804,7 @@ function show(s: Screen) {
   screenTitle.textContent = SCREEN_TITLES[s];
   makeTabs.hidden = s !== "make";
   if (s !== "make") stopPreview();
+  if (s === "home") attract.start(); else attract.stop();
   if (s === "home") renderProfile();
   else if (s === "story") renderStory();
   else if (s === "tree") renderTree();

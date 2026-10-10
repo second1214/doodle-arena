@@ -48,7 +48,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 type Opp = { kind: "human"; c: ListChar } | { kind: "cpu"; c: CpuChar; tier: number };
 
 // 門番: CPU キャラを部屋の強さで作り直す（部屋の真ん中くらいのポイントを好みの枝へ、パーツはその部屋のレア度）
-function buildGatekeeper(c: CpuChar, tier: number): CharacterBuild {
+export function buildGatekeeper(c: CpuChar, tier: number): CharacterBuild {
   const b = buildCharacter(c.name, c.strokes(), [], DEFAULT_PARAMS);
   const parts: Part[] = [];
   c.parts.forEach((k, i) => {
