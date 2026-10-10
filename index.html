@@ -403,6 +403,10 @@
       .pop.recoil { font-size: 15px; color: #ff8787; -webkit-text-stroke: 1.5px #3a0000; }
       .pop.thud { font-size: 30px; color: #fff; -webkit-text-stroke: 2.5px #5a3b12; }
       .pop.thud.big { font-size: 52px; }
+      .photobar { position: fixed; left: 8px; right: 8px; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); z-index: 30; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 18px; background: var(--panel); border: 2px solid var(--accent); box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+      .photobar span { flex: 1; font-weight: 800; font-size: 13px; min-width: 0; }
+      .photobar button { white-space: nowrap; }
+      body.photo-on { padding-bottom: 90px; }
       #photoPanel .seg button { white-space: nowrap; font-size: 14px; padding: 8px 4px; min-width: 0; }
       #partFilter button { white-space: nowrap; padding: 8px 4px; font-size: 14px; min-width: 0; }
       #bulkCombine { white-space: nowrap; }
@@ -686,6 +690,12 @@
       <div class="row"><button id="resetParams">初期値に戻す</button></div>
       <div class="note">変えると「検知結果」「動かす」に即反映されます。良い値が見つかったら教えてください。</div>
     </details>
+    </div>
+    <!-- 写真の取り込み中だけ 画面の下に 固定で出る ボタン（どこまで スクロールしても 押せる） -->
+    <div class="photobar" id="photoBar" hidden>
+      <span id="pbarStep"></span>
+      <button id="pbarNext" class="primary inline" type="button"></button>
+      <button id="pbarCancel" type="button">↩ やめる</button>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

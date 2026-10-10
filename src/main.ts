@@ -123,6 +123,7 @@ function render() {
   if (view === "battle" || view === "char") return;
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
   if (view === "draw") {
+    if (photo) syncPhotoVisibility(); // 描くたびに 取り込みの操作が 見えているか 確かめる
     if (renderPhoto()) return; // 写真の取り込み中（かこむ・きりぬき）
     // 確定した線は1枚の画像にまとめておく（塗りつぶしを描くたびに計算し直さない）
     if (committedFor !== strokes || committedLen !== strokes.length) {
@@ -227,8 +228,7 @@ function setView(v: View) {
   previewEl.hidden = v !== "anim";
   if (v !== "anim") stopPreview();
   document.querySelectorAll<HTMLButtonElement>(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
-  drawTools.hidden = v !== "draw" || !!photo; // 写真の取り込み中は 描く道具を かくす（取り込みの操作を 写真のすぐ下に出す）
-  photoPanel.hidden = v !== "draw" || !photo;
+  syncPhotoVisibility();
   legendEl.hidden = v !== "detect";
   const panel = v === "battle" || v === "char";
   stageEl.hidden = panel;
@@ -355,7 +355,11 @@ canvas.addEventListener("pointerup", endStroke);
 canvas.addEventListener("pointercancel", endStroke);
 
 // --- UI ---
-document.querySelectorAll<HTMLButtonElement>(".tabs button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view as View)));
+document.querySelectorAll<HTMLButtonElement>(".tabs button").forEach((b) => b.addEventListener("click", () => {
+  // 写真の取り込み中は ほかのタブに 行かない（とちゅうの状態が わかりにくくなるため）
+  if (photo && b.dataset.view !== "draw") { toast("📷 しゃしんの とりこみを おわらせてね（✅ これで OK か ↩ やめる）"); return; }
+  setView(b.dataset.view as View);
+}));
 
 const palette = document.getElementById("palette")!;
 const eraserBtn = document.getElementById("eraser")!;
@@ -446,6 +450,22 @@ document.getElementById("undo")!.addEventListener("click", () => {
 
 // --- 写真の取り込み: ① 指で四角く かこむ → ② きりぬきを ➕/➖ で なおす（いろごと）→ ③ 絵にする ---
 const photoPanel = document.getElementById("photoPanel")!;
+const photoBar = document.getElementById("photoBar")!;
+// 写真の取り込み中に 何を見せるかは ここだけで決める（描く道具を かくし、取り込みの操作と 下の固定ボタンを 出す）
+function syncPhotoVisibility() {
+  const on = !!photo && view === "draw" && screen === "make";
+  drawTools.hidden = view !== "draw" || !!photo;
+  photoPanel.hidden = !on;
+  photoBar.hidden = !on;
+  document.body.classList.toggle("photo-on", on);
+  if (on && photo) {
+    const ph = photo.phase;
+    document.getElementById("pbarStep")!.textContent = ph === "box" ? "① 指で 四角く かこんでね" : ph === "fix" ? "② きりぬきを なおす" : "③ できあがり";
+    const nx = document.getElementById("pbarNext") as HTMLButtonElement;
+    nx.hidden = ph === "box";
+    nx.textContent = ph === "fix" ? "▶ 絵に する" : "✅ これで OK";
+  }
+}
 const photoSens = document.getElementById("photoSens") as HTMLInputElement;
 const photoBg = document.getElementById("photoBg") as HTMLInputElement;
 const photoNext = document.getElementById("photoNext") as HTMLButtonElement;
@@ -523,6 +543,7 @@ function syncPhoto() {
 function setPhotoPhase(ph: PhotoPhase) {
   if (!photo) return;
   photo.phase = ph;
+  syncPhotoVisibility(); // 重い処理の前に 出しておく（途中で失敗しても ボタンは押せる）
   scheduleEditBar();
   if (ph === "box") { photo.rect = null; photo.px = null; photo.mask = null; resultEl.textContent = "👆 指で なぞって 四角く かこんでね"; }
   if (ph === "fix" && photo.rect) {
@@ -659,8 +680,7 @@ function endPhoto(keep: boolean) {
     if (photo.before.length) { lastCleared = { strokes: photo.before, marks: photo.beforeMarks, editor: { ...editor }, editId }; showRestore(); }
   }
   photo = null;
-  photoPanel.hidden = true;
-  drawTools.hidden = view !== "draw";
+  syncPhotoVisibility();
   resetEditHistory();
   save();
   render();
@@ -691,7 +711,10 @@ document.getElementById("photoAll")!.addEventListener("click", () => {
   photo.mask = null;
   setPhotoPhase(photoMode !== "line" ? "fix" : "done");
 });
-photoNext.addEventListener("click", () => { if (photo?.phase === "fix") setPhotoPhase("done"); else endPhoto(true); });
+const photoNextAction = () => { if (photo?.phase === "fix") setPhotoPhase("done"); else endPhoto(true); };
+photoNext.addEventListener("click", photoNextAction);
+document.getElementById("pbarNext")!.addEventListener("click", photoNextAction);
+document.getElementById("pbarCancel")!.addEventListener("click", () => endPhoto(false));
 photoBack.addEventListener("click", () => {
   if (!photo) return;
   if (photo.phase === "done" && photoMode !== "line") setPhotoPhase("fix");
@@ -714,8 +737,7 @@ document.getElementById("photoInput")!.addEventListener("change", (e) => {
     photo = { img, full, rect: null, drag: null, px: null, mask: null, phase: "box", before: photo?.before ?? strokes, beforeMarks: photo?.beforeMarks ?? marks };
     marks = [];
     setLayer("draw");
-    photoPanel.hidden = false;
-    drawTools.hidden = true;
+    syncPhotoVisibility();
     setPhotoPhase("box");
     photoPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
   };
@@ -1445,6 +1467,8 @@ let pushed = 0; // 自分で積んだ履歴の数（0 なら「戻る」はメ�
 let battleHandle: { close: () => void } | null = null;
 
 function show(s: Screen) {
+  // キャラを作る画面から出たら、写真の取り込みは やめる（前の絵に もどす。とちゅうの絵で 戦わないように）
+  if (photo && s !== "make") { endPhoto(false); toast("📷 しゃしんの とりこみは やめたよ"); }
   screen = s;
   homeEl.hidden = s !== "home";
   storyEl.hidden = s !== "story";
