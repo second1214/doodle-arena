@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>らくがきアリーナ</title>
+    <!-- ホーム画面に追加したとき、アプリのように全画面で開く -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="らくがき" />
+    <meta name="theme-color" content="#ff7a59" />
+    <link rel="apple-touch-icon" href="./icon-180.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;800&display=swap" />
+    <style>:root{--bg:#f4efff;--bg2:#ffeede;--panel:#fff;--ink:#2d2640;--muted:#7a7290;--line:#e4dcf5;--accent:#ff7a59;--accent-ink:#fff;--paper:#fffdf8;--grid:#efe6d8;--shadow:0 3px 0 #54408c1f}@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#1f1b2e;--bg2:#2a1f2a;--panel:#2c2640;--ink:#f1ecff;--muted:#a9a0c4;--line:#3e3658;--accent:#ff8f6e;--accent-ink:#1f1b2e;--paper:#fffdf8;--grid:#efe6d8;--shadow:0 3px 0 #00000059;--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark}}:root[data-theme=dark]{--bg:#1f1b2e;--bg2:#2a1f2a;--panel:#2c2640;--ink:#f1ecff;--muted:#a9a0c4;--line:#3e3658;--accent:#ff8f6e;--accent-ink:#1f1b2e;--paper:#fffdf8;--grid:#efe6d8;--shadow:0 3px 0 #00000059;--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark}*{box-sizing:border-box}[hidden]{display:none!important}html{background:linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%) fixed var(--bg);min-height:100%}html,body{color:var(--ink);margin:0}body{padding-inline:max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right));padding-block:calc(12px + env(safe-area-inset-top,0px)) calc(32px + env(safe-area-inset-bottom,0px));-webkit-tap-highlight-color:transparent;background:0 0;max-width:560px;min-height:100%;margin:0 auto;font-family:"M PLUS Rounded 1c",system-ui,-apple-system,Hiragino Maru Gothic ProN,Hiragino Sans,Noto Sans JP,sans-serif;font-size:15px}h1{letter-spacing:.02em;margin:0 0 10px;font-size:20px;font-weight:800}.topbar{align-items:center;gap:10px;margin-bottom:10px;display:flex}.topbar h1{margin:0}.topbar .back{border-radius:999px;min-height:38px;padding:4px 14px;font-weight:700}.logo{text-align:center;color:var(--accent);text-shadow:0 3px #54408c26;margin:18px 0 14px;font-size:30px}.hero{aspect-ratio:16/10;background:linear-gradient(#bfe0ff,#f3ecff 60%,#ffe9d6);border:3px solid #fff;border-radius:24px;width:100%;max-height:300px;margin:4px 0 14px;position:relative;overflow:hidden;box-shadow:0 6px #54408c26}.hero-view{pointer-events:none;position:absolute;inset:0}.hero-view canvas{width:100%;height:100%;display:block}.hero-shade{pointer-events:none;background:linear-gradient(#0000,#ff7a5959);height:45%;position:absolute;inset:auto 0 0}.hero .logo{color:#fff;-webkit-text-stroke:3px #ff7a59;paint-order:stroke;text-shadow:0 4px #00000040;letter-spacing:.04em;margin:0;font-size:34px;position:absolute;bottom:8px;left:0;right:0;transform:rotate(-2deg)}.hero-live{color:#2d2640;white-space:nowrap;text-overflow:ellipsis;background:#ffffffd9;border-radius:999px;align-items:center;gap:6px;max-width:calc(100% - 20px);padding:3px 10px;font-size:11px;font-weight:800;display:flex;position:absolute;top:10px;left:10px;overflow:hidden}.hero-live .dot{background:#fa5252;border-radius:50%;flex:none;width:8px;height:8px;animation:1s steps(2,end) infinite blink}.hero .b-pops .pop{font-size:16px}.profile{background:var(--panel);border:2px solid var(--line);box-shadow:var(--shadow);border-radius:18px;grid-template-columns:auto 1fr;align-items:center;gap:4px 12px;padding:12px 16px;display:grid}.profile .lv{grid-row:span 2;font-size:15px;font-weight:700}.profile .lv b{color:var(--accent);font-size:34px;font-weight:900}.profile .exp small,.profile .pts{color:var(--muted);font-size:12px}.profile .pts b{color:var(--ink);font-size:15px}.exp-bar{background:var(--line);border-radius:6px;height:12px;overflow:hidden}.exp-bar i{background:linear-gradient(90deg,#ffd43b,#ff922b);border-radius:6px;width:0;height:100%;display:block}.menu{grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;display:grid}.menu .big{text-align:left;border-radius:18px;gap:2px;min-height:80px;padding:14px;display:grid}.menu .big b{font-size:17px}.menu .big small{color:var(--muted);font-size:12px}.menu .big.story{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);grid-column:span 2;box-shadow:0 4px #d9573a}.menu .big.story small{color:inherit;opacity:.85}.menu .big:disabled{opacity:.5}.credit{text-align:center;color:var(--muted);margin-top:18px;font-size:11px}.credit a{color:inherit}.share{width:100%;margin-top:10px;font-weight:800}.sharemsg{color:#1b5e20;background:#d3f9d8;border-radius:12px;margin-top:8px;padding:10px 12px;font-weight:800}.sharemsg.ng{color:#8a1c1c;background:#ffe3e3}.sharetext{box-sizing:border-box;width:100%;font:inherit;border:2px solid var(--line);color:#222;background:#fff;border-radius:12px;margin-top:8px;padding:8px;font-size:14px}.sharetext.copied,.sharebox.copied textarea{border-color:#40c057;box-shadow:0 0 0 3px #b2f2bb}.toast{left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 28px);z-index:50;color:#fff;text-align:center;background:#2b2d42;border-radius:999px;max-width:calc(100vw - 32px);padding:14px 22px;font-size:16px;font-weight:800;animation:.2s ease-out toast-in;position:fixed;transform:translate(-50%);box-shadow:0 8px 24px #00000040}@keyframes toast-in{0%{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%)}}.sharebox{background:var(--panel);border:2px solid var(--line);border-radius:18px;margin-top:8px;padding:10px 12px}.sharebox textarea{box-sizing:border-box;width:100%;font:inherit;border:2px solid var(--line);resize:vertical;background:var(--bg,#fff);color:inherit;border-radius:12px;padding:8px;font-size:14px}ruby rt{letter-spacing:0;opacity:.85;font-size:.5em;font-weight:700}ruby{ruby-position:over}.chapter{margin-top:14px}.chapter h2{margin:0 0 8px;font-size:16px}.stages{grid-template-columns:repeat(3,1fr);gap:8px;display:grid}.stages button{border-radius:14px;justify-items:center;gap:2px;padding:6px 4px 8px;font-size:12px;display:grid;position:relative}.stages img{aspect-ratio:1;border:1px solid var(--line);background:#fff;border-radius:10px;width:100%;max-width:84px}.stages .no{font-size:13px;font-weight:800}.stages .boss .no{color:#e03131}.stages .clear{color:#f59f00;font-size:16px;position:absolute;top:4px;right:6px}.stages button:disabled{opacity:.6}.stages button:disabled img{filter:brightness(0)opacity(.25)}.chapter.locked{color:var(--muted)}.tree-head{justify-content:space-between;align-items:center;gap:10px;display:flex}.tree-head b{color:var(--accent);font-size:22px}#treeSvg{touch-action:manipulation;width:100%;height:auto;margin-top:4px;display:block}#treeSvg .lnk{stroke:var(--line);stroke-width:5px;stroke-linecap:round}#treeSvg .nd{stroke-width:3px;cursor:pointer}#treeSvg .nd.lock{fill:var(--panel);stroke:var(--line)}#treeSvg .nd.can{fill:var(--panel);animation:1.2s ease-in-out infinite alternate glow}#treeSvg .nd.sel{stroke-width:4px;stroke:var(--ink)!important}#treeSvg .hit{fill:#0000;cursor:pointer}#treeSvg text{fill:var(--ink);text-anchor:middle;dominant-baseline:middle;pointer-events:none;font:700 14px "M PLUS Rounded 1c",sans-serif}#treeSvg .core{fill:var(--accent)}#treeSvg .lnk.bridge{stroke-dasharray:4 5;stroke-width:3px}#treeSvg .nd.off{opacity:.35}#treeSvg .mk{fill:var(--muted);font-size:12px}#treeSvg .mk.on{fill:#fff}.talents{grid-template-columns:repeat(2,1fr);gap:6px;display:grid}.talent{text-align:left;border-radius:14px;gap:2px;min-height:0;padding:8px 10px;display:grid}.talent small{color:var(--muted);font-size:11px}.talent.own{color:#5c3c00;background:#fff4e6;border-color:#f08c00}.talent.sel{box-shadow:0 0 0 3px var(--accent)}#treeSvg .core-t{fill:var(--accent-ink);font-size:13px}@keyframes glow{to{stroke-width:5px}}.node-info{background:var(--panel);border:2px solid var(--line);border-radius:14px;min-height:64px;padding:10px 12px;font-size:14px}.node-info b{font-size:16px}.node-info .row{margin-top:6px}.plabel{color:var(--muted);margin-top:6px;font-size:13px;font-weight:700}.plist{gap:6px;display:grid}.plist>button{text-align:left;border-radius:12px;min-height:0;padding:0;overflow:hidden}.plist>button.off{opacity:.55}.plist>button.sel{outline:3px solid var(--accent)}.plist>button:disabled{opacity:.45}.pc{border-left:6px solid var(--rc);grid-template-rows:auto auto;grid-template-columns:34px 1fr auto;align-items:center;column-gap:8px;padding:6px 10px 6px 0;display:grid}.pc .rk{background:var(--rc);color:#fff;border-radius:8px;grid-row:span 2;justify-self:center;place-items:center;width:26px;height:26px;font-weight:900;display:grid}.pc .pn{font-weight:700}.pc small{color:var(--muted);grid-column:2;font-size:12px}.pc .pcost{text-align:right;grid-area:1/3/span 2;min-width:2em;font-size:15px;font-weight:800}.pc .pcost:before{content:"コスト ";color:var(--muted);font-size:10px;font-weight:400}.b-reward .drop{gap:4px;margin-top:4px;display:grid}.b-reward .pc{color:#2d2640;text-align:left;background:#ffffffeb;border-radius:10px;min-width:240px}.b-reward .pc small{color:#6a6280}.kid{gap:12px;display:grid}.kcard{background:var(--panel);border:2px solid var(--line);box-shadow:var(--shadow);border-radius:20px;gap:8px;padding:12px 14px;display:grid}.kh{align-items:center;gap:8px;font-size:18px;font-weight:800;display:flex}.kn{background:var(--accent);width:28px;height:28px;color:var(--accent-ink);border-radius:50%;flex:none;place-items:center;font-size:15px;display:grid}.ksub{color:var(--muted);font-size:12px}input.text.big{border-width:2px;border-radius:14px;min-height:52px;font-size:20px;font-weight:700}.badges{flex-wrap:wrap;gap:8px;display:flex}.badges span{background:var(--bg);border:2px solid var(--line);border-radius:999px;align-items:center;gap:6px;padding:8px 12px;font-size:15px;font-weight:700;display:inline-flex}.badges b{font-size:20px}.pcards{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;display:grid}.pcards button{border-radius:16px;justify-items:center;gap:2px;min-height:96px;padding:10px 6px;display:grid}.pcards button b{font-size:30px;line-height:1.1}.pcards button span{font-weight:800}.pcards button small{color:var(--muted);font-size:11px;line-height:1.3}.pcards button.on{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 12%, var(--panel));box-shadow:0 0 0 2px var(--accent)}.seg.big button{border-radius:16px;min-height:52px;font-size:16px;font-weight:800}.meter{align-items:center;gap:10px;font-weight:800;display:flex}.meter-bar{background:var(--line);border-radius:7px;flex:1;height:14px;overflow:hidden}.meter-bar i{background:linear-gradient(90deg,#69db7c,#ffd43b);border-radius:7px;width:0;height:100%;transition:width .2s;display:block}.meter-bar i.full{background:linear-gradient(90deg,#ffa94d,#ff6b6b)}.tgrid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;display:grid}.tgrid>.empty{color:var(--muted);grid-column:1/-1;font-size:13px}.ptile{border:3px solid var(--rc);background:var(--panel);border-radius:16px;justify-items:center;gap:2px;min-height:108px;padding:8px 6px 6px;display:grid;position:relative}.ptile .rk{background:var(--rc);color:#fff;border-radius:12px 0 10px;place-items:center;width:26px;height:26px;font-size:14px;font-weight:900;display:grid;position:absolute;top:-2px;left:-2px}.ptile .ic{font-size:32px;line-height:1.15}.ptile .nm{text-align:center;font-size:13px;font-weight:800;line-height:1.2}.ptile .pw{color:var(--muted);text-align:center;font-size:11px;line-height:1.2}.ptile .ct{color:var(--muted);font-size:12px;font-weight:800;position:absolute;top:4px;right:6px}.ptile .ct:before{content:"⚡"}.ptile.off{opacity:.45}.ptile:disabled{opacity:.35}.kidhint{margin-top:4px;font-size:14px;font-weight:800}.stabs{grid-template-columns:1fr 1fr;gap:8px;display:grid}.stab{border:3px solid var(--line);border-radius:16px;justify-items:center;gap:2px;padding:10px 6px;display:grid}.stab b{font-size:30px;line-height:1.1}.stab span{font-weight:800}.stab small{color:var(--muted);font-weight:800}.stab.on{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 12%, var(--panel));box-shadow:0 0 0 2px var(--accent)}.stab.on small{color:var(--accent)}.pips{flex-wrap:wrap;align-items:center;gap:3px;margin:6px 0;display:flex}.pips i{background:var(--line);border-radius:4px;width:12px;height:18px}.pips b{margin-left:8px;font-size:15px}.pbox{border:2px dashed var(--line);border-radius:16px;margin-top:8px;padding:8px}.ptile .badge{color:#fff;border-radius:11px;place-items:center;width:22px;height:22px;font-size:13px;font-weight:900;display:grid;position:absolute;bottom:4px;right:6px}.ptile .badge.x{background:#e03131}.ptile .badge.plus{background:#2f9e44}.ptile:disabled .badge.plus{background:var(--muted)}.ptile .tag{color:#1971c2;font-size:10px;font-weight:800}.savebar{grid-template-columns:1fr 1fr;gap:8px;display:grid}.savebar button{border-radius:999px;min-height:56px;margin-top:0;font-size:17px;font-weight:800}.rgrid{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;display:grid}.rgrid>div{border:2px solid var(--line);background:var(--panel);border-radius:14px;justify-items:center;gap:4px;padding:6px;display:grid}.rgrid>div.on{border-color:var(--accent)}.rgrid img{border:1px solid var(--line);background:#fff;border-radius:12px;width:72px;height:72px}.rgrid .nm{text-overflow:ellipsis;white-space:nowrap;max-width:100%;font-size:13px;font-weight:800;overflow:hidden}.rgrid .row{justify-content:center;gap:4px;margin:0}.rgrid button{border-radius:999px;min-height:32px;padding:2px 10px;font-size:12px}.rgrid>.empty{color:var(--muted);background:0 0;border:0;grid-column:1/-1;font-size:13px}#preview3d{aspect-ratio:1;touch-action:none;background:#f3ecff;border-radius:16px;width:100%;overflow:hidden}.cpick{background:var(--panel);border:2px solid var(--accent);border-radius:16px;grid-template-columns:64px 1fr;align-items:center;gap:4px 10px;padding:8px 10px;display:grid}.cpick img,.cpick .dice{border:1px solid var(--line);background:#fff;border-radius:12px;grid-row:span 2;place-items:center;width:64px;height:64px;font-size:34px;display:grid}.cpick b{font-size:17px}.cpick small{color:var(--muted);font-size:12px}.cgroup{color:var(--muted);margin:10px 0 6px;font-size:14px;font-weight:800}.cgrid{grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px;display:grid}.cgrid button{border-radius:14px;justify-items:center;gap:2px;min-height:0;padding:4px 2px 6px;font-size:11px;font-weight:700;display:grid}.cgrid button img,.cgrid button .dice{background:#fff;border-radius:10px;place-items:center;width:64px;height:64px;font-size:30px;display:grid}.cgrid button.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}.cgrid button:disabled img{filter:brightness(0)opacity(.25)}.cgrid button span{text-overflow:ellipsis;white-space:nowrap;max-width:100%;overflow:hidden}.b-fast{left:auto;right:56px;top:calc(env(safe-area-inset-top,0px) + 8px);height:36px;padding:0 12px;transform:none}.b-reward .badbtn{color:#2d2640;background:#ffffffe6;border:none;border-radius:999px;justify-self:center;min-height:34px;padding:4px 14px;font-size:13px;font-weight:700}.b-say{z-index:3;top:calc(env(safe-area-inset-top,0px) + 92px);color:#2d2640;pointer-events:none;background:#fff;border:3px solid #2d2640;border-radius:16px;max-width:70%;padding:6px 12px;font-size:15px;font-weight:800;animation:.3s ease-out popin;position:absolute;right:12px}.b-say:after{content:"";border:8px solid #0000;border-bottom-color:#2d2640;position:absolute;top:-12px;right:24px}.menu .big.online{color:#fff;background:#5c7cfa;border-color:#5c7cfa;grid-column:span 2;box-shadow:0 4px #3b5bdb}.menu .big.online small{color:inherit;opacity:.85}.ostatus{flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:8px;display:flex}.ostatus .room{background:var(--tc);color:#2d2640;border-radius:999px;padding:4px 12px;font-weight:800}.ostatus small{color:var(--muted)}.onews{color:#5c3c00;background:#fff3bf;border-radius:14px;gap:4px;margin-bottom:8px;padding:8px 12px;font-size:14px;font-weight:700;display:grid}.otabs{flex-wrap:wrap;grid-template-columns:repeat(5,1fr);gap:4px;display:grid}.otabs button{border-radius:12px;justify-items:center;min-height:48px;padding:4px 2px;font-size:11px;font-weight:700;display:grid}.otabs button b{font-size:18px;line-height:1.2}#oBody{gap:10px;margin-top:10px;display:grid}.ogrid{grid-template-columns:repeat(3,1fr);gap:8px;display:grid}.ocard{border-radius:16px;justify-items:center;gap:2px;min-height:0;padding:8px 4px;font-size:12px;display:grid;position:relative}.ocard img{aspect-ratio:1;border:1px solid var(--line);background:#fff;border-radius:12px;width:100%;max-width:96px}.ocard b{text-overflow:ellipsis;white-space:nowrap;max-width:100%;font-size:13px;overflow:hidden}.ocard small{color:var(--muted);font-size:11px}.ocard .tag{color:#fff;border-radius:999px;padding:1px 6px;font-size:10px;font-weight:800;position:absolute;top:4px;left:4px}.tag.cpu{background:#868e96}.tag.new{background:#20c997}.rooms{flex-wrap:wrap}.rooms button{flex:18%;min-height:36px;padding:4px;font-size:12px}.rooms button.on{background:var(--tc);color:#2d2640;border-color:var(--tc)}.olist{gap:6px;display:grid}.orow{background:var(--panel);border:2px solid var(--line);border-radius:14px;grid-template-rows:auto auto;grid-template-columns:auto 52px 1fr auto;align-items:center;column-gap:8px;padding:6px 8px;display:grid}.orow:not(:has(.no)){grid-template-columns:52px 1fr auto}.orow .no{color:var(--accent);text-align:center;grid-row:span 2;min-width:1.4em;font-size:18px}.orow img{border:1px solid var(--line);background:#fff;border-radius:10px;grid-row:span 2;width:52px;height:52px}.orow .nm{text-overflow:ellipsis;white-space:nowrap;font-weight:800;overflow:hidden}.orow small{color:var(--muted);grid-column:-3/-2;font-size:12px}.orow .acts{grid-area:1/-2/span 2;gap:4px;display:flex}.orow .acts button{min-height:34px;padding:2px 10px;font-size:13px}.owatch .ovs{grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;display:grid}.owatch .vs{color:var(--accent);font-size:24px}.kcard.warn{color:#5c3c00;background:#fff4e6;border-color:#ffc078}.kcard.rules ol{margin:0;padding-left:1.3em;font-size:13px;line-height:1.6}textarea.text.code{resize:vertical;width:100%;font-family:ui-monospace,monospace;font-size:11px}.filebtn{border:2px solid var(--line);background:var(--panel);min-height:42px;box-shadow:var(--shadow);cursor:pointer;border-radius:14px;align-items:center;padding:8px 12px;display:inline-flex}.tabs{gap:6px;margin-bottom:10px;display:flex}.tabs button{border-radius:999px;flex:1;padding:8px 4px;font-weight:700}button,select{font:inherit;color:var(--ink);background:var(--panel);border:2px solid var(--line);min-height:42px;box-shadow:var(--shadow);border-radius:14px;padding:8px 12px}button{touch-action:manipulation;cursor:pointer}button:active{box-shadow:none;transform:translateY(2px)}button:disabled{opacity:.45;filter:grayscale();cursor:not-allowed;box-shadow:none}button:disabled:active{transform:none}button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}button.on{border-color:var(--accent);color:var(--accent);font-weight:800}.stage{aspect-ratio:1;border:3px solid var(--line);background-color:var(--paper);background-image:linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);background-size:6.25% 6.25%;border-radius:22px;width:100%;position:relative;overflow:hidden;box-shadow:0 6px #54408c1a}.stage canvas{touch-action:none;width:100%;height:100%;position:absolute;inset:0}.row{flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;display:flex}.swatch{width:40px;height:40px;box-shadow:0 0 0 2px var(--line), var(--shadow);border:3px solid #fff;border-radius:50%;padding:0}.swatch.on{box-shadow:0 0 0 3px var(--accent);transform:scale(1.08)}#palette{gap:6px}#palette .swatch{width:34px;height:34px;min-height:0}.swatch.any{cursor:pointer;background:conic-gradient(red,#ff0,#0f0,#0ff,#00f,#f0f,red);place-items:center;display:grid;position:relative;overflow:hidden}.swatch.any span{background:var(--cur);border:2px solid #fff;border-radius:50%;place-items:center;width:20px;height:20px;font-size:16px;display:grid}.swatch.any input{opacity:0;cursor:pointer;width:100%;height:100%;position:absolute;inset:0}.swatch.pick{background:#fff;place-items:center;font-size:18px;display:grid}.result{min-height:1.4em;margin-top:10px;font-size:16px;font-weight:600}.note{color:var(--muted);margin-top:4px;font-size:13px}.layers button{flex:1;padding:10px;font-size:16px}.assist button{font-size:13px}.filebtn{border:2px solid var(--line);background:var(--panel);cursor:pointer;border-radius:14px;flex:1;justify-content:center;align-items:center;padding:10px 14px;font-weight:800;display:inline-flex}details{background:var(--panel);border:2px solid var(--line);border-radius:16px;margin-top:12px;padding:8px 12px}summary{cursor:pointer;font-weight:600}label.slider{grid-template-columns:1fr auto;gap:2px 8px;margin-top:10px;font-size:13px;display:grid}label.slider input{grid-column:1/-1;width:100%}.legend{color:var(--muted);flex-wrap:wrap;gap:12px;margin-top:6px;font-size:13px;display:flex}.legend i{vertical-align:middle;border-radius:50%;width:10px;height:10px;margin-right:4px;display:inline-block}.field{gap:6px;margin-top:10px;display:grid}input.text,textarea.text{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;width:100%;min-height:40px;padding:8px 10px}.stats{gap:4px;display:grid}.stat{grid-template-columns:6em 1fr 2.2em;align-items:center;gap:8px;font-size:14px;display:grid}.stat input{width:100%}.stat b{text-align:right;font-variant-numeric:tabular-nums}.stat small{color:var(--muted);grid-column:2/-1;margin-top:-4px;font-size:12px}button.primary.inline{width:auto;min-height:40px;margin-top:0;padding:8px 22px;font-size:15px}.roster{gap:6px;margin:0;padding:0;list-style:none;display:grid}.roster li{background:var(--panel);border:1px solid var(--line);border-radius:10px;align-items:center;gap:8px;padding:6px 8px;display:flex}.roster li.on{border-color:var(--accent)}.roster img{border:1px solid var(--line);background:#fff;border-radius:6px;flex:none;width:44px;height:44px}.roster .nm{text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;font-weight:600;overflow:hidden}.roster .sub{color:var(--muted);font-size:12px;font-weight:400;display:block}.roster button{min-height:34px;padding:4px 10px;font-size:13px}.mychar{font-size:17px;font-weight:700}.traits{color:var(--ink);margin:0;padding-left:1.2em;font-size:14px;line-height:1.6}.label{font-weight:600}.cost{color:var(--muted);font-size:13px;font-weight:400}.seg{gap:6px;display:flex}.seg button{flex:1}.seg button.on{border-color:var(--accent);color:var(--accent);font-weight:700}.effects{flex-wrap:wrap;gap:6px;display:flex}.effects label{border:1px solid var(--line);background:var(--panel);border-radius:8px;align-items:center;gap:6px;min-height:40px;padding:6px 10px;display:flex}.effects label.on{border-color:var(--accent)}.effects label.off{opacity:.45}.effects small{color:var(--muted)}label.check{align-items:center;gap:8px;margin-top:12px;display:flex}button.primary{background:var(--accent);width:100%;color:var(--accent-ink);border-color:var(--accent);border-radius:999px;min-height:52px;margin-top:12px;font-size:18px;font-weight:800;box-shadow:0 4px #d9573a}body.in-battle{overflow:hidden}.battle{z-index:10;touch-action:none;-webkit-user-select:none;user-select:none;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);background:#e9e4ff;flex-direction:column;display:flex;position:fixed;inset:0}.b-view{position:absolute;inset:0}.b-view canvas{width:100%;height:100%;display:block}@media (prefers-reduced-motion:reduce){.b-view canvas{filter:none!important}}.b-hud{z-index:1;color:#1b2a36;grid-template-columns:1fr auto 1fr;align-items:start;gap:10px;padding:10px 52px 0 12px;display:grid;position:relative}.b-name{white-space:nowrap;text-overflow:ellipsis;font-size:12px;font-weight:700;overflow:hidden}.b-side.right{text-align:right}.b-bar{background:#2d26402e;border:2px solid #fff;border-radius:999px;height:14px;margin-top:3px;overflow:hidden;box-shadow:0 2px #54408c2e}.b-bar.thin{height:5px}.b-bar i{background:linear-gradient(#7ee08f,#2fb344);border-radius:999px;width:100%;height:100%;transition:width .1s;display:block}.b-bar.thin i{background:#f59f00}.b-side.right .b-bar i{background:linear-gradient(#ff8fb4,#d6336c);margin-left:auto}.b-side.right .b-bar.thin i{background:#f59f00}.b-time{font-variant-numeric:tabular-nums;text-align:center;min-width:2.2em;font-size:22px;font-weight:800}.b-controls{left:0;right:0;bottom:env(safe-area-inset-bottom,0px);z-index:1;pointer-events:none;justify-content:space-between;align-items:flex-end;padding:0 16px 20px;display:flex;position:absolute}.b-controls.spectate{display:none}.b-stick{pointer-events:auto;touch-action:none;background:#ffffff59;border:2px solid #00000026;border-radius:50%;place-items:center;width:130px;height:130px;display:grid}.b-knob{pointer-events:none;background:#ffffffe6;border-radius:50%;width:56px;height:56px;box-shadow:0 2px 6px #00000040}.b-buttons{pointer-events:auto;grid-template-columns:auto auto auto;grid-template-areas:"sp dg.""sh.gd"".at.";place-items:center;gap:2px 6px;display:grid}.b-btn{color:#fff;touch-action:none;border:3px solid #fff;border-radius:50%;width:66px;height:66px;min-height:0;padding:0;font-size:15px;font-weight:800;box-shadow:0 4px #2d26404d}.b-btn.down{filter:brightness(.9);transform:scale(.92)}.b-btn.attack{background:#e8590c;grid-area:at;width:84px;height:84px}.b-btn.guard{background:#1c7ed6;grid-area:gd}.b-btn.dodge{background:#0ca678;grid-area:dg;width:60px;height:60px;font-size:14px}.b-btn.shove{background:#868e96;grid-area:sh;width:60px;height:60px;font-size:12px;line-height:1.1}.b-btn.special{background:conic-gradient(#00000073 calc(var(--cd,0) * 360deg), #7048e8 0);grid-area:sp}.b-result{z-index:2;color:#fff;text-align:center;background:#00000073;place-content:center;gap:16px;display:grid;position:absolute;inset:0}.b-result-text{font-size:40px;font-weight:900}.b-reward{gap:4px;font-weight:700;display:grid}.b-reward:empty{display:none}.b-reward .exp{color:#ffd43b;font-size:20px}.b-reward .up{color:#8ce99a;font-size:22px;animation:.4s ease-out popin}.b-result-buttons{justify-content:center;gap:10px;display:flex}.b-result-buttons button{min-width:110px;font-weight:700}.b-pops{pointer-events:none;position:absolute;inset:0;overflow:hidden}.pop{color:#fff;-webkit-text-stroke:1.5px #3a1d00;paint-order:stroke;text-shadow:0 2px #00000059;white-space:nowrap;will-change:transform;font-size:22px;font-weight:900;position:absolute;top:0;left:0}.pop.big{color:#ffd43b;font-size:32px}.pop.guard{color:#bfe9ff;-webkit-text-stroke-color:#08324d;font-size:16px}.pop.ko{color:#ffd43b;-webkit-text-stroke:3px #7a1f00;font-size:46px}.b-bar{position:relative}.b-bar span{color:#fff;text-shadow:0 1px 1px #0009;font-variant-numeric:tabular-nums;font-size:10px;font-weight:800;line-height:14px;position:absolute;top:-1px;left:6px}.b-side.right .b-bar span{left:auto;right:6px}.b-bar.thin.low i{animation:.4s steps(2,end) infinite blink;background:#e03131!important}@keyframes blink{50%{opacity:.35}}.b-charge{gap:3px;margin-top:4px;display:flex}.b-side.right .b-charge{justify-content:flex-end}.b-charge i{background:#0000002e;border-radius:3px;width:14px;height:6px}.b-charge i.on{background:#7048e8}.b-side:first-child .b-charge i.on{background:#ff7a1a}.b-charge i.half{background:linear-gradient(90deg,#7048e8 50%,#0000002e 50%)}.b-side:first-child .b-charge i.half{background:linear-gradient(90deg,#ff7a1a 50%,#0000002e 50%)}.b-charge.full i{animation:.5s steps(2,end) infinite blink}.b-btn.low{filter:grayscale()brightness(.85)}.b-btn.special.ready{animation:.6s ease-in-out infinite alternate throb;box-shadow:0 0 0 4px #ffd43b,0 0 22px 6px #ffd43bcc}@keyframes throb{to{transform:scale(1.08)}}.b-count{z-index:2;color:#fff;-webkit-text-stroke:4px #1a1a1a;paint-order:stroke;pointer-events:none;place-items:center;font-size:96px;font-weight:900;display:grid;position:absolute;inset:0}.b-count.go{color:#ffd43b}.b-count.pop-in{animation:.35s ease-out popin}@keyframes popin{0%{opacity:0;transform:scale(2.2)}to{opacity:1;transform:scale(1)}}.b-mute{z-index:3;top:calc(env(safe-area-inset-top,0px) + 50px);color:#222;background:#ffffffbf;border:none;border-radius:13px;height:26px;min-height:0;padding:0 10px;font-size:11px;font-weight:700;position:absolute;left:50%;transform:translate(-50%)}.b-stats{border-collapse:collapse;background:#00000059;border-radius:10px;margin:0 auto;font-size:14px}.b-stats td,.b-stats th{font-variant-numeric:tabular-nums;padding:4px 10px}.b-stats th{color:#ddd;font-size:12px;font-weight:400}.b-stats td.nm{text-overflow:ellipsis;white-space:nowrap;max-width:110px;font-size:12px;font-weight:700;overflow:hidden}.pop.special{color:#ff7a1a;-webkit-text-stroke:2px #1a1a1a;font-size:30px}.pop.ready{color:#ffd43b;-webkit-text-stroke:2px #4a2a00;font-size:22px}.pop.combo{color:#74c0fc;-webkit-text-stroke:2px #0b2a4a;font-size:20px}.pop.bind{color:#ffd43b;-webkit-text-stroke:2px #1a1a1a;font-size:22px}.pop.heal{color:#8ce99a;-webkit-text-stroke:1.5px #0b3d1a;font-size:16px}.pop.evade{color:#c3fae8;-webkit-text-stroke:1.5px #08372b;font-size:18px}.pop.recoil{color:#ff8787;-webkit-text-stroke:1.5px #3a0000;font-size:15px}.pop.thud{color:#fff;-webkit-text-stroke:2.5px #5a3b12;font-size:30px}.pop.thud.big{font-size:52px}.movekey{letter-spacing:.12em;text-align:center;border:3px dashed var(--accent);background:#fff;border-radius:16px;margin-top:8px;padding:10px;font-family:ui-monospace,monospace;font-size:34px;font-weight:900}.movebar{background:#fff3bf;border:2px solid #fab005;border-radius:16px;gap:8px;margin:4px 0 10px;padding:10px 12px;font-weight:700;display:grid}.movebar button{font-weight:800}.photobar{left:8px;right:8px;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);z-index:30;background:var(--panel);border:2px solid var(--accent);border-radius:18px;align-items:center;gap:8px;padding:8px 10px;display:flex;position:fixed;box-shadow:0 8px 24px #0003}.photobar span{flex:1;min-width:0;font-size:13px;font-weight:800}.photobar button{white-space:nowrap}body.photo-on{padding-bottom:90px}#photoPanel .seg button,#partFilter button{white-space:nowrap;min-width:0;padding:8px 4px;font-size:14px}#bulkCombine{white-space:nowrap}.editbar{background:var(--panel);border:2px solid var(--line);border-radius:16px;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px;padding:6px 8px;display:flex}.editbar img{border:1px solid var(--line);object-fit:contain;background:#fff;border-radius:10px;flex:none;width:44px;height:44px}.editbar .ebtext{flex:140px;min-width:0;display:grid}.editbar small{white-space:nowrap}.editbar .ebbtns{gap:6px;display:flex}#makeTabs button{white-space:nowrap;min-width:0;padding:8px 4px;font-size:14px}.editbar .ebtext b{white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.editbar small{font-size:12px;font-weight:800}.editbar small.dirty{color:#e8590c}.editbar small.clean{color:#2f9e44}.editbar button{white-space:nowrap;min-height:38px;padding:6px 10px;font-size:14px}.restore{background:#fff3bf;border-color:#fab005;width:100%;margin-bottom:8px;font-weight:800}.modal-box .pv{align-items:center;gap:10px;margin:8px 0;display:flex}.modal-box .pv img{border:1px solid var(--line);background:#fff;border-radius:12px;width:72px;height:72px}.modal-box .col{gap:8px;margin-top:10px;display:grid}.prow{flex-wrap:wrap;gap:8px 14px}.prow label{white-space:nowrap;flex:220px;gap:4px;font-size:14px;font-weight:700;display:grid}.prow select{width:100%;min-width:0}.modal{z-index:40;background:#14142873;place-items:center;padding:16px;display:grid;position:fixed;inset:0}.modal-box{background:var(--panel);border-radius:18px;width:min(560px,100%);max-height:calc(100vh - 32px);padding:14px;overflow:auto;box-shadow:0 12px 40px #0000004d}.cplan{border:2px solid var(--line);border-radius:14px;gap:6px;margin:8px 0;padding:8px;display:grid}.cplan.off{opacity:.45}.cplan .head{align-items:center;gap:8px;font-weight:800;display:flex}.cplan select{max-width:100%}.cplan .mats{color:var(--muted);font-size:13px}.warn{color:#5c3c00;background:#fff3bf;border-radius:10px;padding:8px 10px;font-size:13px;font-weight:700}.b-err{z-index:4;color:#fff;white-space:pre-wrap;pointer-events:none;background:#c80000d9;border-radius:8px;padding:6px 8px;font:11px/1.3 monospace;position:absolute;bottom:8px;left:8px;right:8px}.b-close{z-index:3;top:calc(env(safe-area-inset-top,0px) + 8px);color:#222;background:#fffc;border:none;border-radius:50%;width:36px;height:36px;min-height:0;padding:0;font-size:20px;position:absolute;right:10px}</style>
+    <script type="module" crossorigin src="./assets/index-TGKdHE-Q.js"></script>
+  </head>
+  <body>
+    <div class="topbar" id="topbar" hidden>
+      <button id="backBtn" class="back" aria-label="もどる">‹ もどる</button>
+      <h1 id="screenTitle"></h1>
+    </div>
+    <section id="home">
+      <div class="movebar" id="moveBar" hidden></div>
+      <div class="hero" aria-label="CPU どうしの たたかい（自動で流れます）">
+        <div class="hero-view" id="heroView"></div>
+        <div class="hero-shade"></div>
+        <div class="hero-live"><span class="dot"></span>LIVE <span id="heroLabel"></span></div>
+        <h1 class="logo">らくがきアリーナ</h1>
+      </div>
+      <div class="profile">
+        <div class="lv">Lv <b id="pLevel">1</b></div>
+        <div class="exp"><div class="exp-bar"><i id="pExpBar"></i></div><small id="pExp"></small></div>
+        <div class="pts">スキルポイント <b id="pPoints">0</b></div>
+      </div>
+      <button id="shareBtn" class="share" type="button" data-noruby>📣 SNSよう じまんの ぶんを つくる</button>
+      <div class="toast" id="toast" role="status" hidden></div>
+      <div class="menu">
+        <button class="big story" data-go="story"><b>📖 ストーリー</b><small>てきを たおして つよくなる</small></button>
+        <button class="big online" data-go="online"><b>🌐 オンライン</b><small>みんなの キャラと たたかう・こうかい</small></button>
+        <button class="big" data-go="free"><b>⚔️ じゆうバトル</b><small>すきな あいてと たたかう・みる</small></button>
+        <button class="big" data-go="make"><b>✏️ キャラを つくる</b><small>かく・しらべる・うごかす</small></button>
+        <button class="big" data-go="tree"><b>🌳 スキルツリー</b><small id="treeHint">ポイントで強くなる</small></button>
+        <button class="big" data-go="parts"><b>🧩 ひっさつパーツ</b><small>もちもの・ぶんかい・ごうせい</small></button>
+        <button class="big" data-go="transfer"><b>📦 ひきつぎ</b><small>データを うつす（おうちの人と）</small></button>
+      </div>
+      <div class="row" style="justify-content:center;margin-top:12px"><button id="furigana" type="button"></button></div>
+      <p class="credit" id="buildInfo"></p>
+      <p class="credit">3D表示に <a href="./third-party-licenses.txt" target="_blank" rel="noopener">three.js</a>（MIT License）を使っています。</p>
+    </section>
+    <section id="storyScreen" hidden>
+      <div class="field">
+        <label class="label" for="storyChar">使うキャラ</label>
+        <select id="storyChar"></select>
+      </div>
+      <div id="chapters"></div>
+    </section>
+    <section id="onlineScreen" hidden></section>
+    <section id="treeScreen" hidden>
+      <div class="tree-head">
+        <div>スキルポイント <b id="tPoints">0</b><div class="note" id="tSpent"></div></div>
+        <button id="treeReset">振り直し</button>
+      </div>
+      <div class="note" id="treeTitles"></div>
+      <svg id="treeSvg" viewBox="-272 -268 544 536" role="group" aria-label="スキルツリー"></svg>
+      <div class="label">🎨 らくがき才能（絵の形に合うキャラだけに効く）</div>
+      <div class="talents" id="talents"></div>
+      <div class="node-info" id="nodeInfo">丸をタップすると説明が出ます。中心から外へ順に取れます。先端の大きな丸は強い代わりに損もある大技です。</div>
+      <div class="field">
+        <div class="label">今の強化（全キャラ共通）</div>
+        <ul id="treeTotal" class="traits"></ul>
+      </div>
+    </section>
+    <section id="partsScreen" hidden>
+      <div class="tree-head">
+        <div>パーツ <b id="invCount">0</b> / <span id="invCap"></span><div class="note">かけら <b id="shards">0</b></div></div>
+        <button id="bulkCombine" type="button">🔨 まとめて ごうせい</button>
+      </div>
+      <div class="seg" id="partFilter">
+        <button type="button" data-pf="all" class="on">すべて</button>
+        <button type="button" data-pf="ranged">🎯 とおく</button>
+        <button type="button" data-pf="melee">👊 ちかく</button>
+        <button type="button" data-pf="both">🔁 共通</button>
+      </div>
+      <div class="row prow">
+        <label>ならびかえ <select id="partSort">
+          <option value="kind">しゅるい ごと</option>
+          <option value="rare">レアな じゅん</option>
+          <option value="cost">⚡ コストの じゅん</option>
+          <option value="new">あたらしい じゅん</option>
+        </select></label>
+        <label>🧑 つけかえる キャラ <select id="equipChar"></select></label>
+      </div>
+      <div class="node-info" id="partInfo"></div>
+      <div class="plist" id="partList"></div>
+      <div class="note">パーツを タップすると、キャラに つける・はずす・🔒鍵・振り直し・分解・合成が できます。装備コストの合計は 🎯と👊 それぞれ 20まで。分解すると かけらになり、かけらで 数値を 振り直せます。同じ種類・同じレア度の 5個（ベース1＋材料4）で、ベースが 1段上の レア度に なります。🔒と 装備中の パーツは 材料に なりません。</div>
+    </section>
+    <section id="transferScreen" hidden>
+      <div class="note">保存したキャラ・レベル・ストーリー・パーツを、8文字の「ひっこし番号」で べつの 端末や アドレスへ うつせます（機種変更・データが消えた時の そなえにも）。番号は 1回 つかうと 消えます。24時間で 消えます。</div>
+      <div class="field">
+        <div class="label">① うつす前の 端末で</div>
+        <button id="moveKeyBtn" class="primary">🔢 ひっこし番号を つくる</button>
+        <div class="movekey" id="moveKeyShow" hidden></div>
+      </div>
+      <div class="field">
+        <div class="label">② うつした先の 端末で（今のデータは 置きかわります）</div>
+        <input id="importCode" class="text big" maxlength="12" autocomplete="off" autocapitalize="characters" placeholder="れい: K7QM-3XPA" />
+        <div class="row">
+          <button id="importBtn">🚚 うけとる</button>
+        </div>
+      </div>
+      <div class="note" id="transferMsg"></div>
+    </section>
+    <div id="workspace" hidden>
+    <div class="editbar" id="editBar">
+      <img id="ebThumb" alt="" />
+      <div class="ebtext"><b id="ebName"></b><small id="ebState"></small></div>
+      <div class="ebbtns">
+        <button id="ebSave" type="button">💾 ほぞん</button>
+        <button id="ebNew" type="button">✏️ あたらしく</button>
+      </div>
+    </div>
+    <button id="restoreBtn" type="button" class="restore" hidden>↩ さっきの 絵に もどす</button>
+    <div class="tabs" id="makeTabs">
+      <button data-view="draw" class="on">✏️ かく</button>
+      <button data-view="detect">🔍 しらべる</button>
+      <button data-view="anim">🕺 うごかす</button>
+      <button data-view="char">🧑 キャラ</button>
+    </div>
+    <section id="charSetup" class="kid" hidden>
+      <div class="kcard">
+        <label class="kh" for="charName"><span class="kn">1</span>なまえ</label>
+        <input id="charName" class="text big" maxlength="16" placeholder="なまえをつけよう" />
+      </div>
+      <div class="kcard">
+        <div class="kh"><span class="kn">2</span>からだのとくちょう</div>
+        <div id="myTraits" class="badges"></div>
+        <div class="ksub">描いた絵のかたちで決まるよ。強さはメイン画面の「スキルツリー」で育てよう。</div>
+      </div>
+      <div class="kcard">
+        <div class="kh"><span class="kn">3</span>たたかいかた</div>
+        <div id="persCards" class="pcards" role="radiogroup" aria-label="たたかいかた"></div>
+        <div class="ksub">コンピューターがこのキャラを動かすときの動きかた</div>
+      </div>
+      <div class="kcard">
+        <div class="kh"><span class="kn">4</span>ひっさつわざ</div>
+        <div id="stypeTabs" class="stabs" role="radiogroup" aria-label="ひっさつわざの しゅるい"></div>
+        <div id="effects"></div>
+      </div>
+      <div class="savebar">
+        <button id="saveChar" class="primary">💾 ほぞんする</button>
+        <button id="newChar">✏️ あたらしく</button>
+      </div>
+      <div class="note" id="saveMsg"></div>
+      <div class="kcard">
+        <div class="kh"><span class="kn">★</span>ほぞんした キャラ</div>
+        <div id="roster" class="rgrid"></div>
+      </div>
+    </section>
+    <section id="battleSetup" hidden>
+      <div class="field">
+        <div class="label">あなたのキャラ</div>
+        <div id="myCharName" class="mychar"></div>
+        <div class="note">「キャラを作る」で編集中のキャラで戦います。</div>
+      </div>
+      <div class="field">
+        <div class="label">あいて</div>
+        <div class="cpick" id="cpuPick" aria-live="polite"></div>
+        <div id="cpuGrid"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="spectate" /> 観戦モード（自分のキャラも CPU が操作）</label>
+      <button id="startBattle" class="primary">戦闘開始</button>
+      <div class="note">操作: 左下のスティックで移動、右下のボタンで攻撃・防御（押している間）・必殺・突き飛ばし（スタミナ不要）・回避（入力方向へ素早く移動、その間は当たらない。方向なしなら後ろへ）。PC は WASD / J=攻撃 / K=防御 / L=必殺 / H=突き飛ばし / スペース=回避。</div>
+    </section>
+    <div class="stage">
+      <canvas id="view" width="512" height="512"></canvas>
+      <div id="preview3d" hidden></div>
+    </div>
+    <div class="result" id="result"></div>
+    <div id="photoPanel" class="sharebox" hidden>
+        <div class="kidhint" id="photoStep"></div>
+        <div class="seg">
+          <button type="button" id="pmPhoto" class="on">📷 そのまま</button>
+          <button type="button" id="pmColor">🎨 ぬり絵ふう</button>
+          <button type="button" id="pmLine">🖊 線だけ</button>
+        </div>
+        <div class="note" id="photoHint"></div>
+        <div class="row" id="photoAllRow"><button type="button" id="photoAll">🖼 しゃしん ぜんぶを つかう（かこまない）</button></div>
+        <div class="row" id="photoBrushRow">
+          <button type="button" id="pbAdd" class="on">➕ たす</button>
+          <button type="button" id="pbDel">➖ けす</button>
+          <button type="button" id="pbAuto">🤖 自動に もどす</button>
+          <button type="button" id="pbRect">▢ きりぬかない（四角のまま）</button>
+        </div>
+        <label class="slider" id="photoBgRow"><span>背景を けす つよさ（自動）</span><span id="photoBgVal"></span><input id="photoBg" type="range" min="0" max="1" step="0.05" value="0.5" /></label>
+        <label class="slider" id="photoSensRow"><span id="photoSensName"></span><span id="photoSensVal"></span><input id="photoSens" type="range" min="0" max="1" step="0.05" value="0.5" /></label>
+        <div class="row">
+          <button id="photoNext" class="primary inline" type="button"></button>
+          <button id="photoBack" type="button"></button>
+          <button id="photoCancel" type="button">↩ やめる</button>
+        </div>
+      </div>
+    <div class="legend" id="legend" hidden>
+      <span><i style="background:#9aa0a6"></i>胴体</span>
+      <span><i style="background:#e8590c"></i>手</span>
+      <span><i style="background:#1c7ed6"></i>足</span>
+      <span>● 関節　・ 先端</span>
+    </div>
+    <div id="drawTools">
+      <div class="row seg layers">
+        <button id="layerDraw" class="on">✏️ 絵を かく</button>
+        <button id="layerLimb">🖐 手足を きめる</button>
+      </div>
+      <div id="paintTools">
+      <div class="row" id="palette"></div>
+      <div class="row">
+        <button data-width="4">細</button>
+        <button data-width="9" class="on">中</button>
+        <button data-width="18">太</button>
+        <button id="fillTool">塗りつぶし</button>
+        <button id="eraser">消しゴム</button>
+      </div>
+      <div class="row assist">
+        <button id="aSmooth" title="ガタガタの線を なめらかにする">〰 手ぶれ補正</button>
+        <button id="aMirror" title="左半分に かくと 右にも 同じ線が でる">🪞 左右対称</button>
+        <button id="aShape" title="かき終わりで 少し 止めると まる・まっすぐに なる">⭕ かたち補正</button>
+        <button id="beautify" title="全部の線を なめらかにして すき間を つなぐ">✨ きれいにする</button>
+      </div>
+      <div class="row">
+        <label class="filebtn">📷 しゃしんから とりこむ<input id="photoInput" type="file" accept="image/*" hidden /></label>
+      </div>
+      </div>
+      <div id="limbTools" hidden>
+        <div class="row">
+          <button id="mHand" class="on">🖐 手ペン</button>
+          <button id="mFoot">🦶 足ペン</button>
+          <button id="mErase">消しゴム</button>
+          <button id="mAuto">🤖 自動に もどす</button>
+        </div>
+        <div class="note">絵の 手に なる所を 手ペン、足に なる所を 足ペンで ざっくり ぬってね（はみ出しても 大丈夫）。1つでも ぬると、手足は ぬった所だけに なるよ。何も ぬらなければ 自動で 見つけるよ。</div>
+      </div>
+      <div class="row">
+        <button id="undo">1つ戻す</button>
+        <button id="clear">全部消す</button>
+        <select id="sample"><option value="">サンプルを読み込む…</option></select>
+      </div>
+    </div>
+    <details>
+      <summary>検知の調整</summary>
+      <div id="sliders"></div>
+      <div class="row"><button id="resetParams">初期値に戻す</button></div>
+      <div class="note">変えると「検知結果」「動かす」に即反映されます。良い値が見つかったら教えてください。</div>
+    </details>
+    </div>
+    <!-- 写真の取り込み中だけ 画面の下に 固定で出る ボタン（どこまで スクロールしても 押せる） -->
+    <div class="photobar" id="photoBar" hidden>
+      <span id="pbarStep"></span>
+      <button id="pbarNext" class="primary inline" type="button"></button>
+      <button id="pbarCancel" type="button">↩ やめる</button>
+    </div>
+  </body>
+</html>
