@@ -1,0 +1,21 @@
+# 遊ばれた数を 見る（読むだけ・データは変えない）。Actions の「遊ばれた数」から 手動で 動かす
+name: 遊ばれた数
+on:
+  workflow_dispatch:
+jobs:
+  stats:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 数える
+        working-directory: server
+        run: |
+          q() { echo "== $1"; npx --yes wrangler@4 d1 execute doodle-arena --remote --json --command "$2" | jq -c '.[0].results'; }
+          q "公開キャラ数・公開した人（端末）の数・対戦の合計" "SELECT COUNT(*) AS chars, COUNT(DISTINCT owner_hash) AS owners, SUM(wins+losses+draws) AS games FROM chars"
+          q "日ごとの オンライン対戦を した 回線の数・対戦数（回線は日ごとに伏せた値）" "SELECT substr(k,1,10) AS day, COUNT(*) AS lines, SUM(n) AS games FROM quota WHERE k LIKE '%:match:%' GROUP BY day ORDER BY day"
+          q "日ごとの 公開した 回線の数" "SELECT substr(k,1,10) AS day, COUNT(*) AS lines, SUM(n) AS publishes FROM quota WHERE k LIKE '%:publish:%' GROUP BY day ORDER BY day"
+          q "日ごとの ひっこし番号" "SELECT substr(k,1,10) AS day, COUNT(*) AS lines, SUM(n) AS moves FROM quota WHERE k LIKE '%:move:%' GROUP BY day ORDER BY day"
+          q "公開キャラ（新しい順 20）" "SELECT name, tier, wins, losses, draws, datetime(created_at/1000,'unixepoch','+9 hours') AS created FROM chars ORDER BY created_at DESC LIMIT 20"
