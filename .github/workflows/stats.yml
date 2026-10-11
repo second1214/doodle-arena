@@ -14,6 +14,11 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
+      - name: データベースの番号を入れる
+        working-directory: server
+        run: |
+          ID=$(npx --yes wrangler@4 d1 list --json | jq -r '.[] | select(.name=="doodle-arena") | .uuid' | head -1)
+          jq --arg id "$ID" '.d1_databases[0].database_id = $id' wrangler.json > w.tmp && mv w.tmp wrangler.json
       - name: 数える
         working-directory: server
         run: |
