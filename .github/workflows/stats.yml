@@ -2,6 +2,10 @@
 name: 遊ばれた数
 on:
   workflow_dispatch:
+  # このファイルを書きかえて push しても 動く（手動の起動は 既定のブランチに このファイルが ある時だけ できるため）
+  push:
+    branches: [proto/character]
+    paths: [.github/workflows/stats.yml]
 jobs:
   stats:
     runs-on: ubuntu-latest
