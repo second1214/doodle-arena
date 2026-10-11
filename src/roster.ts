@@ -80,14 +80,14 @@ export function newId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-export function thumbnail(strokes: Stroke[]): string {
+export function thumbnail(strokes: Stroke[], size = 88): string {
   const big = renderStrokes(strokes);
   const c = document.createElement("canvas");
-  c.width = c.height = 88;
+  c.width = c.height = size;
   const g = c.getContext("2d")!;
   g.fillStyle = "#fff";
-  g.fillRect(0, 0, 88, 88);
-  g.drawImage(big, 0, 0, 88, 88);
+  g.fillRect(0, 0, size, size);
+  g.drawImage(big, 0, 0, size, size);
   return c.toDataURL("image/png");
 }
 

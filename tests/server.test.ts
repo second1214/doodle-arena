@@ -8,7 +8,7 @@ async function memoryDb(): Promise<Db> {
   const { DatabaseSync } = await import(/* @vite-ignore */ mods[0]);
   const { readFileSync } = await import(/* @vite-ignore */ mods[1]);
   const sql = new DatabaseSync(":memory:");
-  for (const f of ["0001_init.sql", "0002_moves.sql"]) sql.exec(readFileSync(new URL(`../server/migrations/${f}`, import.meta.url), "utf8"));
+  for (const f of ["0001_init.sql", "0002_moves.sql", "0003_plays.sql"]) sql.exec(readFileSync(new URL(`../server/migrations/${f}`, import.meta.url), "utf8"));
   return {
     prepare(q: string) {
       let args: unknown[] = [];
@@ -72,6 +72,20 @@ describe("オンラインのサーバー", () => {
     expect(g.body.char.thumb[0].img).toBe(photo.timg);
     const bad = await call("POST", "/chars", { owner: OWNER, snap: { ...snap(), strokes: [{ ...photo, img: "javascript:alert(1)" }] } });
     expect(bad.status).toBe(400);
+  });
+
+  it("遊ばれた数: 同じ端末は 1日1回だけ 数える。ずかんは 部屋・ならびで 見られる", async () => {
+    const dev = "device-abcdefghijklmnop";
+    for (let i = 0; i < 3; i++) expect((await call("POST", "/hello", { device: dev })).status).toBe(200);
+    expect((await call("POST", "/hello", { device: "short" })).status).toBe(400);
+    const a = await call("POST", "/chars", { owner: OWNER, snap: snap("いちばん", 2) });
+    clock += 1000;
+    const b2 = await call("POST", "/chars", { owner: OWNER + "x", snap: snap("にばん", 20) });
+    const all = await call("GET", "/chars/list?tier=-1&sort=new");
+    expect(all.body.chars.map((c: { id: string }) => c.id)).toEqual([b2.body.id, a.body.id]); // 新しい順
+    const room0 = await call("GET", "/chars/list?tier=0");
+    expect(room0.body.chars.map((c: { id: string }) => c.id)).toEqual([a.body.id]);
+    expect(all.body.more).toBe(false);
   });
 
   it("引っこし: コードを あずけて 8文字の番号で 1回だけ 受けとれる", async () => {

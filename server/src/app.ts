@@ -198,6 +198,17 @@ export async function handle(req: Request, env: Env, now = Date.now()): Promise<
     if (path === "/health") return json({ ok: true, stop: await stopped(db), tiers: TIERS.map((t) => t.name) });
     const ipHash = async () => sha256(`${await salt(db)}:${today(now)}:${req.headers.get("CF-Connecting-IP") ?? "0.0.0.0"}`);
 
+    // 遊ばれた数: 1日1回「あそんだよ」（端末のランダムな番号を ハッシュにして 日ごとに 記録。重複は数えない）
+    if (path === "/hello" && req.method === "POST") {
+      const b = await body(req);
+      const device = typeof b?.device === "string" ? b.device : "";
+      if (device.length < 16 || device.length > 80) return json({ error: "bad" }, 400);
+      const dev = (await sha256(`dev:${await salt(db)}:${device}`)).slice(0, 32);
+      await db.prepare("INSERT OR IGNORE INTO plays (day, dev) VALUES (?, ?)").bind(today(now), dev).run();
+      await db.prepare("INSERT OR IGNORE INTO devices (dev, first_day) VALUES (?, ?)").bind(dev, today(now)).run();
+      return json({ ok: true });
+    }
+
     // 引っこし: 引き継ぎコードを あずけて 8文字の番号を もらう（打ちまちがえやすい I O 0 1 は使わない）
     if (path === "/moves" && req.method === "POST") {
       const b = await body(req, LIMITS.maxMove + 1000);
@@ -278,6 +289,20 @@ export async function handle(req: Request, env: Env, now = Date.now()): Promise<
       const { results } = await db.prepare("SELECT * FROM chars WHERE tier = ? AND hidden = 0 AND created_at <= ? ORDER BY rating DESC, created_at ASC LIMIT 20")
         .bind(tier, now - LIMITS.rankingDelayMs).all<CharRow>();
       return json({ tier, chars: results.map(listChar) });
+    }
+
+    // みんなの キャラ（ずかん）: 公開キャラを 自由に 見る。部屋（-1=ぜんぶ）・ならび（new=新しい順 / top=つよい順）・30体ずつ
+    if (path === "/chars/list" && req.method === "GET") {
+      if (isStopped) return json({ chars: [], stop: true });
+      const tierQ = Number(url.searchParams.get("tier") ?? -1);
+      const tier = Number.isFinite(tierQ) && tierQ >= 0 ? clamp(Math.round(tierQ), 0, TIERS.length - 1) : -1;
+      const top = url.searchParams.get("sort") === "top";
+      const offset = clamp(Math.round(Number(url.searchParams.get("offset")) || 0), 0, 100000);
+      const where = tier >= 0 ? "tier = ? AND hidden = 0" : "hidden = 0";
+      const order = top ? "rating DESC, created_at ASC" : "created_at DESC";
+      const st = db.prepare(`SELECT * FROM chars WHERE ${where} ORDER BY ${order} LIMIT 31 OFFSET ?`);
+      const { results } = await (tier >= 0 ? st.bind(tier, offset) : st.bind(offset)).all<CharRow>();
+      return json({ chars: results.slice(0, 30).map((r) => ({ ...listChar(r), created: r.created_at })), more: results.length > 30 });
     }
 
     // 1体の全部（戦うとき）

@@ -2332,6 +2332,15 @@ async function checkVersion() {
   } catch { /* オフラインなど: そのまま遊べる */ }
 }
 void checkVersion();
+
+// 遊んだ人の数を 数える: 1日に1回だけ「あそんだよ」をサーバーに送る（中身は 端末ごとの ばらばらの番号を 伏せた値だけ）
+function sayHello() {
+  const day = new Date().toISOString().slice(0, 10); // サーバーと同じ 世界時の 日付
+  const k = "doodle-arena:helloDay";
+  try { if (localStorage.getItem(k) === day) return; } catch { return; }
+  void api.hello().then(() => { try { localStorage.setItem(k, day); } catch { /* 次の日に また送る */ } }).catch(() => { /* 届かなくても 遊ぶのには 関係ない */ });
+}
+sayHello();
 document.addEventListener("visibilitychange", () => { if (!document.hidden) void checkVersion(); });
 // iPhone で 何か失敗したら 画面に出す（原因を スクリーンショットで 知るため）
 window.addEventListener("error", (e) => toast(`⚠ エラー: ${(e as ErrorEvent).message ?? ""}`.slice(0, 120)));

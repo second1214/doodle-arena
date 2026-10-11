@@ -69,19 +69,21 @@ export function buildGatekeeper(c: CpuChar, tier: number): CharacterBuild {
 
 const thumbCache = new Map<string, string>();
 // 一覧の小さな絵を出す。写真入りの絵は 写真を読みこんでから 描きなおす
-function setThumb(el: HTMLImageElement, key: string, strokes: () => Stroke[]) {
+function setThumb(el: HTMLImageElement, key: string, strokes: () => Stroke[], size?: number) {
   const hit = thumbCache.get(key);
   if (hit) { el.src = hit; return; }
   const list = strokes();
-  el.src = thumbnail(list);
+  el.src = thumbnail(list, size);
   if (!list.some((s) => s.img)) { thumbCache.set(key, el.src); return; }
-  void preloadImages(list).then(() => { const t = thumbnail(list); thumbCache.set(key, t); el.src = t; });
+  void preloadImages(list).then(() => { const t = thumbnail(list, size); thumbCache.set(key, t); el.src = t; });
 }
 const setOppThumb = (el: HTMLImageElement, o: Opp) => (o.kind === "human" ? setThumb(el, `h:${o.c.id}`, () => o.c.thumb as Stroke[]) : setThumb(el, `c:${o.c.id}`, o.c.strokes));
 const oppName = (o: Opp) => o.c.name;
 
 export function initOnline(root: HTMLElement, deps: OnlineDeps) {
-  let tab: "fight" | "rank" | "watch" | "publish" | "rules" = "fight";
+  let tab: "fight" | "zukan" | "rank" | "watch" | "publish" | "rules" = "fight";
+  let zTier = -1; // ずかん: 部屋（-1=ぜんぶ）
+  let zSort: "new" | "top" = "new";
   let online: "unknown" | "on" | "off" | "stop" = "unknown";
   let choice = "";
   let candidates: Opp[] = [];
@@ -94,6 +96,7 @@ export function initOnline(root: HTMLElement, deps: OnlineDeps) {
     <div class="onews" id="oNews" hidden></div>
     <div class="seg otabs" role="tablist">
       <button type="button" data-otab="fight" class="on"><b>⚔️</b>たたかう</button>
+      <button type="button" data-otab="zukan"><b>🗂</b>みんな</button>
       <button type="button" data-otab="rank"><b>🏆</b>ランキング</button>
       <button type="button" data-otab="watch"><b>👀</b>かんせん</button>
       <button type="button" data-otab="publish"><b>📮</b>こうかい</button>
@@ -186,6 +189,19 @@ export function initOnline(root: HTMLElement, deps: OnlineDeps) {
     if (tooNew(char.snap)) throw new OnlineError("このキャラと たたかうには ゲームを さいしんに してね（ページを よみこみなおす）", 0);
     await preloadImages(char.snap.strokes as Stroke[]); // 写真入りの絵は 読みこんでから組み立てる
     return { build: buildFromSnapshot(char.snap), snap: char.snap };
+  }
+
+  // れんしゅう: ずかんから 自分で えらんだ 相手と たたかう（ランキングと ごほうびは 動かない＝弱い相手を えらんで かせげない）
+  async function practice(o: Opp) {
+    deps.unlockSound();
+    let opp: { build: CharacterBuild };
+    try { opp = await opponentBuild(o); }
+    catch (e) { alertBox((e as Error).message); return; }
+    const player = deps.buildPlayer(choice);
+    deps.runBattle({
+      player, cpu: opp.build, spectate: false, seed: (Math.random() * 0xffffffff) >>> 0, exitLabel: "オンラインへ",
+      onResult: () => `<div>🏋 れんしゅう なので、ランキングと ごほうびは うごかないよ</div>`,
+    });
   }
 
   async function fight(o: Opp) {
@@ -333,6 +349,124 @@ export function initOnline(root: HTMLElement, deps: OnlineDeps) {
     if (!canFight) msg.textContent = "たたかえるのは 自分のへやと ひとつ上のへや だけだよ";
   }
 
+  // みんなの キャラ（ずかん）: 公開キャラを ぜんぶ 見られる。えらんで 絵を 大きく 見る・れんしゅうで たたかう
+  async function renderZukan() {
+    body.innerHTML = "";
+    const seg = document.createElement("div");
+    seg.className = "seg rooms";
+    [{ name: "ぜんぶ", color: "#ffe3d3" }, ...TIERS].forEach((t, k) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = t.name;
+      b.style.setProperty("--tc", t.color);
+      b.classList.toggle("on", k - 1 === zTier);
+      b.addEventListener("click", () => { zTier = k - 1; renderZukan(); });
+      seg.appendChild(b);
+    });
+    const sortSeg = document.createElement("div");
+    sortSeg.className = "seg";
+    for (const [v, label] of [["new", "🆕 あたらしい"], ["top", "★ つよい"]] as const) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.classList.toggle("on", zSort === v);
+      b.addEventListener("click", () => { zSort = v; renderZukan(); });
+      sortSeg.appendChild(b);
+    }
+    const note = document.createElement("div");
+    note.className = "note";
+    note.textContent = "みんなが こうかいした キャラだよ。タップで 大きく 見られるよ。「れんしゅう」は 自由に たたかえるけど、ランキングと ごほうびは うごかないよ。";
+    const list = document.createElement("div");
+    list.className = "olist";
+    const msg = document.createElement("div");
+    msg.className = "note omsg";
+    const more = document.createElement("button");
+    more.type = "button";
+    more.textContent = "もっと みる";
+    more.hidden = true;
+    body.append(seg, sortSeg, note, list, more, msg);
+    let offset = 0;
+    const load = async () => {
+      more.disabled = true;
+      let res: Awaited<ReturnType<typeof api.list>>;
+      try { res = await api.list(zTier, zSort, offset); }
+      catch (e) { msg.textContent = (e as Error).message; more.disabled = false; return; }
+      if (res.stop) { msg.textContent = "いまは おやすみ中だよ"; return; }
+      if (!offset && !res.chars.length) list.textContent = "まだ こうかいされた キャラが いないよ";
+      for (const c of res.chars) {
+        const row = document.createElement("div");
+        row.className = "orow zrow";
+        row.innerHTML = `<img alt=""><span class="nm"></span><small></small><span class="acts"></span>`;
+        setThumb(row.querySelector("img")!, `h:${c.id}`, () => c.thumb as Stroke[]);
+        row.querySelector(".nm")!.textContent = c.name;
+        row.querySelector("small")!.textContent = `${TIERS[c.tier]?.name ?? ""}・★${c.rating}・${c.wins}勝${c.losses}敗`;
+        const acts = row.querySelector(".acts")!;
+        const o: Opp = { kind: "human", c };
+        const see = document.createElement("button");
+        see.textContent = "👀 みる";
+        see.addEventListener("click", () => showChar(c));
+        acts.appendChild(see);
+        if (myIds().includes(c.id)) { const m = document.createElement("small"); m.textContent = "じぶん"; acts.appendChild(m); }
+        else { const f = document.createElement("button"); f.textContent = "⚔️ れんしゅう"; f.addEventListener("click", () => practice(o)); acts.appendChild(f); }
+        row.querySelector("img")!.addEventListener("click", () => showChar(c));
+        list.appendChild(row);
+      }
+      offset += res.chars.length;
+      more.hidden = !res.more;
+      more.disabled = false;
+    };
+    more.addEventListener("click", () => void load());
+    msg.textContent = "よみこみ中…";
+    await load().then(() => { if (msg.textContent?.startsWith("よみこみ")) msg.textContent = ""; });
+  }
+
+  // 1体を 大きく 見る（絵・部屋・成績・公開日）。ここからも れんしゅう・👎
+  async function showChar(c: ListChar & { created?: number }) {
+    const modal = document.createElement("div");
+    modal.className = "modal";
+    const box = document.createElement("div");
+    box.className = "modal-box zbox";
+    const close = () => modal.remove();
+    modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+    const img = document.createElement("img");
+    img.className = "zbig";
+    img.alt = c.name;
+    setThumb(img, `h:${c.id}`, () => c.thumb as Stroke[]);
+    const h = document.createElement("div");
+    h.className = "kidhint";
+    h.textContent = c.name;
+    const info = document.createElement("div");
+    info.className = "note";
+    const day = c.created ? new Date(c.created + 9 * 3600 * 1000).toISOString().slice(0, 10) : "";
+    info.textContent = `${TIERS[c.tier]?.name ?? ""}の へや・★${c.rating}・${c.wins}勝 ${c.losses}敗 ${c.draws}分け${day ? `・${day} こうかい` : ""}`;
+    const row = document.createElement("div");
+    row.className = "row";
+    const msg = document.createElement("div");
+    msg.className = "note";
+    if (!myIds().includes(c.id)) {
+      const f = document.createElement("button");
+      f.className = "primary inline";
+      f.textContent = "⚔️ れんしゅう";
+      f.addEventListener("click", () => { close(); void practice({ kind: "human", c }); });
+      row.appendChild(f);
+    }
+    const bad = document.createElement("button");
+    bad.textContent = "👎 しらせる";
+    bad.addEventListener("click", async () => { bad.disabled = true; try { await api.bad(c.id); msg.textContent = "しらせたよ。ありがとう"; } catch (e) { msg.textContent = (e as Error).message; } });
+    const cl = document.createElement("button");
+    cl.textContent = "とじる";
+    cl.addEventListener("click", close);
+    row.append(bad, cl);
+    box.append(img, h, info, row, msg);
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+    // くわしい絵（一覧の 間引いた線ではなく 公開した 絵そのもの）に 描きかえる
+    try {
+      const { char } = await api.get(c.id);
+      setThumb(img, `full:${c.id}`, () => char.snap.strokes as Stroke[], 320);
+    } catch { /* 一覧の絵のまま */ }
+  }
+
   // かんせん: 「今日の注目カード」＝その部屋の1位と2位。どっちが勝つか予想して、当たれば経験値 +10
   async function renderWatch() {
     if (watchTier < 0) watchTier = myTier();
@@ -468,9 +602,9 @@ export function initOnline(root: HTMLElement, deps: OnlineDeps) {
         <div class="kh">保護者の方へ（利用規約・プライバシー）</div>
         <ol>
           <li>このゲームは個人が無料で運営しています。広告や課金はありません。</li>
-          <li>サーバーに預かるのは、公開したキャラの線データ・名前・性格と技の数値・対戦の勝敗、端末ごとのランダムな番号（ハッシュ化して保存）だけです。氏名・メールアドレス・位置情報などの個人情報は預かりません。ゲームの進み具合は端末の中だけに保存されます。</li>
+          <li>サーバーに預かるのは、公開したキャラの線データ・名前・性格と技の数値・対戦の勝敗、端末ごとのランダムな番号（ハッシュ化して保存）だけです。遊んだ人数を数えるため、ゲームを開いた日に1回、この番号（ハッシュ化したもの）と日付だけを送ります。氏名・メールアドレス・位置情報などの個人情報は預かりません。ゲームの進み具合は端末の中だけに保存されます。</li>
           <li>IP アドレスは、秘密の乱数を混ぜた元に戻せない形（ハッシュ）にし、回数制限と 👎 の重複防止のためだけに使います。回数制限の記録はその日のうちに使い終え、順次消します。</li>
-          <li>保存先は Cloudflare, Inc.（米国）の Cloudflare Workers と D1 です。ゲームの画面は GitHub Pages（GitHub, Inc.）から配信し、文字の形は Google Fonts から読み込みます。</li>
+          <li>保存先は Cloudflare, Inc.（米国）の Cloudflare Workers と D1 です。ゲームの画面は Cloudflare Pages と GitHub Pages（GitHub, Inc.）から配信し、文字の形は Google Fonts から読み込みます。</li>
           <li>個人情報、性的・暴力的・差別的な内容、他の作品のキャラクター、悪口などは禁止です。</li>
           <li>👎 が別々の3人から付くと自動で非表示になります。運営者の判断で、予告なく非表示・削除することがあります。</li>
           <li>削除の依頼・問い合わせは <a href="https://github.com/second1214/doodle-arena/issues" target="_blank" rel="noopener">GitHub の Issues</a> へ。キャラの名前と、おおよその公開日を書いてください。個人情報は書かないでください。</li>
@@ -483,6 +617,7 @@ export function initOnline(root: HTMLElement, deps: OnlineDeps) {
   async function render() {
     renderStatus();
     if (tab === "fight") await renderFight();
+    else if (tab === "zukan") await renderZukan();
     else if (tab === "rank") await renderRank();
     else if (tab === "watch") await renderWatch();
     else if (tab === "publish") await renderPublish();
