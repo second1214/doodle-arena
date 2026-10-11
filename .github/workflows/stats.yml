@@ -17,7 +17,7 @@ jobs:
       - name: 数える
         working-directory: server
         run: |
-          q() { echo "== $1"; npx --yes wrangler@4 d1 execute doodle-arena --remote --json --command "$2" | jq -c '.[0].results'; }
+          q() { echo "== $1"; npx --yes wrangler@4 d1 execute doodle-arena --remote --json --command "$2" > out.json 2>&1 || true; jq -c 'if type=="array" then .[0].results else . end' out.json 2>/dev/null || cat out.json; }
           q "公開キャラ数・公開した人（端末）の数・対戦の合計" "SELECT COUNT(*) AS chars, COUNT(DISTINCT owner_hash) AS owners, SUM(wins+losses+draws) AS games FROM chars"
           q "日ごとの オンライン対戦を した 回線の数・対戦数（回線は日ごとに伏せた値）" "SELECT substr(k,1,10) AS day, COUNT(*) AS lines, SUM(n) AS games FROM quota WHERE k LIKE '%:match:%' GROUP BY day ORDER BY day"
           q "日ごとの 公開した 回線の数" "SELECT substr(k,1,10) AS day, COUNT(*) AS lines, SUM(n) AS publishes FROM quota WHERE k LIKE '%:publish:%' GROUP BY day ORDER BY day"
