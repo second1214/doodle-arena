@@ -47,7 +47,7 @@ export function readMask(t: string): { w: number; h: number; m: Uint8Array } | n
 }
 
 // 手足の検知のしかたの版。検知のアルゴリズムを変えたら上げる（オンラインで、古い版のキャラは保存した手足の結果を使う）
-export const DETECT_VERSION = 3; // 2: 手足レイヤー（marks）で手足を自分で指定できる / 3: 写真をそのまま貼る（img）
+export const DETECT_VERSION = 4; // 2: 手足レイヤー（marks）で手足を自分で指定できる / 3: 写真をそのまま貼る（img） / 4: 羽ペン（wing）
 
 export interface DetectParams {
   size: number; // 検知解像度
@@ -67,7 +67,7 @@ export const DEFAULT_PARAMS: DetectParams = {
   footAngleDeg: 50,
 };
 
-export type LimbKind = "hand" | "foot";
+export type LimbKind = "hand" | "foot" | "wing";
 
 export interface Limb {
   kind: LimbKind;
@@ -246,11 +246,13 @@ function components(mask: Uint8Array, size: number): number[][] {
 
 // 手足レイヤー: 絵の上を「手ペン」「足ペン」で雑に塗った線（color は "hand" / "foot" / "erase"）。
 // 1本でも塗ってあれば自動検知の代わりに使う（絵の形と重なった所だけが手足になる）
-export type MarkColor = "hand" | "foot" | "erase";
+// 羽ペン（"wing"）で 塗った所は 羽（羽があると 飛べる）。羽だけ 塗った時は、手足は 自動のまま
+export type MarkColor = "hand" | "foot" | "wing" | "erase";
 export const hasMarks = (marks?: Stroke[]) => !!marks?.some((m) => m.color === "hand" || m.color === "foot");
+export const hasWingMarks = (marks?: Stroke[]) => !!marks?.some((m) => m.color === "wing");
 
 // 塗った範囲（後から塗った方が勝つ。消しゴムは両方消す）
-function markMask(marks: Stroke[], kind: "hand" | "foot", size: number): Uint8Array {
+function markMask(marks: Stroke[], kind: LimbKind, size: number): Uint8Array {
   return rasterize(marks.map((m) => ({ ...m, fill: false, color: m.color === kind ? "#000000" : "erase" })), size);
 }
 
@@ -280,6 +282,59 @@ export function detect(strokes: Stroke[], params: DetectParams = DEFAULT_PARAMS,
     const r = detectMarked(sil, labels, centroid, marks!, params);
     if (r) return r; // 消しゴムで全部消してあれば自動にもどる
   }
+  const auto = detectAuto(N, total, main, sil, silComps[0].length, labels, centroid, params);
+  return hasWingMarks(marks) ? addWings(auto, marks!, params) : auto;
+}
+
+// 自動の手足に、羽ペンで 塗った 羽を 足す（羽の所は 手足から 外す）
+function addWings(r: DetectResult, marks: Stroke[], params: DetectParams): DetectResult {
+  const N = params.size, total = N * N;
+  const m = markMask(marks, "wing", N);
+  let silArea = 0;
+  for (let i = 0; i < total; i++) { m[i] &= r.silhouette[i]; silArea += r.silhouette[i]; }
+  const minArea = Math.max(4, params.minAreaRatio * silArea * 0.5);
+  const wings = components(m, N).filter((c) => c.length >= minArea);
+  if (!wings.length) return r;
+  const labels = new Int16Array(total);
+  const limbs: Limb[] = [];
+  const isWing = new Uint8Array(total);
+  for (const c of wings) for (const i of c) isWing[i] = 1;
+  // 残った手足（羽に 食われて 小さくなったものは 胴体に もどす）
+  r.limbs.forEach((l, k) => {
+    const px: number[] = [];
+    for (let i = 0; i < total; i++) if (r.labels[i] === k + 2 && !isWing[i]) px.push(i);
+    if (px.length < minArea) { for (const i of px) labels[i] = 1; return; }
+    const id = limbs.length + 2;
+    for (const i of px) labels[i] = id;
+    limbs.push({ ...l, area: px.length });
+  });
+  for (let i = 0; i < total; i++) if (r.labels[i] === 1 && !isWing[i]) labels[i] = 1;
+  const core = r.core.slice();
+  for (let i = 0; i < total; i++) if (isWing[i]) core[i] = 0;
+  for (const comp of wings) {
+    // 付け根 = 胴体に 接する所の まん中（離れていれば 体の中心に いちばん近い所）。先端 = 付け根から いちばん遠い所
+    let px = 0, py = 0, n = 0;
+    for (const i of comp) {
+      const x = i % N, y = (i - x) / N;
+      const body = (j: number) => labels[j] === 1;
+      if ((x > 0 && body(i - 1)) || (x < N - 1 && body(i + 1)) || (y > 0 && body(i - N)) || (y < N - 1 && body(i + N))) { px += x; py += y; n++; }
+    }
+    if (n) { px /= n; py /= n; }
+    else {
+      let best = Infinity;
+      for (const i of comp) { const x = i % N, y = (i - x) / N, d = (x - r.centroid[0]) ** 2 + (y - r.centroid[1]) ** 2; if (d < best) { best = d; px = x; py = y; } }
+    }
+    let far = -1, tx = px, ty = py;
+    for (const i of comp) { const x = i % N, y = (i - x) / N, d = (x - px) ** 2 + (y - py) ** 2; if (d > far) { far = d; tx = x; ty = y; } }
+    const id = limbs.length + 2;
+    for (const i of comp) labels[i] = id;
+    limbs.push({ kind: "wing", pivot: [px, py], tip: [tx, ty], length: Math.sqrt(far), area: comp.length });
+  }
+  return { ...r, labels, limbs, core };
+}
+
+// 自動の 手足検知（胴体の太さから 細い所を 手足に する）
+function detectAuto(N: number, total: number, main: Uint8Array, sil: Uint8Array, mainArea: number, labels: Int16Array, centroid: [number, number], params: DetectParams): DetectResult {
 
   const dt = edt(invert(main), N); // 背景までの二乗距離
   let maxD2 = 0;
@@ -294,7 +349,7 @@ export function detect(strokes: Stroke[], params: DetectParams = DEFAULT_PARAMS,
   for (let i = 0; i < total; i++) resid[i] = main[i] && !core[i] ? 1 : 0;
 
   const limbs: Limb[] = [];
-  const minArea = Math.max(4, params.minAreaRatio * silComps[0].length);
+  const minArea = Math.max(4, params.minAreaRatio * mainArea);
   const minBranchLen = Math.max(6, 2 * r);
   const cosFoot = Math.cos((params.footAngleDeg * Math.PI) / 180);
   const addLimb = (pixels: number[], pivot: [number, number], tip: [number, number]) => {
@@ -350,7 +405,7 @@ function detectMarked(sil: Uint8Array, labels: Int16Array, centroid: [number, nu
   for (let i = 0; i < total; i++) silArea += sil[i];
   const minArea = Math.max(4, params.minAreaRatio * silArea * 0.5);
   const found: { kind: LimbKind; comp: number[] }[] = [];
-  const masks = (["hand", "foot"] as const).map((kind) => ({ kind, m: markMask(marks, kind, N) }));
+  const masks = (["hand", "foot", "wing"] as const).map((kind) => ({ kind, m: markMask(marks, kind, N) }));
   if (masks.every(({ m }) => !m.some((v) => v))) return null;
   for (const { kind, m } of masks) {
     for (let i = 0; i < total; i++) m[i] &= sil[i];

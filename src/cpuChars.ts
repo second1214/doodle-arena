@@ -4,12 +4,14 @@ import type { Stroke } from "./detect";
 import { SAMPLES } from "./samples";
 import { NEW_SAMPLES, CPU_PROFILES, type CpuProfile } from "./newChars";
 import { BOSS_DRAWINGS } from "./story";
+import { CROSS } from "./crossChars";
 
 export interface CpuChar extends CpuProfile {
   id: string;
   name: string;
   group: string;
   strokes: () => Stroke[];
+  marks?: () => Stroke[]; // 手足レイヤー（羽など。無ければ 自動）
   bossStage?: string; // このステージに勝つと選べる
 }
 
@@ -46,6 +48,11 @@ export const CPU_CHARS: CpuChar[] = [
   ...OLD.map(([key, name, group, p]) => ({ ...p, id: `old:${key}`, name, group, strokes: SAMPLES[key] })),
   ...Object.entries(CPU_PROFILES).map(([name, p]) => ({ ...p, id: `new:${name}`, name, group: GROUP[name] ?? "らくがき", strokes: NEW_SAMPLES[name] })),
   ...BOSSES.map(([stage, name, p]) => ({ ...p, id: `boss:${stage}`, name, group: "ボス", strokes: BOSS_DRAWINGS[name], bossStage: stage })),
+  // ブロックの せかい・ふしぎな しま（章の ボスは たおすと 選べる）
+  ...Object.entries(CROSS).map(([name, c]) => {
+    const bossStage = name === "エンダラゴン" ? "6-6" : name === "ミュウスリー" ? "7-6" : undefined;
+    return { ...c.profile, id: `x:${name}`, name, group: bossStage ? "ボス" : c.group, strokes: c.strokes, marks: c.marks, bossStage };
+  }),
 ];
-export const CPU_GROUPS = ["らくがき", "どうぶつ", "たべもの", "どうぐ", "おばけ", "ボス"];
+export const CPU_GROUPS = ["らくがき", "どうぶつ", "たべもの", "どうぐ", "おばけ", "ブロック", "ふしぎ", "ボス"];
 export const cpuCharById = (id: string) => CPU_CHARS.find((c) => c.id === id);

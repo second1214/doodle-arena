@@ -3,6 +3,7 @@
 import type { Stroke } from "./detect";
 import { SAMPLES } from "./samples";
 import { NEW_SAMPLES } from "./newChars";
+import { crossMarks, crossStrokes } from "./crossChars";
 import type { AiLevel } from "./sim/ai";
 import { hashStr, makePart, seededRnd, type Part, type PartKind, type Rarity } from "./items";
 import type { Personality } from "./sim/world";
@@ -22,6 +23,8 @@ export interface Stage {
   ai: AiLevel;
   boss?: boolean;
   final?: boolean; // ラスボス（A 確定・4回に1回 S）
+  arena?: string; // ステージ（地形と背景。src/sim/arena.ts。無ければ 平らな ひろば）
+  marks?: () => Stroke[]; // 敵の 手足レイヤー（羽など）
 }
 
 export interface Chapter {
@@ -146,6 +149,10 @@ const CH2_AI: AiLevel = { wait: [7, 5], defend: 0.5 };
 const CH3_AI: AiLevel = { wait: [5, 5], defend: 0.7 };
 const CH4_AI: AiLevel = { wait: [4, 4], defend: 0.9 };
 const CH5_AI: AiLevel = { wait: [3, 4], defend: 1 };
+const CH6_AI: AiLevel = { wait: [3, 3], defend: 1.05 };
+const CH7_AI: AiLevel = { wait: [2, 3], defend: 1.1 };
+// 新しい章の 敵（絵と 手足レイヤーを いっしょに）
+const X = (name: string) => ({ enemy: name, strokes: crossStrokes(name), marks: crossMarks(name) });
 // 敵の強化ポイントの振り方（性格ごとの好みの枝）
 const A = ["atk", "hp", "spd"]; // 猛攻
 const C = ["def", "hp", "sta"]; // 慎重
@@ -173,8 +180,8 @@ export const CHAPTERS: Chapter[] = [
       { id: "2-2", no: 8, title: "グニャグニャ文字", enemy: "もじの「ん」", strokes: NEW_SAMPLES["もじの「ん」"], personality: "tricky", specialType: "melee", parts: [["m:wobble", "E"]], boostPoints: 4, prefer: T, hp: -15, ai: CH2_AI },
       { id: "2-3", no: 9, title: "動けない", enemy: "ノッポ", strokes: SAMPLES["胴長ノッポ"], personality: "sniper", specialType: "ranged", parts: [["r:restrain", "D"]], boostPoints: 5, prefer: N, hp: -15, ai: CH2_AI },
       { id: "2-4", no: 10, title: "のびる拳", enemy: "かたてマン", strokes: SAMPLES["巨大な片手"], personality: "aggressive", specialType: "melee", parts: [["m:rubber", "D"]], boostPoints: 6, prefer: A, hp: -15, ai: CH2_AI },
-      { id: "2-5", no: 11, title: "大きな墨", enemy: "イソギンチャク", strokes: NEW_SAMPLES["イソギンチャク"], personality: "cautious", specialType: "ranged", parts: [["r:giant", "D"], ["r:homing", "E"]], boostPoints: 7, prefer: C, hp: -15, ai: CH2_AI },
-      { id: "2-6", no: 12, title: "インクの竜", enemy: "インクの竜", strokes: DRAGON, personality: "aggressive", specialType: "melee", parts: [["m:tornado", "C"], ["m:legbind", "C"]], boostPoints: 12, prefer: ["hp", "atk", "sta"], ai: { wait: [6, 5], defend: 0.7 }, boss: true },
+      { id: "2-5", no: 11, title: "大きな墨", enemy: "イソギンチャク", strokes: NEW_SAMPLES["イソギンチャク"], personality: "cautious", specialType: "ranged", parts: [["r:giant", "D"], ["r:homing", "E"]], boostPoints: 7, prefer: C, hp: -15, ai: CH2_AI, arena: "beach" },
+      { id: "2-6", no: 12, title: "インクの竜", enemy: "インクの竜", strokes: DRAGON, personality: "aggressive", specialType: "melee", parts: [["m:tornado", "C"], ["m:legbind", "C"]], boostPoints: 12, prefer: ["hp", "atk", "sta"], ai: { wait: [6, 5], defend: 0.7 }, boss: true, arena: "hill" },
     ],
   },
   {
@@ -185,8 +192,8 @@ export const CHAPTERS: Chapter[] = [
       { id: "3-2", no: 14, title: "つかまえた", enemy: "よこあるきガニ", strokes: NEW_SAMPLES["よこあるきガニ"], personality: "cautious", specialType: "melee", parts: [["m:grab", "C"], ["m:dash", "D"]], boostPoints: 10, prefer: C, ai: CH3_AI },
       { id: "3-3", no: 15, title: "空から降る", enemy: "まんまる", strokes: SAMPLES["まんまる（塗りつぶし）"], personality: "tricky", specialType: "ranged", parts: [["r:meteor", "C"], ["r:giant", "D"]], boostPoints: 11, prefer: T, ai: CH3_AI },
       { id: "3-4", no: 16, title: "くしゃくしゃ", enemy: "チョキチョキ", strokes: NEW_SAMPLES["チョキチョキ"], personality: "tricky", specialType: "melee", parts: [["m:crumple", "C"]], boostPoints: 12, prefer: T, ai: CH3_AI },
-      { id: "3-5", no: 17, title: "見えない", enemy: "ふわりおばけ", strokes: NEW_SAMPLES["ふわりおばけ"], personality: "sniper", specialType: "ranged", parts: [["r:invisible", "D"]], boostPoints: 13, prefer: N, ai: CH3_AI },
-      { id: "3-6", no: 18, title: "消しゴム将軍", enemy: "消しゴム将軍", strokes: ERASER, personality: "cautious", specialType: "melee", parts: [["m:giantHands", "B"], ["m:grab", "B"]], boostPoints: 18, prefer: ["def", "hp", "atk"], ai: { wait: [4, 5], defend: 0.9 }, boss: true },
+      { id: "3-5", no: 17, title: "見えない", enemy: "ふわりおばけ", strokes: NEW_SAMPLES["ふわりおばけ"], personality: "sniper", specialType: "ranged", parts: [["r:invisible", "D"]], boostPoints: 13, prefer: N, ai: CH3_AI, arena: "night" },
+      { id: "3-6", no: 18, title: "消しゴム将軍", enemy: "消しゴム将軍", strokes: ERASER, personality: "cautious", specialType: "melee", parts: [["m:giantHands", "B"], ["m:grab", "B"]], boostPoints: 18, prefer: ["def", "hp", "atk"], ai: { wait: [4, 5], defend: 0.9 }, boss: true, arena: "room" },
     ],
   },
   {
@@ -198,7 +205,7 @@ export const CHAPTERS: Chapter[] = [
       { id: "4-3", no: 21, title: "地ならし", enemy: "かたてマン", strokes: SAMPLES["巨大な片手"], personality: "cautious", specialType: "melee", parts: [["m:slam", "B"], ["m:legbind", "C"]], boostPoints: 17, prefer: C, ai: CH4_AI },
       { id: "4-4", no: 22, title: "豆粒の文字", enemy: "ひょろグモ", strokes: NEW_SAMPLES["ひょろグモ"], personality: "sniper", specialType: "ranged", parts: [["r:tiny", "C"], ["r:homing", "C"]], boostPoints: 18, prefer: N, ai: CH4_AI },
       { id: "4-5", no: 23, title: "ゴムのノッポ", enemy: "えんぴつナイト", strokes: NEW_SAMPLES["えんぴつナイト"], personality: "aggressive", specialType: "melee", parts: [["m:rubber", "C"], ["m:wobble", "D"]], boostPoints: 19, prefer: A, ai: CH4_AI },
-      { id: "4-6", no: 24, title: "クレヨン魔女", enemy: "クレヨン魔女", strokes: WITCH, personality: "sniper", specialType: "ranged", parts: [["r:meteor", "B"], ["r:homing", "A"]], boostPoints: 18, prefer: ["sp", "sta", "def"], ai: { wait: [3, 4], defend: 1 }, boss: true },
+      { id: "4-6", no: 24, title: "クレヨン魔女", enemy: "クレヨン魔女", strokes: WITCH, personality: "sniper", specialType: "ranged", parts: [["r:meteor", "B"], ["r:homing", "A"]], boostPoints: 18, prefer: ["sp", "sta", "def"], ai: { wait: [3, 4], defend: 1 }, boss: true, arena: "night" },
     ],
   },
   {
@@ -211,6 +218,30 @@ export const CHAPTERS: Chapter[] = [
       { id: "5-4", no: 28, title: "見えない隕石", enemy: "クレヨン魔女", strokes: WITCH, personality: "sniper", specialType: "ranged", parts: [["r:meteor", "A"], ["r:invisible", "B"]], boostPoints: 24, prefer: N, ai: CH5_AI },
       { id: "5-5", no: 29, title: "将軍の投げ", enemy: "消しゴム将軍", strokes: ERASER, personality: "cautious", specialType: "melee", parts: [["m:grab", "C"], ["m:giantHands", "B"]], boostPoints: 25, prefer: C, ai: CH5_AI },
       { id: "5-6", no: 30, title: "白紙の王", enemy: "白紙の王", strokes: BLANK, personality: "aggressive", specialType: "ranged", parts: [["r:invisible", "S"], ["r:homing", "A"]], boostPoints: 28, prefer: ["hp", "atk", "sp", "def"], ai: { wait: [2, 4], defend: 1.2 }, boss: true, final: true },
+    ],
+  },
+  {
+    no: 6,
+    title: "ブロックの せかい",
+    stages: [
+      { id: "6-1", no: 31, title: "四角い ゆうしゃ", ...X("スティープ"), personality: "cautious", specialType: "melee", parts: [["m:dash", "A"], ["power", "B"]], boostPoints: 26, prefer: ["atk", "def", "hp"], ai: CH6_AI, arena: "hill" },
+      { id: "6-2", no: 32, title: "夜の ゾンビ", ...X("ゾンビー"), personality: "aggressive", specialType: "melee", parts: [["m:grab", "A"], ["m:vampire", "B"]], boostPoints: 27, prefer: ["hp", "atk", "sta"], ai: CH6_AI, arena: "night" },
+      { id: "6-3", no: 33, title: "シューーー…", ...X("クリーバー"), personality: "aggressive", specialType: "ranged", parts: [["r:blast", "A"], ["r:trap", "B"]], boostPoints: 28, prefer: ["sp", "hp", "spd"], ai: CH6_AI, arena: "cave" },
+      { id: "6-4", no: 34, title: "ほねの 弓", ...X("ホネルトン"), personality: "sniper", specialType: "ranged", parts: [["r:fast", "A"], ["r:tiny", "A"]], boostPoints: 29, prefer: ["sp", "spd", "tec"], ai: CH6_AI, arena: "room" },
+      { id: "6-5", no: 35, title: "目を 合わせるな", ...X("エンダマン"), personality: "tricky", specialType: "ranged", parts: [["r:invisible", "A"], ["r:homing", "A"]], boostPoints: 30, prefer: ["tec", "spd", "sp"], ai: CH6_AI, arena: "sky" },
+      { id: "6-6", no: 36, title: "エンダラゴン", ...X("エンダラゴン"), personality: "sniper", specialType: "ranged", parts: [["r:rain", "S"], ["r:fire", "A"]], boostPoints: 34, prefer: ["sp", "hp", "fly", "def"], ai: { wait: [2, 3], defend: 1.15 }, boss: true, arena: "sky" },
+    ],
+  },
+  {
+    no: 7,
+    title: "ふしぎな しま",
+    stages: [
+      { id: "7-1", no: 37, title: "ビリビリ", ...X("ヒカチュウ"), personality: "tricky", specialType: "ranged", parts: [["r:thunder", "A"], ["r:fast", "A"]], boostPoints: 31, prefer: ["spd", "sp", "tec"], ai: CH7_AI, arena: "hill" },
+      { id: "7-2", no: 38, title: "なみのり", ...X("ゼニカメ"), personality: "cautious", specialType: "ranged", parts: [["r:wave", "A"], ["r:bounce", "A"]], boostPoints: 32, prefer: ["def", "hp", "sp"], ai: CH7_AI, arena: "beach" },
+      { id: "7-3", no: 39, title: "空から くる", ...X("ホッポ"), personality: "tricky", specialType: "melee", parts: [["m:gust", "A"], ["m:dive", "A"]], boostPoints: 33, prefer: ["fly", "spd", "tec"], ai: CH7_AI, arena: "beach" },
+      { id: "7-4", no: 40, title: "ねむる 山", ...X("カビコン"), personality: "cautious", specialType: "melee", parts: [["m:slam", "A"], ["m:mushroom", "A"]], boostPoints: 34, prefer: ["hp", "def", "atk"], ai: CH7_AI, arena: "cave" },
+      { id: "7-5", no: 41, title: "ほのおの 竜", ...X("リザードソ"), personality: "aggressive", specialType: "melee", parts: [["m:dive", "A"], ["m:flame", "A"]], boostPoints: 35, prefer: ["fly", "atk", "hp"], ai: CH7_AI, arena: "sky" },
+      { id: "7-6", no: 42, title: "ミュウスリー", ...X("ミュウスリー"), personality: "sniper", specialType: "ranged", parts: [["r:vacuum", "S"], ["r:thunder", "A"], ["r:homing", "A"]], boostPoints: 38, prefer: ["sp", "hp", "def", "fly"], ai: { wait: [2, 3], defend: 1.25 }, boss: true, final: true, arena: "room" },
     ],
   },
 ];

@@ -17,9 +17,12 @@ export interface Boost {
   knock: number; // 吹き飛ばされやすさ +割合
   guardCharge: number; // 防御成功で溜まるゲージ +
   guardDrain: number; // 防御中のスタミナ消費 +割合
+  flyDrain: number; // 飛んでいる間の スタミナ消費 +割合（マイナスで へる）
+  flySpeed: number; // 飛ぶ速さ +割合
+  antiAir: number; // 飛んでいる相手に 与えるダメージ +割合
 }
 
-export const BOOST_KEYS = ["dealt", "taken", "speed", "hp", "stamina", "regen", "special", "punch", "windup", "chargeNeed", "dodgeCost", "guardCut", "guardMove", "knock", "guardCharge", "guardDrain"] as const;
+export const BOOST_KEYS = ["dealt", "taken", "speed", "hp", "stamina", "regen", "special", "punch", "windup", "chargeNeed", "dodgeCost", "guardCut", "guardMove", "knock", "guardCharge", "guardDrain", "flyDrain", "flySpeed", "antiAir"] as const;
 
 export function sumBoost(list: Partial<Boost>[]): Partial<Boost> {
   const out: Partial<Boost> = {};
@@ -44,6 +47,9 @@ export interface StatEffects {
   knockTaken: number; // 吹き飛ばされやすさ倍率
   guardCharge: number; // 防御成功で溜まるゲージ
   guardDrain: number; // 防御中のスタミナ消費倍率
+  flyDrain: number; // 飛ぶ スタミナ消費倍率
+  flySpeed: number; // 飛ぶ速さ倍率
+  antiAir: number; // 飛んでいる相手へ 与えるダメージ倍率
 }
 
 export const BASE_CHARGE_NEED = 5;
@@ -69,6 +75,9 @@ export function statEffects(b: Partial<Boost> = {}): StatEffects {
     knockTaken: Math.max(0.05, 1 + v("knock")),
     guardCharge: Math.max(0, 0.5 + v("guardCharge")),
     guardDrain: Math.max(0, 1 + v("guardDrain")),
+    flyDrain: Math.max(0.05, 1 + v("flyDrain")),
+    flySpeed: Math.max(0.1, 1 + v("flySpeed")),
+    antiAir: Math.max(0.05, 1 + v("antiAir")),
   };
 }
 

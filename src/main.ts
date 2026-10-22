@@ -20,6 +20,7 @@ import type { Personality } from "./sim/world";
 import { deleteCharacter, loadDraft, loadoutOf, loadRoster, normalize, saveCharacter, saveDraft, thumbnail, writeRoster, type CharacterData } from "./roster";
 import { applyStageResult, expToNext, exportCode, importCode, LEVEL_CAP, loadProfile, loadStory, requestPersist, resetTree, takeNode, totalPoints, type Reward } from "./progress";
 import { CPU_CHARS, CPU_GROUPS, cpuCharById, type CpuChar } from "./cpuChars";
+import { ARENA_LIST, arenaById } from "./sim/arena";
 import { initOnline } from "./online/screen";
 import { api } from "./online/client";
 import { AttractHeader } from "./battle/attract";
@@ -49,9 +50,9 @@ const MARKS_KEY = "doodle-arena:proto1-marks";
 const ASSIST_KEY = "doodle-arena:assist";
 let marks: Stroke[] = readJson<Stroke[]>(MARKS_KEY, []);
 let layer: "draw" | "limb" = "draw";
-let markTool: "hand" | "foot" | "erase" = "hand";
+let markTool: "hand" | "foot" | "wing" | "erase" = "hand";
 const MARK_WIDTH = 30;
-const MARK_COLORS = { hand: "#ff7a1a", foot: "#228be6" };
+const MARK_COLORS = { hand: "#ff7a1a", foot: "#228be6", wing: "#40c057" };
 // 描き補正（①手ぶれ補正・②左右対称・③かたち補正）。手ぶれ補正とかたち補正は最初から入
 const assist = { smooth: true, mirror: false, shape: true, ...readJson<Partial<{ smooth: boolean; mirror: boolean; shape: boolean }>>(ASSIST_KEY, {}) };
 // 1つ戻す: 左右対称は2本で1回ぶん
@@ -107,16 +108,18 @@ function runDetect() {
   detected = { res, parts: cutParts(strokes, res).canvases };
   const hands = res.limbs.filter((l) => l.kind === "hand").length;
   const feet = res.limbs.filter((l) => l.kind === "foot").length;
+  const wings = res.limbs.filter((l) => l.kind === "wing").length;
   const notes: string[] = [];
   if (strokes.length && hands === 0) notes.push("手なし→体当たりで攻撃");
   if (strokes.length && feet === 0) notes.push("足なし→転がって移動");
-  detectText = strokes.length ? `${marks.some((m) => m.color !== "erase") ? "🖐 ぬった手足: " : ""}手 ${hands}本・足 ${feet}本${notes.length ? "（" + notes.join("／") + "）" : ""}` : "まだ何も描かれていません";
+  detectText = strokes.length ? `${marks.some((m) => m.color === "hand" || m.color === "foot") ? "🖐 ぬった手足: " : ""}手 ${hands}本・足 ${feet}本${wings ? `・羽 ${wings}まい（とべる🪽）` : ""}${notes.length ? "（" + notes.join("／") + "）" : ""}` : "まだ何も描かれていません";
   resultEl.textContent = detectText;
 }
 
 function limbColor(res: DetectResult, k: number) {
   const l = res.limbs[k];
   const idx = res.limbs.slice(0, k).filter((m) => m.kind === l.kind).length;
+  if (l.kind === "wing") return "#40c057";
   return l.kind === "hand" ? HAND_COLORS[idx % HAND_COLORS.length] : FOOT_COLORS[idx % FOOT_COLORS.length];
 }
 
@@ -202,7 +205,7 @@ function render() {
 }
 
 function renderMarks(list: Stroke[]): HTMLCanvasElement {
-  return renderStrokes(list.map((m) => (m.color === "erase" ? m : { ...m, color: MARK_COLORS[m.color as "hand" | "foot"] ?? "#888888" })));
+  return renderStrokes(list.map((m) => (m.color === "erase" ? m : { ...m, color: MARK_COLORS[m.color as "hand" | "foot" | "wing"] ?? "#888888" })));
 }
 
 // 「動かす」: 戦闘と同じ膨らませた立体で動かす
@@ -768,7 +771,7 @@ function setLayer(l: "draw" | "limb") {
 }
 layerDrawBtn.addEventListener("click", () => setLayer("draw"));
 layerLimbBtn.addEventListener("click", () => setLayer("limb"));
-const markBtns = { hand: document.getElementById("mHand")!, foot: document.getElementById("mFoot")!, erase: document.getElementById("mErase")! };
+const markBtns = { hand: document.getElementById("mHand")!, foot: document.getElementById("mFoot")!, wing: document.getElementById("mWing")!, erase: document.getElementById("mErase")! };
 for (const k of Object.keys(markBtns) as (keyof typeof markBtns)[]) {
   markBtns[k].addEventListener("click", () => {
     markTool = k;
@@ -1318,6 +1321,12 @@ function cpuThumb(id: string, strokesOf: () => Stroke[]) {
   if (!cpuThumbs.has(id)) cpuThumbs.set(id, thumbnail(strokesOf()));
   return cpuThumbs.get(id)!;
 }
+// じゆうバトルの ステージ（おまかせ ＋ 全部）
+{
+  const sel = document.getElementById("arenaSel") as HTMLSelectElement;
+  sel.innerHTML = `<option value="random">🎲 おまかせ</option>` + ARENA_LIST.map((a) => `<option value="${a.id}">${a.name}</option>`).join("");
+  sel.value = "flat";
+}
 const cpuUnlocked = (c: CpuChar) => !c.bossStage || !!loadStory().cleared[c.bossStage];
 function refreshCpuOptions() {
   const grid = document.getElementById("cpuGrid")!;
@@ -1370,11 +1379,30 @@ function refreshCpuOptions() {
   else if (sv) { nm.textContent = sv.name; sub.textContent = "じぶんで つくった キャラ"; }
   else { nm.textContent = "おまかせ"; sub.textContent = "だれが でてくるかは おたのしみ"; }
   pick.append(pic, nm, sub);
+  // CPU キャラを じぶんの キャラにする（絵・手足・羽・性格・必殺の型を うつす。必殺パーツは じぶんの 持ち物から つける）
+  if (c && cpuUnlocked(c)) {
+    const use = document.createElement("button");
+    use.type = "button";
+    use.className = "inline";
+    use.textContent = "🎨 じぶんの キャラにする";
+    use.addEventListener("click", () => adoptCpu(c));
+    pick.appendChild(use);
+  }
+}
+
+function adoptCpu(c: CpuChar) {
+  const list = loadRoster();
+  const mk = c.marks?.() ?? [];
+  const data = normalize({ name: c.name, strokes: c.strokes(), marks: mk, personality: c.personality, specialType: c.specialType, special: [], melee: [], partsR: [], partsM: [], thumb: cpuThumb(c.id, c.strokes), savedAt: Date.now() });
+  list.unshift(data);
+  if (!writeRoster(list)) { toast("ほぞん できませんでした（ブラウザの ほぞんが いっぱい？）"); return; }
+  toast(`「${c.name}」を じぶんの キャラに したよ！ ストーリーや オンラインでも 使えるよ`);
+  refreshCpuOptions();
 }
 
 // CPU キャラを戦闘用に組み立てる（パーツは C 相当で、キャラごとに毎回同じ数値。強化は自分と同じポイント数を好みの枝に）
 function buildCpuChar(c: CpuChar) {
-  const b = buildCharacter(c.name, c.strokes(), [], DEFAULT_PARAMS);
+  const b = buildCharacter(c.name, c.strokes(), [], DEFAULT_PARAMS, c.marks?.() ?? []);
   const parts = c.parts.map((k, i) => makePart(k, "C", seededRnd(hashStr(`${c.id}#${i}`)), `${c.id}#${i}`));
   applyData(b, c, parts, boostOf(autoTree(totalPoints(loadProfile()), c.prefer)));
   return b;
@@ -1406,7 +1434,7 @@ function applyData(build: ReturnType<typeof buildCharacter>, c: { personality: P
 // 自分のキャラ: "" = 編集中のキャラ（絵が無ければ棒人間）/ "saved:id" = 保存したキャラ
 // 自分の強化はプレイヤー共通のスキルツリー（どのキャラで戦っても同じ）
 // らくがき才能は、戦うキャラの絵の形に合う時だけ効く
-const shapeFlags = (b: ReturnType<typeof buildCharacter>): ShapeFlags => ({ hasFeet: b.cfg.hasFeet, hasHands: b.cfg.hasHands, hits: b.cfg.traits?.hits ?? 1, reach: b.cfg.reach });
+const shapeFlags = (b: ReturnType<typeof buildCharacter>): ShapeFlags => ({ hasFeet: b.cfg.hasFeet, hasHands: b.cfg.hasHands, hits: b.cfg.traits?.hits ?? 1, reach: b.cfg.reach, hasWings: b.cfg.hasWings });
 const myBoost = (b: ReturnType<typeof buildCharacter>) => boostOf(loadProfile().nodes, shapeFlags(b));
 
 function buildPlayer(choice: string) {
@@ -1440,9 +1468,11 @@ document.getElementById("startBattle")!.addEventListener("click", () => {
     cpu = buildCpuChar(c);
     cpuLine = c.catchphrase;
   }
+  const ar = (document.getElementById("arenaSel") as HTMLSelectElement).value;
   runBattle({
     player,
     cpu,
+    arena: arenaById(ar === "random" ? ARENA_LIST[Math.floor(Math.random() * ARENA_LIST.length)].id : ar),
     spectate: (document.getElementById("spectate") as HTMLInputElement).checked,
     seed: (Math.random() * 0xffffffff) >>> 0,
     sfx,
@@ -1700,7 +1730,10 @@ function renderTree() {
     const ka = BRANCHES.findIndex((x) => x.key === a), kb = BRANCHES.findIndex((x) => x.key === b);
     let ang = (angOf(ka) + angOf(kb)) / 2;
     if (Math.abs(angOf(ka) - angOf(kb)) > Math.PI) ang += Math.PI; // 輪の最後と最初
-    pos.set(n.id, [Math.cos(ang) * 128, Math.sin(ang) * 128]);
+    // となりでない 2本（空の枝を 足して 間が あいた）は まん中寄りに
+    const adjacent = Math.abs(ka - kb) === 1 || Math.abs(ka - kb) === BRANCHES.length - 1;
+    const r = adjacent ? 128 : 30;
+    pos.set(n.id, [Math.cos(ang) * r, Math.sin(ang) * r]);
   }
   const colorOf = (id: string) => BRANCHES.find((b) => b.key === nodeById(id)?.branch)?.color ?? "#f08c00";
   // つながりの線
@@ -2146,11 +2179,12 @@ function rewardHtml(r: Reward, stage: Stage, drop: DropResult | null): string {
 function startStage(stage: Stage) {
   sfx.unlock();
   const player = buildPlayer(storyCharSel.value);
-  const cpu = buildCharacter(stage.enemy, stage.strokes(), [], DEFAULT_PARAMS);
+  const cpu = buildCharacter(stage.enemy, stage.strokes(), [], DEFAULT_PARAMS, stage.marks?.() ?? []);
   applyData(cpu, stage, enemyParts(stage), sumBoost([boostOf(autoTree(stage.boostPoints, stage.prefer)), { hp: stage.hp ?? 0 }]));
   runBattle({
     player,
     cpu,
+    arena: arenaById(stage.arena),
     spectate: false,
     seed: (Math.random() * 0xffffffff) >>> 0,
     sfx,

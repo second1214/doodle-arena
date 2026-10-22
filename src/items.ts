@@ -49,7 +49,10 @@ const EFFECT_DESC: Record<string, string> = {
   "m:giantHands": "手が大きくなって 遠くまで届く", "m:rubber": "いちばん長い手が のびる", "m:tornado": "回って まわりを何回も殴る", "m:dash": "前へ走りぬける",
   "m:slam": "跳んで地面をたたく（輪の内側は安全）", "m:grab": "つかんで投げる（防御できない）", "m:wobble": "相手の操作が グニャグニャ逆に", "m:legbind": "相手の足が使えなくなる",
   "m:crumple": "相手が紙くずになって転がる", "m:magnet": "相手を手元へ引きよせる", "m:vampire": "殴った分 体力が回復", "m:ice": "相手の足元がこおって すべる",
-  "m:counter": "構え中に殴られたら 2倍で返す", "m:mushroom": "しばらく大きく強くなる（本体は弱い）", "m:bulldozer": "吹き飛ばさずに押しこむ（かべで追加ダメージ）",
+  "m:counter": "構え中に殴られたら 2倍で返す",
+  "r:wave": "地面を はって進む（飛んでいる相手には 当たらない）", "r:net": "当たると 飛べなくなって 落ちる", "r:thunder": "当たると しびれて 攻撃できない",
+  "r:rain": "相手の上に 雲を出して しずくを 落とす", "r:fire": "当たると しばらく やけどで へる",
+  "m:uppercut": "上の相手にも届く。当てると 打ち上げる", "m:dive": "跳んで 相手へ 飛びこむ（空の相手にも）", "m:gust": "まわりを 吹き飛ばし、飛んでいる相手を 落とす", "m:flame": "殴ると しばらく やけど", "m:mushroom": "しばらく大きく強くなる（本体は弱い）", "m:bulldozer": "吹き飛ばさずに押しこむ（かべで追加ダメージ）",
 };
 
 export function kindInfo(kind: PartKind): KindInfo {
@@ -70,6 +73,8 @@ const KIND_ICON: Record<string, string> = {
   "m:giantHands": "🖐️", "m:rubber": "🥊", "m:tornado": "🌪️", "m:dash": "💨", "m:slam": "🔨", "m:grab": "🤲", "m:wobble": "😵‍💫", "m:legbind": "🦶", "m:crumple": "📄",
  
   "r:split": "🎆", "r:bounce": "🏓", "r:boomerang": "🪃", "r:trap": "🪤", "r:vacuum": "🌀", "r:drain": "🧛", "r:freeze": "🧊", "r:blast": "💣",
+  "r:wave": "🌊", "r:net": "🕸️", "r:thunder": "🌩️", "r:rain": "🌧️", "r:fire": "🔥",
+  "m:uppercut": "🆙", "m:dive": "🦅", "m:gust": "🌬️", "m:flame": "♨️",
   "m:magnet": "🧲", "m:vampire": "🦇", "m:ice": "⛸️", "m:counter": "🔄", "m:mushroom": "🍄", "m:bulldozer": "🚜",
   bigger: "🎈", lucky: "🍀", carry: "🔁", pierce: "🗡️",
   power: "💪", pspeed: "🏹", duration: "⏳", windup: "⏩", charge: "🔋",

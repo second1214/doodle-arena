@@ -50,7 +50,7 @@ type Opp = { kind: "human"; c: ListChar } | { kind: "cpu"; c: CpuChar; tier: num
 
 // 門番: CPU キャラを部屋の強さで作り直す（部屋の真ん中くらいのポイントを好みの枝へ、パーツはその部屋のレア度）
 export function buildGatekeeper(c: CpuChar, tier: number): CharacterBuild {
-  const b = buildCharacter(c.name, c.strokes(), [], DEFAULT_PARAMS);
+  const b = buildCharacter(c.name, c.strokes(), [], DEFAULT_PARAMS, c.marks?.() ?? []);
   const parts: Part[] = [];
   c.parts.forEach((k, i) => {
     const p = makePart(k, ROOM_RARITY[tier], seededRnd(hashStr(`${c.id}#${tier}#${i}`)), `${c.id}#${tier}#${i}`);

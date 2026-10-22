@@ -10,8 +10,8 @@ export const TREE_VERSION = 2;
 
 export type NodeKind = "small" | "notable" | "fork" | "keystone" | "bridge" | "talent";
 // らくがき才能の条件（描いた絵の形）
-export type ShapeWhen = "noFeet" | "noHands" | "multiHands" | "longArms";
-export interface ShapeFlags { hasFeet: boolean; hasHands: boolean; hits: number; reach: number }
+export type ShapeWhen = "noFeet" | "noHands" | "multiHands" | "longArms" | "wings";
+export interface ShapeFlags { hasFeet: boolean; hasHands: boolean; hits: number; reach: number; hasWings?: boolean }
 
 export interface TreeNode {
   id: string;
@@ -78,6 +78,12 @@ export const BRANCHES: Branch[] = [
     notable: { name: "かたい皮", desc: "受けるダメージ −5%", boost: { taken: 0.05 } },
     forks: [{ name: "てっぺき盾", desc: "防御で減らす割合 +8%", boost: { guardCut: 0.08 } }, { name: "ガードで げんき", desc: "防御成功で溜まる必殺ゲージ +0.25・防御中のスタミナ消費 −30%", boost: { guardCharge: 0.25, guardDrain: -0.3 } }],
     keystone: { name: "鉄壁", desc: "防御で8割カット（標準7割）／代わりに防御中の移動がさらに遅い", boost: { guardCut: 0.1, guardMove: -0.2 } } },
+  // 空（飛ぶ・飛ぶ相手と 戦う）。羽が 無いキャラにも「うちおとし」が 役に立つ
+  { key: "fly", label: "空", color: "#3bc9db", title: "そらマスター",
+    small: { name: "空", desc: "飛ぶ スタミナ −5%・飛んでいる相手へ ダメージ +3%", boost: { flyDrain: -0.05, antiAir: 0.03 } },
+    notable: { name: "空の目", desc: "飛んでいる相手へ ダメージ +10%", boost: { antiAir: 0.1 } },
+    forks: [{ name: "ながく 飛ぶ", desc: "飛ぶ スタミナ −20%", boost: { flyDrain: -0.2 } }, { name: "うちおとし", desc: "飛んでいる相手へ ダメージ +20%", boost: { antiAir: 0.2 } }],
+    keystone: { name: "空の王", desc: "飛ぶ スタミナ −30%・飛ぶ速さ +20%／代わりに 受けるダメージ +5%", boost: { flyDrain: -0.3, flySpeed: 0.2, taken: -0.05 } } },
 ];
 
 // 組み合わせ技: 輪でとなり合う2本の枝の山場（★）を両方取ると開く（Hades の「デュオ」のような、育て方の組み合わせのごほうび）
@@ -89,6 +95,8 @@ const BRIDGES: { a: string; b: string; name: string; desc: string; boost: Partia
   { a: "sta", b: "hp", name: "タフガイ", desc: "体力 +15・スタミナ +10", boost: { hp: 15, stamina: 10 } },
   { a: "hp", b: "def", name: "かたいやつ", desc: "受けるダメージ −6%・吹き飛ばされにくさ +15%", boost: { taken: 0.06, knock: -0.15 } },
   { a: "def", b: "atk", name: "カウンターパンチ", desc: "防御で減らす割合 +5%・通常攻撃の威力 +10%", boost: { guardCut: 0.05, punch: 0.1 } },
+  { a: "def", b: "fly", name: "まもりの つばさ", desc: "受けるダメージ −4%・飛ぶ スタミナ −10%", boost: { taken: 0.04, flyDrain: -0.1 } },
+  { a: "fly", b: "atk", name: "きゅうこうか", desc: "与えるダメージ +4%・飛ぶ速さ +10%", boost: { dealt: 0.04, flySpeed: 0.1 } },
 ];
 export const BRIDGE_COST = 3;
 
@@ -98,6 +106,7 @@ const TALENTS: { id: string; when: ShapeWhen; name: string; desc: string; boost:
   { id: "t-tackle", when: "noHands", name: "体当たり番長", desc: "手がないキャラだけ: 通常攻撃の威力 +20%・吹き飛ばされにくさ +10%", boost: { punch: 0.2, knock: -0.1 } },
   { id: "t-many", when: "multiHands", name: "千手", desc: "手がたくさんのキャラだけ: 通常攻撃の威力 +12%", boost: { punch: 0.12 } },
   { id: "t-long", when: "longArms", name: "のっぽの一撃", desc: "手が長いキャラだけ: 与えるダメージ +6%", boost: { dealt: 0.06 } },
+  { id: "t-wing", when: "wings", name: "つばさ名人", desc: "羽があるキャラだけ: 飛ぶ スタミナ −25%・飛ぶ速さ +10%", boost: { flyDrain: -0.25, flySpeed: 0.1 } },
 ];
 export const TALENT_COST = 1;
 
@@ -145,7 +154,7 @@ export const spentOf = (owned: string[]) => owned.reduce((a, id) => a + (BY_ID.g
 
 // 古い形（TREE_VERSION 1: atk1〜atk6 の6段、6段目が3ポイント）の払い戻し額
 export function legacyCost(id: string): number {
-  const m = id.match(/^(atk|def|hp|sta|spd|sp|tec)([1-6])$/);
+  const m = id.match(/^(atk|def|hp|sta|spd|sp|tec)([1-6])$/); // 古い形（空の枝は 無かった）
   return m ? (m[2] === "6" ? 3 : 1) : 1;
 }
 
@@ -155,6 +164,7 @@ export function shapeMatches(when: ShapeWhen | undefined, f?: ShapeFlags): boole
   if (when === "noFeet") return !f.hasFeet;
   if (when === "noHands") return !f.hasHands;
   if (when === "multiHands") return f.hasHands && f.hits > 1;
+  if (when === "wings") return !!f.hasWings;
   return f.hasHands && f.reach >= 0.7;
 }
 

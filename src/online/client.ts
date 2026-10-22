@@ -91,7 +91,7 @@ export function makeSnapshot(build: CharacterBuild, name: string, strokes: Strok
     specialMod: { ...(c.specialMod ?? {}) } as Record<string, number>,
     boost: { ...(c.boost ?? {}) } as Record<string, number>,
     growth,
-    limbs: { reach: c.reach, hasHands: c.hasHands, hasFeet: c.hasFeet, traits: { ...(c.traits ?? DEFAULT_TRAITS) } as unknown as Record<string, number> },
+    limbs: { reach: c.reach, hasHands: c.hasHands, hasFeet: c.hasFeet, hasWings: !!c.hasWings, traits: { ...(c.traits ?? DEFAULT_TRAITS) } as unknown as Record<string, number> },
   };
 }
 
@@ -104,6 +104,7 @@ export function buildFromSnapshot(s: Snapshot): CharacterBuild {
     cfg.reach = s.limbs.reach;
     cfg.hasHands = s.limbs.hasHands;
     cfg.hasFeet = s.limbs.hasFeet;
+    cfg.hasWings = !!s.limbs.hasWings;
     cfg.traits = { ...DEFAULT_TRAITS, ...(s.limbs.traits as Partial<Traits>) };
   }
   cfg.personality = s.personality as Personality;

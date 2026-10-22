@@ -136,6 +136,7 @@ export function fighterShape(r: DetectResult) {
     traits: shapeTraits(features),
     hasHands: features.hands > 0,
     hasFeet: features.footEff > 0,
+    hasWings: r.limbs.some((l) => l.kind === "wing"), // 羽ペンで 塗った 羽がある → 飛べる
     reach: Math.max(0.35, features.handMax * VISUAL_SIZE),
   };
 }
@@ -155,6 +156,7 @@ export function describeShape(sh: ReturnType<typeof fighterShape>): string[] {
   const k = lv(t.knockTaken, "吹き飛ばされやすい", "どっしり");
   if (k) out.push(`${k}（×${t.knockTaken.toFixed(2)}）`);
   if (t.radius >= 1.15) out.push("横に大きい（当たりやすい）");
+  out.push(sh.hasWings ? "羽で 飛べる（飛んでいる間は スタミナが へる）" : "羽が 無いので 飛べない（羽ペンで 塗ると 飛べる）");
   return out;
 }
 
@@ -166,6 +168,7 @@ export function kidTraits(sh: ReturnType<typeof fighterShape>): [string, string]
   else if (t.walk >= 1.15) out.push(["🏃", "足が はやい"]);
   else if (t.walk <= 0.87) out.push(["🐢", "足が おそい"]);
   else out.push(["🚶", "ふつうの 足"]);
+  if (sh.hasWings) out.push(["🪽", "羽で とべる"]);
   if (!sh.hasHands) out.push(["💥", "体あたりで こうげき"]);
   else {
     if (sh.reach >= 0.7) out.push(["🤜", "手が ながい"]);

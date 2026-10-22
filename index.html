@@ -337,7 +337,7 @@
       .b-view canvas { display: block; width: 100%; height: 100%; }
       @media (prefers-reduced-motion: reduce) { .b-view canvas { filter: none !important; } }
       .b-hud { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: start; padding: 10px 52px 0 12px; color: #1b2a36; }
-      .b-name { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .b-name { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #2d2640; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 2px #fff; }
       .b-side.right { text-align: right; }
       .b-bar { height: 14px; background: rgba(45,38,64,.18); border-radius: 999px; overflow: hidden; margin-top: 3px; border: 2px solid #fff; box-shadow: 0 2px 0 rgba(84,64,140,.18); }
       .b-bar.thin { height: 5px; }
@@ -345,18 +345,20 @@
       .b-bar.thin i { background: #f59f00; }
       .b-side.right .b-bar i { margin-left: auto; background: linear-gradient(180deg, #ff8fb4, #d6336c); }
       .b-side.right .b-bar.thin i { background: #f59f00; }
-      .b-time { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: center; }
+      .b-time { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: center; color: #2d2640; text-shadow: 0 0 4px #fff, 0 0 4px #fff, 0 0 2px #fff; }
       .b-controls { position: absolute; left: 0; right: 0; bottom: env(safe-area-inset-bottom, 0px); z-index: 1; display: flex; justify-content: space-between; align-items: flex-end; padding: 0 16px 20px; pointer-events: none; }
       .b-controls.spectate { display: none; }
       .b-stick { pointer-events: auto; width: 130px; height: 130px; border-radius: 50%; background: rgba(255,255,255,.35); border: 2px solid rgba(0,0,0,.15); display: grid; place-items: center; touch-action: none; }
       .b-knob { width: 56px; height: 56px; border-radius: 50%; background: rgba(255,255,255,.9); box-shadow: 0 2px 6px rgba(0,0,0,.25); pointer-events: none; }
-      .b-buttons { pointer-events: auto; display: grid; grid-template-columns: auto auto auto; grid-template-areas: "sp dg ." "sh . gd" ". at ."; gap: 2px 6px; align-items: center; justify-items: center; }
+      .b-buttons { pointer-events: auto; display: grid; grid-template-columns: auto auto auto; grid-template-areas: "sp dg fl" "sh . gd" ". at ."; gap: 2px 6px; align-items: center; justify-items: center; }
       .b-btn { width: 66px; height: 66px; border-radius: 50%; border: 3px solid #fff; color: #fff; font-weight: 800; font-size: 15px; box-shadow: 0 4px 0 rgba(45,38,64,.3); touch-action: none; min-height: 0; padding: 0; }
       .b-btn.down { transform: scale(.92); filter: brightness(.9); }
       .b-btn.attack { grid-area: at; background: #e8590c; width: 84px; height: 84px; }
       .b-btn.guard { grid-area: gd; background: #1c7ed6; }
       .b-btn.dodge { grid-area: dg; background: #0ca678; width: 60px; height: 60px; font-size: 14px; }
       .b-btn.shove { grid-area: sh; background: #868e96; width: 60px; height: 60px; font-size: 12px; line-height: 1.1; }
+      .b-btn.fly { grid-area: fl; background: #4dabf7; width: 60px; height: 60px; font-size: 12px; line-height: 1.1; }
+      .b-btn.fly[hidden] { display: none; }
       .b-btn.special { grid-area: sp; background: conic-gradient(rgba(0,0,0,.45) calc(var(--cd, 0) * 360deg), #7048e8 0); }
       .b-result { position: absolute; inset: 0; z-index: 2; display: grid; place-content: center; gap: 16px; background: rgba(0,0,0,.45); color: #fff; text-align: center; }
       .b-result-text { font-size: 40px; font-weight: 900; }
@@ -602,9 +604,13 @@
         <div class="cpick" id="cpuPick" aria-live="polite"></div>
         <div id="cpuGrid"></div>
       </div>
+      <div class="field">
+        <div class="label">ステージ</div>
+        <select id="arenaSel"></select>
+      </div>
       <label class="check"><input type="checkbox" id="spectate" /> 観戦モード（自分のキャラも CPU が操作）</label>
       <button id="startBattle" class="primary">戦闘開始</button>
-      <div class="note">操作: 左下のスティックで移動、右下のボタンで攻撃・防御（押している間）・必殺・突き飛ばし（スタミナ不要）・回避（入力方向へ素早く移動、その間は当たらない。方向なしなら後ろへ）。PC は WASD / J=攻撃 / K=防御 / L=必殺 / H=突き飛ばし / スペース=回避。</div>
+      <div class="note">操作: 左下のスティックで移動、右下のボタンで攻撃・防御（押している間）・必殺・突き飛ばし（スタミナ不要）・回避（入力方向へ素早く移動、その間は当たらない。方向なしなら後ろへ）。PC は WASD / J=攻撃 / K=防御 / L=必殺 / H=突き飛ばし / スペース=回避 / U=飛ぶ（羽があるキャラ）。坂は 歩いて のぼれる。はしごは かべに 向かって 進むと のぼる。</div>
     </section>
     <div class="stage">
       <canvas id="view" width="512" height="512"></canvas>
@@ -668,10 +674,11 @@
         <div class="row">
           <button id="mHand" class="on">🖐 手ペン</button>
           <button id="mFoot">🦶 足ペン</button>
+          <button id="mWing">🪽 羽ペン</button>
           <button id="mErase">消しゴム</button>
           <button id="mAuto">🤖 自動に もどす</button>
         </div>
-        <div class="note">絵の 手に なる所を 手ペン、足に なる所を 足ペンで ざっくり ぬってね（はみ出しても 大丈夫）。1つでも ぬると、手足は ぬった所だけに なるよ。何も ぬらなければ 自動で 見つけるよ。</div>
+        <div class="note">絵の 手に なる所を 手ペン、足に なる所を 足ペン、羽に なる所を 羽ペンで ざっくり ぬってね（はみ出しても 大丈夫）。手ペン・足ペンで 1つでも ぬると、手足は ぬった所だけに なるよ。何も ぬらなければ 自動で 見つけるよ。羽を ぬると 空を とべる（羽が 無いと とべない）。</div>
       </div>
       <div class="row">
         <button id="undo">1つ戻す</button>

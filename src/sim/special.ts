@@ -4,7 +4,9 @@
 
 export type EffectId = "invisible" | "giant" | "multi" | "restrain" | "tiny" | "fast" | "homing" | "meteor"
   // 新しい効果
-  | "split" | "bounce" | "boomerang" | "trap" | "vacuum" | "drain" | "freeze" | "blast";
+  | "split" | "bounce" | "boomerang" | "trap" | "vacuum" | "drain" | "freeze" | "blast"
+  // 高さの ある 戦い用
+  | "wave" | "net" | "thunder" | "rain" | "fire";
 
 export interface ProjSpec {
   speed: number; // 単位/秒
@@ -28,6 +30,11 @@ export interface ProjSpec {
   lifesteal: number; // 与えたダメージの何割を撃った側が回復するか
   freezeTicks: number; // 当たった相手の足元が凍って滑る時間
   blast: number; // 消える時に爆発する半径
+  ground: boolean; // 地面を はって進む（坂も のぼる。飛んでいる相手には 当たらない）
+  netTicks: number; // 当たった相手が 飛べなくなる（落ちる）
+  shockTicks: number; // しびれて 攻撃と必殺が 出せない
+  rain: number; // 相手の上の 雲から しずくを 何回 落とすか
+  burnTicks: number; // やけど
   tags: EffectId[]; // 付いている効果（見た目用）
 }
 
@@ -60,11 +67,13 @@ export const BASE_SPEC: ProjSpec = {
   restrainTicks: 0,
   grind: false,
   split: 0, bounces: 0, boomerang: false, trap: false, pull: 0, lifesteal: 0, freezeTicks: 0, blast: 0,
+  ground: false, netTicks: 0, shockTicks: 0, rain: 0, burnTicks: 0,
   tags: [],
 };
 
 // コストはバランス検証（ボット対戦）の結果を反映: 強すぎた豆粒・見えない・高速を上げ、弱かった追尾・打ち上げを下げた
 // 測定用に外から書き換えられる基準コスト（取り込み時は数値を直書きでよい）
+export const WAVE_COST = 4, NET_COST = 3, THUNDER_COST = 4, RAIN_COST = 7, FIRE_COST = 8;
 export const SPLIT_COST = 4, BOUNCE_COST = 2, BOOMERANG_COST = 3, TRAP_COST = 4, VACUUM_COST = 4, DRAIN_COST = 13, FREEZE_COST = 2, BLAST_COST = 15;
 export const EFFECTS: EffectDef[] = [
   { id: "invisible", name: "見えない弾", cost: 11, phase: "behavior", apply: (s) => { s.visible = false; } },
@@ -84,6 +93,12 @@ export const EFFECTS: EffectDef[] = [
   { id: "drain", name: "すいとり", cost: DRAIN_COST, phase: "behavior", apply: (s) => { s.lifesteal += 0.6; } },
   { id: "freeze", name: "こおり", cost: FREEZE_COST, phase: "behavior", apply: (s) => { s.freezeTicks += 90; } },
   { id: "blast", name: "ばくはつ", cost: BLAST_COST, phase: "behavior", apply: (s) => { s.blast += 2.2; } },
+  // 高さの ある 戦い用（コストは CPU 対戦の 測定で 決めた）
+  { id: "wave", name: "じめん波", cost: WAVE_COST, phase: "motion", apply: (s) => { s.ground = true; s.size *= 1.8; s.damage *= 1.15; s.speed *= 0.85; } },
+  { id: "net", name: "あみ", cost: NET_COST, phase: "behavior", apply: (s) => { s.netTicks += 150; s.size *= 1.4; s.damage *= 0.9; } },
+  { id: "thunder", name: "かみなり", cost: THUNDER_COST, phase: "behavior", apply: (s) => { s.shockTicks += 100; } },
+  { id: "rain", name: "あめあられ", cost: RAIN_COST, phase: "add", apply: (s) => { s.rain += 6; } },
+  { id: "fire", name: "ほのお", cost: FIRE_COST, phase: "behavior", apply: (s) => { s.burnTicks += 150; } },
 ];
 
 // 同じ効果を複数付けたら、その数だけ重ねてかける（巨大×2 なら 9 倍の大きさ）。並び順には依らない

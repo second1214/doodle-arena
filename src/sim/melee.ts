@@ -2,7 +2,9 @@
 // （選んだ順に依らず同じ構成なら同じ挙動）。矛盾した組み合わせも止めない。数値は調整前提の仮値。
 
 export type MeleeEffectId = "tornado" | "wobble" | "legbind" | "giantHands" | "rubber" | "dash" | "grab" | "slam" | "crumple"
-  | "magnet" | "vampire" | "ice" | "counter" | "mushroom" | "bulldozer";
+  | "magnet" | "vampire" | "ice" | "counter" | "mushroom" | "bulldozer"
+  // 高さの ある 戦い用
+  | "uppercut" | "dive" | "gust" | "flame";
 
 export interface MeleeSpec {
   windup: number; // 構え（tick。殴られると潰れる）
@@ -30,6 +32,11 @@ export interface MeleeSpec {
   counter: boolean; // 構え中に殴られたら受け流して2倍で反撃
   bigTicks: number; // 出した後、自分が大きくなって攻撃1.5倍・被ダメ0.8倍
   push: number; // 吹き飛ばさずに押し込む（壁に挟むと追加ダメージ）
+  vreach: number; // 届く 高さの差を 足す（上の相手に 届く）
+  launch: number; // 当てた相手を 上へ 打ち上げる 速さ
+  dive: boolean; // 跳び上がって 相手へ 飛びこむ
+  netTicks: number; // 当てた相手が 飛べなくなる（かぜで 落とす）
+  burnTicks: number; // やけど
   tags: MeleeEffectId[];
 }
 
@@ -48,10 +55,12 @@ export const BASE_MELEE: MeleeSpec = {
   windup: 3, active: 6, recover: 15, damage: 16, hits: 1, hitInterval: 4,
   range: 1.4, arc: Math.PI / 3, knock: 9, spinTicks: 0, dash: 0,
   grab: false, slam: false, wobbleTicks: 0, legbindTicks: 0, crumpleTicks: 0,
-  limbScale: 1, rubberScale: 1, pull: 0, lifesteal: 0, freezeTicks: 0, counter: false, bigTicks: 0, push: 0, tags: [],
+  limbScale: 1, rubberScale: 1, pull: 0, lifesteal: 0, freezeTicks: 0, counter: false, bigTicks: 0, push: 0,
+  vreach: 0, launch: 0, dive: false, netTicks: 0, burnTicks: 0, tags: [],
 };
 
 // 測定用の基準コスト
+export const UPPERCUT_COST = 4, DIVE_COST = 5, GUST_COST = 4, FLAME_COST = 7;
 export const MAGNET_COST = 6, VAMPIRE_COST = 14, ICE_COST = 4, COUNTER_COST = 1, MUSHROOM_COST = 1, BULLDOZER_COST = 6;
 export const MELEE_EFFECTS: MeleeEffectDef[] = [
   { id: "giantHands", name: "巨大な手", cost: 6, phase: "body", apply: (s) => { s.limbScale *= 3; s.range *= 2.2; s.windup += 6; } },
@@ -69,6 +78,11 @@ export const MELEE_EFFECTS: MeleeEffectDef[] = [
   { id: "ice", name: "こおりタッチ", cost: ICE_COST, phase: "after", apply: (s) => { s.freezeTicks += 120; } },
   { id: "counter", name: "カウンター", cost: COUNTER_COST, phase: "hit", apply: (s) => { s.counter = true; s.windup += 22; } },
   { id: "mushroom", name: "でっかくなる", cost: MUSHROOM_COST, phase: "after", apply: (s) => { s.bigTicks += 180; s.damage *= 0.5; } },
+  // 高さの ある 戦い用（コストは CPU 対戦の 測定で 決めた）
+  { id: "uppercut", name: "アッパー", cost: UPPERCUT_COST, phase: "hit", apply: (s) => { s.vreach += 2.6; s.launch += 9; s.arc = Math.max(s.arc, Math.PI / 2); } },
+  { id: "dive", name: "ダイブ", cost: DIVE_COST, phase: "motion", apply: (s) => { s.dive = true; s.dash += 4; s.vreach += 3; s.arc = Math.PI; s.windup += 2; } },
+  { id: "gust", name: "かぜおこし", cost: GUST_COST, phase: "hit", apply: (s) => { s.arc = Math.PI; s.knock *= 1.9; s.vreach += 1.8; s.netTicks += 120; s.damage *= 0.9; } },
+  { id: "flame", name: "ほのおパンチ", cost: FLAME_COST, phase: "after", apply: (s) => { s.burnTicks += 150; } },
   { id: "bulldozer", name: "ブルドーザー", cost: BULLDOZER_COST, phase: "motion", apply: (s) => { s.push += 1; s.active += 20; s.knock = 0; s.damage *= 0.6; } }, // 測定1回目は1回平均50ダメで強すぎ
 ];
 

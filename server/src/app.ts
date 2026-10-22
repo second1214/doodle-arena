@@ -81,7 +81,7 @@ export function cleanSnapshot(raw: unknown): { ok: true; snap: Snapshot } | { ok
   if (Array.isArray(r.marks)) {
     if (r.marks.length > LIMITS.maxStrokes) return { ok: false, error: "線が 多すぎます" };
     for (const s of r.marks as Record<string, unknown>[]) {
-      if (!s || typeof s !== "object" || !Array.isArray(s.points) || !["hand", "foot", "erase"].includes(s.color as string) || !finite(s.width)) return { ok: false, error: "手足の データが こわれています" };
+      if (!s || typeof s !== "object" || !Array.isArray(s.points) || !["hand", "foot", "wing", "erase"].includes(s.color as string) || !finite(s.width)) return { ok: false, error: "手足の データが こわれています" };
       const pts = (s.points as unknown[]).map((p) => (finite(p) ? Math.round(clamp(p, -64, 576)) : NaN));
       if (pts.some(Number.isNaN) || pts.length < 2 || pts.length % 2) return { ok: false, error: "手足の データが こわれています" };
       points += pts.length;
@@ -116,6 +116,7 @@ export function cleanSnapshot(raw: unknown): { ok: true; snap: Snapshot } | { ok
       reach: finite(limbs.reach) ? clamp(limbs.reach, 0, 10) : 0.5,
       hasHands: limbs.hasHands === true,
       hasFeet: limbs.hasFeet === true,
+      hasWings: limbs.hasWings === true,
       traits: nums(limbs.traits, TRAIT_KEYS, -50, 50),
     } : undefined,
   };

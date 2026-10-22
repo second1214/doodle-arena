@@ -7,7 +7,7 @@ export interface Snapshot {
   ver: { shape: number; detect: number; sim: number; tree: number };
   name: string;
   strokes: { color: string; width: number; points: number[]; fill?: boolean; img?: string; mask?: string; timg?: string }[];
-  marks?: { color: string; width: number; points: number[] }[]; // 手足レイヤー（color は hand / foot / erase。検知の版 2 から）
+  marks?: { color: string; width: number; points: number[] }[]; // 手足レイヤー（color は hand / foot / wing / erase。検知の版 2 から。wing は 版 4 から）
   detectParams: Record<string, number>;
   personality: string;
   specialType: "ranged" | "melee";
@@ -16,7 +16,7 @@ export interface Snapshot {
   specialMod: Record<string, number>; // 予算内に絞った後の必殺の数値
   boost: Record<string, number>; // スキルツリーの合計＋発動ポイントの増減
   growth: number; // もらったスキルポイントの合計（部屋の決定に使う）
-  limbs?: { reach: number; hasHands: boolean; hasFeet: boolean; traits: Record<string, number> }; // 予備: 公開した時の手足の結果
+  limbs?: { reach: number; hasHands: boolean; hasFeet: boolean; hasWings?: boolean; traits: Record<string, number> }; // 予備: 公開した時の手足の結果
 }
 
 // 一覧用の小さな絵: 線の点を間引いて合計 ~700 個の数に抑える（ランキング20体分でも軽い）

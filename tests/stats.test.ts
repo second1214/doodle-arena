@@ -14,10 +14,10 @@ describe("強化（スキルツリー）", () => {
     expect([e.maxHp, e.chargeNeed, e.dodgeCost, e.guardCut, e.guardCharge]).toEqual([100, 5, 22, 0.7, 0.5]);
   });
 
-  it("7本の枝（小・★山場・分かれ道・◆大技）＋組み合わせ技7＋らくがき才能4。順につながっていないと取れない", () => {
-    expect(NODES.filter((n) => n.kind === "bridge").length).toBe(7);
-    expect(NODES.filter((n) => n.kind === "talent").length).toBe(4);
-    expect(TREE_TOTAL).toBe(7 * 11 + 7 * 3 + 4);
+  it("8本の枝（小・★山場・分かれ道・◆大技）＋組み合わせ技9＋らくがき才能5。順につながっていないと取れない", () => {
+    expect(NODES.filter((n) => n.kind === "bridge").length).toBe(9);
+    expect(NODES.filter((n) => n.kind === "talent").length).toBe(5);
+    expect(TREE_TOTAL).toBe(8 * 11 + 9 * 3 + 5);
     expect(canTake("atk-1", [])).toBe(true);
     expect(canTake("atk-2", [])).toBe(false);
     const toFork = ["atk-1", "atk-2", "atk-3", "atk-4"];

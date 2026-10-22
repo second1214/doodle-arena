@@ -36,6 +36,7 @@ export function buildCharacter(name: string, strokes: Stroke[], special: EffectI
       reach: shape.reach,
       hasHands: shape.hasHands,
       hasFeet: shape.hasFeet,
+      hasWings: shape.hasWings,
       special,
       traits: shape.traits,
       hurt: buildHurt(strokes, res), // 描いた線と塗りの部分だけが当たる

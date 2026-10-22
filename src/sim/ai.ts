@@ -1,6 +1,7 @@
 // CPU の操作。性格ごとに行動の重みを変える（猛攻 / 慎重 / 狙撃 / トリッキー）。
 // 反応の遅れ・迷いはシード固定の乱数で決めるので、同じシードなら同じ試合になる。
-import { attackCostOf, grabRange, meleeRange, meleeSpecialRange, type Input, type Personality, type World } from "./world";
+import { airborne, attackCostOf, grabRange, meleeRange, meleeSpecialRange, type Input, type Personality, type World } from "./world";
+import { groundAt, STEP } from "./arena";
 
 export type { Personality };
 
@@ -36,10 +37,12 @@ export interface AiState {
   wait: number;
   strafe: number;
   backoff: number; // 攻撃の後しばらく距離を取る（張り付き防止）
+  route: number; // 高い所の 相手へ 向かう 道しるべ（-1 で 無し）
+  flyT: number; // 飛び続ける 残り（羽のある CPU）
 }
 
 export function createAi(level: AiLevel = DEFAULT_AI_LEVEL): AiState {
-  return { level, hold: { mx: 0, mz: 0, attack: false, guard: false, special: false }, wait: 0, strafe: 1, backoff: 0 };
+  return { level, hold: { mx: 0, mz: 0, attack: false, guard: false, special: false }, wait: 0, strafe: 1, backoff: 0, route: -1, flyT: 0 };
 }
 
 export function aiInput(w: World, i: 0 | 1, ai: AiState): Input {
@@ -144,6 +147,53 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState): Input {
     const opReach = meleeRange(op.cfg, me.cfg);
     if (reach > opReach + 0.3 && dist < opReach + 0.2) { mx -= ux * 0.8; mz -= uz * 0.8; }
   }
-  ai.hold = { mx, mz, attack: false, guard, special: false };
-  return { mx, mz, attack, guard, special, shove, dodge };
+  // --- 高さ: 高い所の 相手へは 坂・はしご（道しるべ）で 向かう。羽があれば 飛ぶ ---
+  const A = w.arena;
+  const myG = groundAt(A, me.x, me.z), opG = groundAt(A, op.x, op.z);
+  const opHigh = opG > me.y + STEP + 0.1; // 相手の 立っている所が 高い
+  const opFly = airborne(w, op) && op.y > me.y + 1.1; // 相手が 上を 飛んでいる
+  const canFly = !!me.cfg.hasWings && !me.tired && me.net === 0;
+  let fly = false;
+  if (ai.flyT > 0) ai.flyT--;
+  if (canFly) {
+    // 飛ぶ: 上の相手を 追う・弾を よける。スタミナが 少なくなったら 降りる
+    if ((opHigh || opFly) && me.stamina > 45) ai.flyT = Math.max(ai.flyT, 25);
+    if (threat && !dodge && me.stamina > 40 && rng.next() < 0.25) ai.flyT = Math.max(ai.flyT, 15);
+    if ((opWinding || opMeleeThreat) && me.stamina > 40 && rng.next() < 0.3) ai.flyT = Math.max(ai.flyT, 12); // 殴られそう → 上へ にげる
+    if (ready && !melee && me.stamina > 55 && rng.next() < 0.15) ai.flyT = Math.max(ai.flyT, 20); // 空から 撃つ
+    if (me.stamina < 30) ai.flyT = 0;
+    fly = ai.flyT > 0 && me.y < Math.max(op.y + 0.6, myG + 1.2);
+    if (ai.flyT === 0 && me.y > myG + 0.3 && !opFly && me.stamina > 15) fly = false; // すべり降りる
+  }
+  const moving = !dodge && !special && !(threat && (mx !== 0 || mz !== 0));
+  if (A && opHigh && !(canFly && ai.flyT > 0) && moving) {
+    // 道しるべ: 今の高さから 行けて、相手の高さに いちばん近い所へ 上がれるもの
+    if (ai.route >= 0) {
+      const p = A.paths[ai.route];
+      if (!p || me.y >= p.h - 0.1 || Math.abs(groundAt(A, p.foot[0], p.foot[1]) - myG) > p.h) ai.route = -1;
+    }
+    if (ai.route < 0) {
+      let best = Infinity;
+      A.paths.forEach((p, k) => {
+        if (p.h <= me.y + 0.3 || Math.abs(groundAt(A, p.foot[0], p.foot[1]) - me.y) > STEP + 0.15) return;
+        const cost = Math.hypot(p.foot[0] - me.x, p.foot[1] - me.z) + Math.hypot(p.top[0] - op.x, p.top[1] - op.z) + Math.abs(p.h - opG) * 3;
+        if (cost < best) { best = cost; ai.route = k; }
+      });
+    }
+    if (ai.route >= 0) {
+      const p = A.paths[ai.route];
+      const atFoot = Math.hypot(p.foot[0] - me.x, p.foot[1] - me.z) < 0.6 || myG > groundAt(A, p.foot[0], p.foot[1]) + 0.1;
+      const [tx, tz] = atFoot ? p.top : p.foot;
+      const l = Math.hypot(tx - me.x, tz - me.z) || 1;
+      mx = (tx - me.x) / l; mz = (tz - me.z) / l;
+      guard = false;
+    }
+  } else ai.route = -1;
+  // 上を 飛んでいる 相手に 手が届かない: 撃てるなら 撃つ。だめなら 真下で 待つ（降りてきたら 殴る）
+  if (opFly && !(canFly && ai.flyT > 0) && moving) {
+    if (ready && !melee && rng.next() < 0.5) special = true;
+    attack = false;
+  }
+  ai.hold = { mx, mz, attack: false, guard, special: false, fly };
+  return { mx, mz, attack, guard, special, shove, dodge, fly };
 }
