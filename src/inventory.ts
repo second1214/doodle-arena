@@ -1,9 +1,9 @@
 // 持っている必殺パーツ（プレイヤー共通・ブラウザ内に保存）。ドロップ・分解・合成・振り直し。
-import { ALL_KINDS, isKind, makePart, PITY, RARITIES, RARITY_INFO, rarityIndex, rollRarity, type Part, type PartKind, type Rarity } from "./items";
+import { ALL_KINDS, isKind, makePart, PITY, RARITIES, RARITY_INFO, rarityIndex, rollRarity, TOP_RARITY, type Part, type PartKind, type Rarity } from "./items";
 
 const KEY = "doodle-arena:inventory";
 export const INVENTORY_CAP = 300;
-export const COMBINE_COUNT = 5;
+export const COMBINE_COUNT = 3; // ベース1こ＋材料2こ（しゅるいは ちがっても よい・レア度は 同じ）
 
 export interface Inventory {
   v: 1;
@@ -87,42 +87,39 @@ export function reroll(id: string, rnd: () => number = Math.random): Part | null
   return inv.parts[i];
 }
 
-// 合成: ベース1個＋同じ種類・同じレア度の材料4個 → ベースが1段上のレア度になる（数値は引き直し。id・鍵はそのまま＝装備したままでよい）。
+// 合成（ランクアップ）: ベース1個＋同じレア度の材料2個（しゅるいは 何でも）→ ベースが1段上のレア度になる
+// （しゅるいは ベースのまま・数値は引き直し。id・鍵はそのまま＝装備したままでよい）。いちばん上は SSS。
 // 材料にできるのは、装備していない・鍵のかかっていないものだけ（同じパーツを重ねて付けて強くしているのを こわさない）
 export const canBeMaterial = (p: Part, equipped: Set<string>) => !p.locked && !equipped.has(p.id);
-export function combinable(kind: PartKind, rarity: Rarity, equipped: Set<string>): Part[] {
-  return loadInventory().parts.filter((p) => p.kind === kind && p.rarity === rarity && canBeMaterial(p, equipped));
+export function combinable(rarity: Rarity, equipped: Set<string>): Part[] {
+  return loadInventory().parts.filter((p) => p.rarity === rarity && canBeMaterial(p, equipped));
 }
 export function combineInto(baseId: string, materialIds: string[], equipped: Set<string>, rnd: () => number = Math.random): Part | null {
   const inv = loadInventory();
   const base = inv.parts.find((p) => p.id === baseId);
-  if (!base || base.rarity === "S" || base.locked) return null;
+  if (!base || base.rarity === TOP_RARITY || base.locked) return null;
   const mats = [...new Set(materialIds)].filter((id) => id !== baseId).map((id) => inv.parts.find((p) => p.id === id));
-  if (mats.length !== COMBINE_COUNT - 1 || mats.some((m) => !m || m.kind !== base.kind || m.rarity !== base.rarity || !canBeMaterial(m, equipped))) return null;
+  if (mats.length !== COMBINE_COUNT - 1 || mats.some((m) => !m || m.rarity !== base.rarity || !canBeMaterial(m, equipped))) return null;
   const use = new Set(materialIds);
-  const np: Part = makePart(base.kind, RARITIES[rarityIndex(base.rarity) + 1], rnd, base.id);
+  const np: Part = { ...makePart(base.kind, RARITIES[rarityIndex(base.rarity) + 1], rnd, base.id), ...(base.locked ? { locked: true } : {}) };
   inv.parts = inv.parts.filter((p) => !use.has(p.id)).map((p) => (p.id === base.id ? np : p));
   saveInventory(inv);
   return np;
 }
 
-// まとめて合成の計画: 同じ種類・同じレア度ごとに、ベース＋材料4個の組を作れるだけ作る。
+// まとめて合成の計画: レア度ごとに、ベース＋材料2個の組を作れるだけ作る（ピースの数が へって レア度が 上がる）。
 // ベースは 指定があればそれ、無ければ 装備中のもの→出来のよいもの の順。材料は 出来のわるいものから
-export interface CombinePlan { kind: PartKind; rarity: Rarity; baseId: string; materialIds: string[]; candidates: string[] }
-export function planCombines(parts: Part[], equipped: Set<string>, chosenBases: Record<string, string[]> = {}): CombinePlan[] {
-  const groups = new Map<string, Part[]>();
-  for (const p of parts) {
-    if (p.rarity === "S" || p.locked) continue;
-    const k = `${p.kind}|${p.rarity}`;
-    groups.set(k, [...(groups.get(k) ?? []), p]);
-  }
+export interface CombinePlan { rarity: Rarity; baseId: string; materialIds: string[]; candidates: string[] }
+export function planCombines(parts: Part[], equipped: Set<string>, chosenBases: Partial<Record<Rarity, string[]>> = {}): CombinePlan[] {
   const out: CombinePlan[] = [];
-  for (const [key, list] of groups) {
+  for (const rarity of RARITIES) {
+    if (rarity === TOP_RARITY) continue;
+    const list = parts.filter((p) => p.rarity === rarity && !p.locked);
     const used = new Set<string>();
     const byBase = [...list].sort((a, b) => Number(equipped.has(b.id)) - Number(equipped.has(a.id)) || b.roll - a.roll);
     const byMat = [...list].filter((p) => canBeMaterial(p, equipped)).sort((a, b) => a.roll - b.roll);
-    const wanted = chosenBases[key] ?? [];
-    // その部品をベースにしても 材料が4個そろうか
+    const wanted = chosenBases[rarity] ?? [];
+    // その部品をベースにしても 材料が そろうか
     const feasible = (id: string) => byMat.filter((m) => m.id !== id && !used.has(m.id)).length >= COMBINE_COUNT - 1;
     for (let n = 0; ; n++) {
       const candidates = byBase.filter((p) => !used.has(p.id) && feasible(p.id)).map((p) => p.id);
@@ -131,7 +128,7 @@ export function planCombines(parts: Part[], equipped: Set<string>, chosenBases: 
       const mats = byMat.filter((m) => m.id !== base && !used.has(m.id)).slice(0, COMBINE_COUNT - 1);
       used.add(base);
       mats.forEach((m) => used.add(m.id));
-      out.push({ kind: list[0].kind, rarity: list[0].rarity, baseId: base, materialIds: mats.map((m) => m.id), candidates });
+      out.push({ rarity, baseId: base, materialIds: mats.map((m) => m.id), candidates });
     }
   }
   return out;

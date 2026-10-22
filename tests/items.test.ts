@@ -77,34 +77,52 @@ describe("持ち物", () => {
     expect(b.got.length).toBe(2);
   });
 
-  it("分解でかけら、かけらで振り直し、5個で合成", () => {
+  it("分解でかけら、かけらで振り直し、3個で合成（しゅるいは ちがっても よい）", () => {
     const rnd = seededRnd(9);
-    const parts = Array.from({ length: 6 }, () => makePart("power", "D", rnd));
+    const parts = [makePart("power", "D", rnd), makePart("power", "D", rnd), makePart("r:giant", "D", rnd), makePart("m:dash", "D", rnd)];
     saveInventory({ v: 1, parts, shards: 0, sinceA: 0 });
     expect(dismantle(parts[0].id)).toBe(4);
     expect(reroll(parts[1].id)).toBeNull(); // かけら不足（8 必要）
     const [base, ...mats] = loadInventory().parts.map((p) => p.id);
+    expect(combineInto(base, [mats[0]], new Set())).toBeNull(); // 材料が たりない
     const np = combineInto(base, mats, new Set())!;
     expect(np.rarity).toBe("C");
+    expect(np.kind).toBe("power"); // しゅるいは ベースのまま
     expect(np.id).toBe(base); // ベースが1段上になる（装備したままでよい）
     expect(loadInventory().parts.length).toBe(1);
   });
 
+  it("レア度は SSS まで。SS・SSS は 合成で 作る", () => {
+    const rnd = seededRnd(3);
+    expect(RARITIES.at(-1)).toBe("SSS");
+    const ss = [makePart("power", "SS", rnd), makePart("r:fire", "SS", rnd), makePart("charge", "SS", rnd)];
+    saveInventory({ v: 1, parts: ss, shards: 0, sinceA: 0 });
+    const top = combineInto(ss[0].id, [ss[1].id, ss[2].id], new Set())!;
+    expect(top.rarity).toBe("SSS");
+    expect(top.extras.length).toBe(4);
+    const more = [top, makePart("power", "SSS", rnd), makePart("power", "SSS", rnd)];
+    saveInventory({ v: 1, parts: more, shards: 0, sinceA: 0 });
+    expect(combineInto(top.id, [more[1].id, more[2].id], new Set())).toBeNull(); // SSS が いちばん上
+    expect(planCombines(more, new Set()).length).toBe(0);
+    for (let k = 0; k < 2000; k++) expect(["SS", "SSS"]).not.toContain(rollRarity(7, rnd)); // ドロップでは 出ない
+  });
+
   it("鍵つき・装備中は材料にも分解にも使わない。まとめて合成の計画とベースの入れかえ", () => {
     const rnd = seededRnd(11);
-    const parts = Array.from({ length: 11 }, () => makePart("power", "C", rnd));
+    const kinds = ["power", "r:giant", "m:dash", "lucky", "r:fire", "pierce", "r:net"] as const;
+    const parts = kinds.map((k) => makePart(k, "C", rnd));
     saveInventory({ v: 1, parts, shards: 0, sinceA: 0 });
     toggleLock(parts[0].id);
     expect(dismantle(parts[0].id)).toBe(0);
     const eq = new Set([parts[1].id, parts[2].id]);
-    // 鍵1・装備2 → 材料にできるのは8個。ベースは装備中から → 2組
+    // 鍵1・装備2 → 材料にできるのは4個。ベースは装備中から → 2組
     const plan = planCombines(loadInventory().parts, eq);
     expect(plan.length).toBe(2);
     expect(eq.has(plan[0].baseId)).toBe(true);
     for (const pl of plan) for (const m of pl.materialIds) { expect(eq.has(m)).toBe(false); expect(m).not.toBe(parts[0].id); }
     // ベースを入れかえ
     const other = plan[0].candidates.find((id) => id !== plan[0].baseId && !eq.has(id))!;
-    const re = planCombines(loadInventory().parts, eq, { [`power|C`]: [other] });
+    const re = planCombines(loadInventory().parts, eq, { C: [other] });
     expect(re[0].baseId).toBe(other);
     expect(re[0].materialIds).not.toContain(other);
     expect(combineInto(re[0].baseId, re[0].materialIds, eq)?.rarity).toBe("B");

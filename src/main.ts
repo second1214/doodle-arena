@@ -13,7 +13,7 @@ import { Preview3D } from "./battle/preview";
 import { fighterShape, kidTraits } from "./shape";
 import { PERSONAS } from "./sim/ai";
 import { sumBoost, type Boost } from "./sim/stats";
-import { ALL_KINDS, buildSpecial, equipCosts, extraText, fitsType, hashStr, kindIcon, kindInfo, mainText, makePart, seededRnd, RARITIES, RARITY_INFO, rarityIndex, SPECIAL_BUDGET, type BuiltSpecial, type Part, type PartKind } from "./items";
+import { ALL_KINDS, buildSpecial, equipCosts, extraText, fitsType, hashStr, kindIcon, kindInfo, mainText, makePart, seededRnd, RARITIES, RARITY_INFO, rarityIndex, SPECIAL_BUDGET, TOP_RARITY, type BuiltSpecial, type Part, type PartKind, type Rarity } from "./items";
 import { canBeMaterial, combineInto, COMBINE_COUNT, dismantle, dropParts, INVENTORY_CAP, loadInventory, migrateToParts, planCombines, reroll, rerollCost, toggleLock, type DropResult } from "./inventory";
 import { autoTree, boostOf, BRANCHES, bridges, canTake, masteredBranches, nodeById, nodeId, randomTree, spentOf, talents, TREE_CAP, TREE_TOTAL, type ShapeFlags } from "./tree";
 import type { Personality } from "./sim/world";
@@ -1918,7 +1918,7 @@ function renderParts() {
   const bulk = document.getElementById("bulkCombine") as HTMLButtonElement;
   bulk.disabled = !plans.length;
   bulk.textContent = plans.length ? `🔨 まとめて ごうせい（${plans.length}）` : "🔨 まとめて ごうせい";
-  bulk.title = plans.length ? "" : "同じ しゅるい・同じ レア度が 5こ（材料4こ＋ベース）そろうと できるよ";
+  bulk.title = plans.length ? "" : "同じ レア度が 3こ（ベース＋材料2こ。しゅるいは ちがっても OK）そろうと できるよ";
   const listEl = document.getElementById("partList")!;
   listEl.innerHTML = "";
   const shown = sortParts(inv.parts.filter((p) => partFilter === "all" || kindInfo(p.kind).type === partFilter), partSortSel.value, inv.parts);
@@ -2009,12 +2009,11 @@ function renderParts() {
     renderParts();
   });
 
-  const key = `${p.kind}|${p.rarity}`;
-  const mats = inv.parts.filter((x) => x.kind === p.kind && x.rarity === p.rarity && x.id !== p.id && canBeMaterial(x, eq)).length;
+  const mats = inv.parts.filter((x) => x.rarity === p.rarity && x.id !== p.id && canBeMaterial(x, eq)).length;
   const cb = document.createElement("button");
-  cb.textContent = p.rarity === "S" ? "合成（S は最高）" : `🔨 これを ベースに 合成（材料 ${mats}/${COMBINE_COUNT - 1}）`;
-  cb.disabled = p.rarity === "S" || !!p.locked || mats < COMBINE_COUNT - 1;
-  cb.addEventListener("click", () => openCombine(key, { [key]: [p.id] }));
+  cb.textContent = p.rarity === TOP_RARITY ? `合成（${TOP_RARITY} は最高）` : `🔨 これを ベースに ${RARITIES[rarityIndex(p.rarity) + 1]} へ 合成（${p.rarity} の材料 ${mats}/${COMBINE_COUNT - 1}）`;
+  cb.disabled = p.rarity === TOP_RARITY || !!p.locked || mats < COMBINE_COUNT - 1;
+  cb.addEventListener("click", () => openCombine(p.rarity, { [p.rarity]: [p.id] }, p.id));
   row.append(lk, rr, dm, cb);
   info.append(row, msg);
   const notes: string[] = [];
@@ -2025,7 +2024,7 @@ function renderParts() {
 
 // --- 合成の確認（まとめて・1組）: 何がなくなり何ができるかを見せ、ベースを えらび直せる ---
 let combineModal: HTMLElement | null = null;
-function openCombine(onlyKey?: string, chosen: Record<string, string[]> = {}) {
+function openCombine(onlyKey?: Rarity, chosen: Partial<Record<Rarity, string[]>> = {}, onlyBase?: string) {
   combineModal?.remove();
   const off = new Set<number>(); // やめておく組（番号）
   const modal = document.createElement("div");
@@ -2043,19 +2042,21 @@ function openCombine(onlyKey?: string, chosen: Record<string, string[]> = {}) {
     const inv = loadInventory();
     const eq = equippedIds();
     const byId = new Map(inv.parts.map((p) => [p.id, p]));
-    const plans = planCombines(inv.parts, eq, chosen).filter((pl) => !onlyKey || `${pl.kind}|${pl.rarity}` === onlyKey);
+    // パーツから 開いた時は その1組だけ（ベースを えらび直したら その組）
+    const all = planCombines(inv.parts, eq, chosen).filter((pl) => !onlyKey || pl.rarity === onlyKey);
+    const plans = onlyBase ? all.slice(0, 1) : all;
     box.innerHTML = "";
     const h = document.createElement("div");
     h.className = "kidhint";
     h.textContent = onlyKey ? "🔨 合成の かくにん" : `🔨 まとめて ごうせい（${plans.length}組）`;
     const warn = document.createElement("div");
     warn.className = "warn";
-    warn.textContent = "⚠ ベース いがいの 材料4こは なくなるよ。ベースは 1段上の レア度に なって 数値が 引き直しに なる。装備中と 🔒の パーツは 材料に しないよ。おなじ パーツを かさねて つけている時は、ベースと 材料を よく みてね。";
+    warn.textContent = `⚠ ベース いがいの 材料${COMBINE_COUNT - 1}こは なくなるよ（しゅるいが ちがっても 同じ レア度なら 材料に なる）。ベースは しゅるいは そのままで 1段上の レア度に なり、数値が 引き直しに なる。装備中と 🔒の パーツは 材料に しないよ。のこしたい パーツには 🔒を かけてね。`;
     box.append(h, warn);
     if (!plans.length) { const e = document.createElement("div"); e.className = "note"; e.textContent = "合成できる 組が ないよ。"; box.appendChild(e); }
     plans.forEach((pl, n) => {
-      const key = `${pl.kind}|${pl.rarity}`;
-      const nth = plans.slice(0, n).filter((x) => `${x.kind}|${x.rarity}` === key).length;
+      const key = pl.rarity;
+      const nth = plans.slice(0, n).filter((x) => x.rarity === key).length;
       const base = byId.get(pl.baseId)!;
       const div = document.createElement("div");
       div.className = `cplan${off.has(n) ? " off" : ""}`;
@@ -2066,18 +2067,18 @@ function openCombine(onlyKey?: string, chosen: Record<string, string[]> = {}) {
       cbx.checked = !off.has(n);
       cbx.addEventListener("change", () => { if (cbx.checked) off.delete(n); else off.add(n); draw(); });
       const next = RARITIES[rarityIndex(pl.rarity) + 1];
-      head.append(cbx, `${kindIcon(pl.kind)} ${kindInfo(pl.kind).name}　${pl.rarity} ×${COMBINE_COUNT} → ${next}`);
+      head.append(cbx, `${kindIcon(base.kind)} ${kindInfo(base.kind).name}　${pl.rarity} ×${COMBINE_COUNT} → ${next}`);
       const sel = document.createElement("select");
       for (const id of pl.candidates) {
         const c = byId.get(id)!;
-        const o = new Option(`ベース: 出来 ${Math.round(c.roll * 100)}%・⚡${c.cost}${c.extras.length ? `・おまけ${c.extras.length}` : ""}${eq.has(id) ? "・装備中" : ""}`, id);
+        const o = new Option(`ベース: ${kindIcon(c.kind)}${kindInfo(c.kind).name}・出来 ${Math.round(c.roll * 100)}%${eq.has(id) ? "・装備中" : ""}`, id);
         sel.add(o);
       }
       sel.value = pl.baseId;
       sel.addEventListener("change", () => { const arr = [...(chosen[key] ?? [])]; arr[nth] = sel.value; chosen[key] = arr; draw(); });
       const mats = document.createElement("div");
       mats.className = "mats";
-      mats.textContent = `なくなる 材料: ${pl.materialIds.map((id) => { const m = byId.get(id)!; return `出来${Math.round(m.roll * 100)}%${m.extras.length ? `+${m.extras.length}` : ""}`; }).join("・")}`;
+      mats.textContent = `なくなる 材料: ${pl.materialIds.map((id) => { const m = byId.get(id)!; return `${kindIcon(m.kind)}${kindInfo(m.kind).name}（出来${Math.round(m.roll * 100)}%）`; }).join("・")}`;
       div.append(head, partChip(base, base.cost, eq.has(base.id) ? "ベース・装備中" : "ベース"), sel, mats);
       box.appendChild(div);
     });

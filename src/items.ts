@@ -1,12 +1,14 @@
-// 必殺パーツ（ハクスラ）。手に入れるたびに威力・装備コスト・おまけ効果がランダムに決まる。レア度 F→E→D→C→B→A→S。
+// 必殺パーツ（ハクスラ）。手に入れるたびに威力・装備コスト・おまけ効果がランダムに決まる。レア度 F→E→D→C→B→A→S（ドロップ）→SS→SSS（合成だけ）。
 // パーツの数値は手に入れた時に確定して保存する（後で表を変えても、持っているパーツは変わらない）。
 // 戦闘には「効果 ID の並び（重ねがけ込み）＋数値（威力倍率など）」だけを渡す。
 import { EFFECTS, type EffectId } from "./sim/special";
 import { MELEE_EFFECTS, type MeleeEffectId } from "./sim/melee";
 import type { SpecialMod } from "./sim/world";
 
-export type Rarity = "F" | "E" | "D" | "C" | "B" | "A" | "S";
-export const RARITIES: Rarity[] = ["F", "E", "D", "C", "B", "A", "S"];
+// SS・SSS は 合成で だけ 作れる（ドロップでは 出ない）
+export type Rarity = "F" | "E" | "D" | "C" | "B" | "A" | "S" | "SS" | "SSS";
+export const RARITIES: Rarity[] = ["F", "E", "D", "C", "B", "A", "S", "SS", "SSS"];
+export const TOP_RARITY: Rarity = "SSS";
 export const rarityIndex = (r: Rarity) => RARITIES.indexOf(r);
 
 // 威力の幅・装備コストの倍率・おまけ効果の数（B は半分の確率で1つ）
@@ -18,6 +20,8 @@ export const RARITY_INFO: Record<Rarity, { roll: [number, number]; costMul: numb
   B: { roll: [1.05, 1.2], costMul: 0.9, extras: 0.5, color: "#7048e8", shards: 16 },
   A: { roll: [1.15, 1.3], costMul: 0.8, extras: 1, color: "#e8590c", shards: 32 },
   S: { roll: [1.25, 1.4], costMul: 0.7, extras: 2, color: "#e03131", shards: 64 },
+  SS: { roll: [1.35, 1.5], costMul: 0.6, extras: 3, color: "#d6336c", shards: 128 },
+  SSS: { roll: [1.45, 1.6], costMul: 0.5, extras: 4, color: "#ae3ec9", shards: 256 },
 };
 
 // パーツの種類: 効果パーツ（遠距離8・近接9）＋ 能力パーツ
@@ -206,6 +210,8 @@ export const DROP_TABLE: number[][] = [
   [5, 20, 35, 28, 10, 2, 0],
   [0, 8, 25, 35, 24, 7, 1],
   [0, 0, 12, 33, 35, 16, 4],
+  [0, 0, 5, 25, 38, 25, 7], // 第6章
+  [0, 0, 0, 18, 40, 32, 10], // 第7章
 ];
 export const PITY = 20; // A 以上がこの回数出なければ次は A 確定
 
