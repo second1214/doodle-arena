@@ -4,11 +4,12 @@ import { ARENA_RADIUS } from "./sim/consts";
 import { createWorld, NO_INPUT, step, type FighterConfig, type World } from "./sim/world";
 
 export type DummyMove = "stand" | "walk" | "run";
-const MOVES: { id: DummyMove; label: string }[] = [
-  { id: "stand", label: "🧍 とまる" },
-  { id: "walk", label: "🚶 あるく" },
-  { id: "run", label: "🏃 にげる" },
+const MOVES: { id: DummyMove; label: string; name: string }[] = [
+  { id: "stand", label: "🧍", name: "かかしは とまる" },
+  { id: "walk", label: "🚶", name: "かかしは あるく" },
+  { id: "run", label: "🏃", name: "かかしは にげる" },
 ];
+const MAX_H = 136; // 試し撃ちの 高さ（スマホで 1画面に おさめる）
 const VOLLEY_TICKS = 420; // 1回の 試し撃ちの 長さ（弾が 早く 消えたら 先に 次へ）
 const DUMMY: FighterConfig = { name: "かかし", reach: 0.6, hasHands: true, hasFeet: true, special: [] };
 
@@ -32,16 +33,14 @@ export class TestFire {
 
   constructor() {
     this.el.className = "tfire";
-    const head = document.createElement("div");
-    head.className = "tf-head";
-    const title = document.createElement("b");
-    title.textContent = "🎯 ためしうち";
     const seg = document.createElement("div");
-    seg.className = "seg tf-seg";
+    seg.className = "tf-ctl";
     for (const m of MOVES) {
       const b = document.createElement("button");
       b.type = "button";
       b.textContent = m.label;
+      b.setAttribute("aria-label", m.name);
+      b.title = m.name;
       b.classList.toggle("on", m.id === this.move);
       b.addEventListener("click", () => {
         this.move = m.id;
@@ -50,9 +49,8 @@ export class TestFire {
       });
       seg.appendChild(b);
     }
-    head.append(title, seg);
     this.info.className = "tf-info";
-    this.el.append(head, this.canvas, this.info);
+    this.el.append(this.canvas, seg, this.info);
   }
 
   // 撃つ キャラの 設定（シールを 貼りかえたら 呼ぶ）
@@ -109,7 +107,7 @@ export class TestFire {
   }
   private quietSince = 0;
   private restartKeepMove() {
-    this.info.textContent = this.hits ? `💥 ${this.hits}かい あたって ${Math.round(this.dealt)} ダメージ` : "あたらなかった…";
+    this.info.textContent = this.hits ? `💥 ${this.hits}かい・${Math.round(this.dealt)}` : "💨 はずれ";
     this.quietSince = 0;
     this.restart();
   }
@@ -118,7 +116,7 @@ export class TestFire {
     const c = this.canvas, g = this.ctx, w = this.w!;
     const W = this.el.clientWidth || 320;
     // 舞台が 横いっぱいに なる 大きさ（上は 雲の 高さの分 あける）
-    const s = W / (ARENA_RADIUS * 2.15);
+    const s = Math.min(W / (ARENA_RADIUS * 2.15), MAX_H / (ARENA_RADIUS * 0.9 + 5.5 * 0.75));
     const H = Math.round(ARENA_RADIUS * 2 * 0.45 * s + 5.5 * 0.75 * s);
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     if (c.width !== W * dpr || c.height !== H * dpr) { c.width = W * dpr; c.height = H * dpr; c.style.height = `${H}px`; }
