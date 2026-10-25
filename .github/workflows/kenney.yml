@@ -19,7 +19,8 @@ jobs:
         run: |
           set -e
           mkdir -p out
-          for pack in impact-sounds interface-sounds digital-audio rpg-audio sci-fi-sounds ui-audio; do
+          # rpg-audio・sci-fi-sounds・ui-audio は ページから 正しい zip を 取れず（中身が digital-audio に なった）ので 外した
+          for pack in impact-sounds interface-sounds digital-audio; do
             echo "== $pack"
             curl -sSL -A "Mozilla/5.0" "https://kenney.nl/assets/$pack" -o page.html
             # ページには ほかの パックの zip も 並ぶので、名前が 合う zip だけを えらぶ（kenney_rpg-audio.zip など）
