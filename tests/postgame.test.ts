@@ -34,9 +34,9 @@ describe("1対多", () => {
 
   it("チャレンジは ストーリーの さいごを クリアすると ひらき、1つずつ 進む", () => {
     expect(challengeOpen(CHALLENGES[0], {})).toBe(false);
-    expect(challengeOpen(CHALLENGES[0], { "7-6": 1 })).toBe(true);
-    expect(challengeOpen(CHALLENGES[1], { "7-6": 1 })).toBe(false);
-    expect(challengeOpen(CHALLENGES[1], { "7-6": 1, c1: 1 })).toBe(true);
+    expect(challengeOpen(CHALLENGES[0], { "8-6": 1 })).toBe(true);
+    expect(challengeOpen(CHALLENGES[1], { "8-6": 1 })).toBe(false);
+    expect(challengeOpen(CHALLENGES[1], { "8-6": 1, c1: 1 })).toBe(true);
   });
 
   it("どの チャレンジも 試合が 最後まで 進む", () => {

@@ -244,6 +244,18 @@ export const CHAPTERS: Chapter[] = [
       { id: "7-6", no: 42, title: "ミュウスリー", ...X("ミュウスリー"), personality: "sniper", specialType: "ranged", parts: [["r:vacuum", "S"], ["r:thunder", "A"], ["r:homing", "A"], ["r:drip", "A"]], boostPoints: 38, prefer: ["sp", "hp", "def", "fly"], ai: { wait: [2, 3], defend: 1.25 }, boss: true, final: true, arena: "room" },
     ],
   },
+  {
+    no: 8,
+    title: "ゆめかわ タウン",
+    stages: [
+      { id: "8-1", no: 43, title: "ふわふわ ひこう", ...X("シナモン"), personality: "tricky", specialType: "melee", parts: [["m:dive", "A"], ["m:ice", "A"]], boostPoints: 36, prefer: ["fly", "spd", "tec"], ai: CH7_AI, arena: "sky" },
+      { id: "8-2", no: 44, title: "おしくらまんじゅう", ...X("ポムプリン"), personality: "cautious", specialType: "melee", parts: [["m:bulldozer", "C"], ["m:legbind", "D"]], boostPoints: 34, prefer: ["hp", "def", "atk"], ai: CH7_AI, arena: "room" },
+      { id: "8-3", no: 45, title: "やさしい すいとり", ...X("マイメロン"), personality: "aggressive", specialType: "ranged", parts: [["r:homing", "A"], ["r:drain", "A"]], boostPoints: 38, prefer: ["hp", "sp", "def"], ai: CH7_AI, arena: "hill" },
+      { id: "8-4", no: 46, title: "さかなの おじさん", ...X("ハンギョドム"), personality: "cautious", specialType: "ranged", parts: [["r:wave", "S"], ["r:drip", "A"], ["r:freeze", "B"]], boostPoints: 39, prefer: ["def", "hp", "sp"], ai: CH7_AI, arena: "pool" },
+      { id: "8-5", no: 47, title: "いたずら ペンギン", ...X("バツまる"), personality: "aggressive", specialType: "melee", parts: [["m:grab", "A"], ["m:crumple", "A"]], boostPoints: 40, prefer: ["atk", "spd", "hp"], ai: CH7_AI, arena: "night" },
+      { id: "8-6", no: 48, title: "いたずらの 女王", ...X("クロミー"), personality: "tricky", specialType: "ranged", parts: [["r:boomerang", "S"], ["r:split", "S"], ["r:net", "A"], ["r:fire", "A"]], boostPoints: 50, hp: 15, prefer: ["hp", "sp", "tec", "spd"], ai: { wait: [2, 3], defend: 1.25 }, boss: true, final: true, arena: "night" },
+    ],
+  },
 ];
 
 // これから足す章（メニューに「準備中」で出す）
