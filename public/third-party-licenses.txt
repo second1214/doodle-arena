@@ -25,3 +25,8 @@ THE SOFTWARE.
 
 === M PLUS Rounded 1c（文字の形・Google Fonts から読み込み） ===
 SIL Open Font License 1.1  https://fonts.google.com/specimen/M+PLUS+Rounded+1c
+
+----------------------------------------------------------------
+効果音（public/sfx/*.mp3）: Kenney（https://www.kenney.nl/）の Impact Sounds・Interface Sounds・Digital Audio
+ライセンス: Creative Commons Zero（CC0 1.0）http://creativecommons.org/publicdomain/zero/1.0/
+（mp3・モノラルに 変換して 使用。詳しくは sfx/LICENSE-kenney.txt）
