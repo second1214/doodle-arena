@@ -1935,10 +1935,12 @@ function renderParts() {
   document.getElementById("invCount")!.textContent = String(inv.parts.length);
   document.getElementById("invCap")!.textContent = String(INVENTORY_CAP);
   const plans = planStacks(inv.parts, equippedIds());
+  // かさねられる 時だけ 出す: 重なった シールの 絵 ＋「まとめて かさねる」
   const bulk = document.getElementById("bulkCombine") as HTMLButtonElement;
-  bulk.disabled = !plans.length;
-  bulk.textContent = plans.length ? `🪄 ${plans.length}` : "🪄";
-  bulk.setAttribute("aria-label", "まとめて かさねる");
+  bulk.hidden = !plans.length;
+  bulk.innerHTML = `<span class="mini"></span><span>🧩 まとめて かさねる</span>`;
+  const mini = bulk.querySelector(".mini")!;
+  for (const pl of plans.slice(0, 4)) { const bp = inv.parts.find((p) => p.id === pl.baseId); if (bp) { const st = sticker(bp), sp = document.createElement("span"); sp.className = st.className; sp.style.cssText = st.style.cssText; sp.innerHTML = st.innerHTML; mini.appendChild(sp); } }
   const listEl = document.getElementById("partList")!;
   listEl.innerHTML = "";
   const shown = inv.parts.filter((p) => partFilter === "all" || kindInfo(p.kind).type === partFilter);

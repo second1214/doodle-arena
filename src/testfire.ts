@@ -1,7 +1,7 @@
 // ひっさつの 試し撃ち: シールを 貼りかえるたびに、小さな 舞台で かかしへ 何度も 撃って 見せる（戦闘と同じ計算・絵は 簡単な 2D）。
 // 戦闘画面と 行き来しなくても、組み合わせを 目で 確かめられる。
 import { ARENA_RADIUS } from "./sim/consts";
-import { createWorld, NO_INPUT, step, type FighterConfig, type World } from "./sim/world";
+import { createWorld, meleeSpecialRange, NO_INPUT, step, type FighterConfig, type Input, type World } from "./sim/world";
 
 export type DummyMove = "stand" | "walk" | "run";
 const MOVES: { id: DummyMove; label: string; name: string }[] = [
@@ -64,7 +64,9 @@ export class TestFire {
     const w = createWorld(this.cfg, DUMMY, this.seed++);
     const [me, op] = w.fighters;
     // 近接は 近くから（届く距離の すぐ外）
-    if (this.cfg.specialType === "melee") { me.x = -1.6; op.x = 1.6; }
+    // 近接は 届く 距離の 少し 内側から（届かなければ 歩いて 近づいてから 出す）
+    if (this.cfg.specialType === "melee") { const r = meleeSpecialRange(me.cfg, me.mspec, op.cfg); me.x = -r * 0.4; op.x = r * 0.4; }
+    this.fired = false;
     me.charge = me.st.chargeNeed;
     this.w = w;
     this.dealt = 0;
@@ -91,7 +93,16 @@ export class TestFire {
     const a = t * 0.04;
     const mv = this.move === "walk" ? { mx: Math.cos(a) * 0.5, mz: Math.sin(a) * 0.5 }
       : this.move === "run" ? { mx: 0, mz: Math.sin(t * 0.02) > 0 ? 1 : -1, dodge: t % 40 === 20 } : {};
-    step(w, [{ ...NO_INPUT, special: t === 2 }, { ...NO_INPUT, ...mv }]);
+    // 撃つ側: 遠距離は すぐ撃つ。近接は 届く所まで 歩いてから 出す
+    let mine: Input = NO_INPUT;
+    if (!this.fired && t >= 2) {
+      const dx = op.x - me.x, dz = op.z - me.z, d = Math.hypot(dx, dz) || 1;
+      const melee = this.cfg!.specialType === "melee";
+      if (melee && d > meleeSpecialRange(me.cfg, me.mspec, op.cfg) * 0.8) mine = { ...NO_INPUT, mx: dx / d, mz: dz / d };
+      else mine = { ...NO_INPUT, special: true, mx: dx / d * 0.01, mz: dz / d * 0.01 };
+    }
+    step(w, [mine, { ...NO_INPUT, ...mv }]);
+    if (me.ms.phase !== "none" || w.projectiles.length) this.fired = true;
     op.hp = op.st.maxHp; // かかしは 倒れない
     for (const e of w.events) {
       if ((e.kind === "hit" || e.kind === "guard") && e.target === 1 && e.amount > 0) {
@@ -102,10 +113,11 @@ export class TestFire {
     }
     // 弾も 近接の わざも 終わったら、少し 待って もう一度
     const busy = w.projectiles.length > 0 || me.ms.phase !== "none";
-    if ((t > 60 && !busy && t > this.quietSince + 45) || t > VOLLEY_TICKS || w.winner !== -1) this.restartKeepMove();
+    if ((this.fired && !busy && t > this.quietSince + 45) || t > VOLLEY_TICKS || w.winner !== -1) this.restartKeepMove();
     if (busy) this.quietSince = t;
   }
   private quietSince = 0;
+  private fired = false;
   private restartKeepMove() {
     this.info.textContent = this.hits ? `💥 ${this.hits}かい・${Math.round(this.dealt)}` : "💨 はずれ";
     this.quietSince = 0;
