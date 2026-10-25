@@ -608,7 +608,11 @@
       .albumbar .seg { flex: 1; margin: 0; }
       .seg.icons button { font-size: 22px !important; min-height: 44px; }
       .seg.icons button:first-child { font-size: 13px; }
-      .albumbar #bulkCombine { min-height: 44px; font-size: 20px; padding: 0 14px; }
+      .bulk { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 56px; margin-top: 8px; font-size: 17px; font-weight: 900; animation: bulk-glow 1.4s ease-in-out infinite alternate; }
+      .bulk .mini { display: flex; }
+      .bulk .mini .stk { width: 34px; height: 38px; border-radius: 10px; margin-left: -14px; pointer-events: none; }
+      .bulk .mini .stk .face { inset: 2px; border-radius: 8px; } .bulk .mini .stk .ic { font-size: 18px; } .bulk .mini .stk .nm, .bulk .mini .stk .cost { display: none; }
+      @keyframes bulk-glow { to { box-shadow: 0 4px 0 #d9573a, 0 0 18px rgba(255,122,89,.7); } }
       .album { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 16px 6px; justify-items: center; padding: 14px 2px; }
       .albumfoot { text-align: center; color: var(--muted); font-size: 12px; }
       .sheet { display: grid; justify-items: center; gap: 10px; text-align: center; }
@@ -618,7 +622,7 @@
       .sheet .same { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 6px; padding-top: 6px; }
       .sheet .row { justify-content: center; }
       /* じゆうバトル・ストーリー: 1つずつ 見せる */
-      .chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 8px; scrollbar-width: none; }
+      .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 2px 8px; }
       .chips button { flex: none; min-height: 40px; padding: 4px 14px; border-radius: 999px; font-weight: 800; font-size: 14px; white-space: nowrap; }
       .chips button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
       .chips button.lock { opacity: .5; }
@@ -689,8 +693,8 @@
           <button type="button" data-pf="melee">👊</button>
           <button type="button" data-pf="both">🔁</button>
         </div>
-        <button id="bulkCombine" type="button" class="primary inline">🪄</button>
       </div>
+      <button id="bulkCombine" type="button" class="primary bulk" hidden></button>
       <div class="album" id="partList"></div>
       <div class="albumfoot"><span id="invCount">0</span> / <span id="invCap"></span></div>
     </section>
