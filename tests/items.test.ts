@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { ALL_KINDS, buildSpecial, equipCosts, makePart, RARITIES, RARITY_INFO, rollRarity, seededRnd, type Part } from "../src/items";
-import { combineInto, dismantle, planCombines, toggleLock, dropParts, loadInventory, migrateToParts, reroll, saveInventory } from "../src/inventory";
+import { ALL_KINDS, buildSpecial, equipCosts, makePart, makeSticker, MAX_EXTRAS, MAX_STAR, RARITY_INFO, rollShine, seededRnd, SHINE_INFO, upgradePart, type Part } from "../src/items";
+import { dropParts, loadInventory, migrateToParts, planStacks, saveInventory, stackAll, stackInto, toggleLock } from "../src/inventory";
 import { composeSpecial } from "../src/sim/special";
 import { createWorld } from "../src/sim/world";
 
@@ -16,18 +16,33 @@ class MemStorage {
 beforeEach(() => { (globalThis as { localStorage?: unknown }).localStorage = new MemStorage(); });
 
 describe("パーツの数値", () => {
-  it("レア度ごとに威力の幅とコストが決まる（S ほど強く軽い）", () => {
+  it("できばえ（ふつう・キラ・ピカピカ）ごとに 威力の幅と 重さが 決まり、★で 少し強く 軽くなる", () => {
     const rnd = seededRnd(42);
-    for (const r of RARITIES) for (let k = 0; k < 50; k++) {
-      const p = makePart("r:giant", r, rnd);
-      const info = RARITY_INFO[r];
+    for (const sh of [0, 1, 2] as const) for (let k = 0; k < 50; k++) {
+      const p = makeSticker("r:giant", sh, 1, rnd);
+      const info = SHINE_INFO[sh];
       expect(p.roll).toBeGreaterThanOrEqual(info.roll[0]);
       expect(p.roll).toBeLessThanOrEqual(info.roll[1]);
       expect(Math.abs(p.cost - Math.round(6 * info.costMul))).toBeLessThanOrEqual(1);
-      if (r === "A") expect(p.extras.length).toBe(1);
-      if (r === "S") expect(p.extras.length).toBe(2);
-      if (r <= "C" && "FEDC".includes(r)) expect(p.extras.length).toBe(0);
+      if (sh === 1) expect(p.extras.length).toBe(1);
+      if (sh === 2) expect(p.extras.length).toBeGreaterThanOrEqual(1);
+      const five = makeSticker("r:giant", sh, 5, seededRnd(k + 1));
+      const one = makeSticker("r:giant", sh, 1, seededRnd(k + 1));
+      expect(five.roll).toBeCloseTo(one.roll + 0.2, 1);
+      expect(five.cost).toBe(Math.max(1, one.cost - 2));
     }
+  });
+
+  it("古い レア度の パーツは シールに 読みかえる（個体差は 残す）", () => {
+    const old = { id: "o", kind: "r:giant", rarity: "S", roll: 1.4, cost: 5, extras: [{ stat: "power", value: 0.1 }] } as unknown as Part;
+    const p = upgradePart(old);
+    expect(p.shine).toBe(2);
+    expect(p.star).toBe(2);
+    expect(p.q).toBe(1);
+    expect(p.rarity).toBeUndefined();
+    expect(p.extras.length).toBe(1);
+    // 敵の設定（レア度）は おまけの数も 前と同じ
+    expect(makePart("power", "C", seededRnd(1)).extras.length).toBe(RARITY_INFO.C.extras);
   });
 
   it("同じ効果を2つ付けると重なる（巨大×2 で大きさ9倍）", () => {
@@ -36,10 +51,11 @@ describe("パーツの数値", () => {
   });
 
   it("効果パーツの威力は (出来−1) を足し合わせ、型に合わないパーツは効かない", () => {
-    const a: Part = { id: "a", kind: "r:giant", rarity: "S", roll: 1.3, cost: 4, extras: [] };
-    const b: Part = { id: "b", kind: "r:homing", rarity: "F", roll: 0.8, cost: 7, extras: [{ stat: "pspeed", value: 0.1 }] };
-    const m: Part = { id: "m", kind: "m:tornado", rarity: "C", roll: 1, cost: 8, extras: [] };
-    const c1: Part = { id: "c1", kind: "charge", rarity: "C", roll: 1, cost: 6, extras: [] };
+    const base = { shine: 1, star: 1, q: 0, cj: 0 } as const;
+    const a: Part = { ...base, id: "a", kind: "r:giant", roll: 1.3, cost: 4, extras: [] };
+    const b: Part = { ...base, id: "b", kind: "r:homing", roll: 0.8, cost: 7, extras: [{ stat: "pspeed", value: 0.1 }] };
+    const m: Part = { ...base, id: "m", kind: "m:tornado", roll: 1, cost: 8, extras: [] };
+    const c1: Part = { ...base, id: "c1", kind: "charge", roll: 1, cost: 6, extras: [] };
     const c2: Part = { ...c1, id: "c2" };
     const sp = buildSpecial([a, b, m, c1, c2], "ranged");
     expect(sp.special).toEqual(["giant", "homing"]);
@@ -53,79 +69,68 @@ describe("パーツの数値", () => {
     expect(w.fighters[0].st.chargeNeed).toBe(3);
   });
 
-  it("レア度の出やすさは章の表どおり（第1章は B 以上が出ない）", () => {
+  it("できばえの出やすさは章の表どおり（第1章は ピカピカが出ない）", () => {
     const rnd = seededRnd(7);
-    for (let k = 0; k < 500; k++) expect(["F", "E", "D", "C"]).toContain(rollRarity(1, rnd));
+    for (let k = 0; k < 500; k++) expect(rollShine(1, rnd)).toBeLessThan(2);
     expect(ALL_KINDS.length).toBe(51);
   });
 });
 
 describe("持ち物", () => {
-  it("初回だけ今までの効果を C のパーツに移す", () => {
+  it("初回だけ今までの効果を 標準の シール（キラ★1・威力1.0）に移す", () => {
     const map = migrateToParts(["r:invisible", "m:wobble"])!;
     expect([...map.keys()].sort()).toEqual(["m:tornado", "m:wobble", "r:homing", "r:invisible"]);
-    expect(loadInventory().parts.every((p) => p.rarity === "C" && p.roll === 1)).toBe(true);
+    expect(loadInventory().parts.every((p) => p.shine === 1 && p.star === 1 && p.roll === 1 && !p.extras.length)).toBe(true);
     expect(migrateToParts(["r:giant"])).toBeNull();
   });
 
-  it("ボスは2個落とし、1個は1段上。20回 A が出なければ A 確定", () => {
-    saveInventory({ v: 1, parts: [], shards: 0, sinceA: 19 });
+  it("前の形（v1・レア度・かけら）の 持ち物を 読める", () => {
+    localStorage.setItem("doodle-arena:inventory", JSON.stringify({ v: 1, shards: 99, sinceA: 3, parts: [{ id: "x", kind: "power", rarity: "B", roll: 1.1, cost: 4, extras: [] }] }));
+    const inv = loadInventory();
+    expect(inv.v).toBe(2);
+    expect(inv.parts[0].shine).toBe(1);
+    expect(inv.parts[0].star).toBe(2);
+  });
+
+  it("ボスは2枚落とし、1枚は できばえ1段上。20回 ピカピカが出なければ ピカピカ確定", () => {
+    saveInventory({ v: 2, parts: [], sincePika: 19 });
     const d = dropParts(1, false, seededRnd(3));
-    expect(d.got[0].rarity).toBe("A");
-    expect(loadInventory().sinceA).toBe(0);
+    expect(d.got[0].shine).toBe(2);
+    expect(loadInventory().sincePika).toBe(0);
     const b = dropParts(1, true, seededRnd(5));
     expect(b.got.length).toBe(2);
+    expect(b.got[0].shine).toBeGreaterThanOrEqual(1);
   });
 
-  it("分解でかけら、かけらで振り直し、3個で合成（しゅるいは ちがっても よい）", () => {
+  it("同じしゅるいを かさねると ★が上がり、良い方の できばえに なり、おまけを 1つ もらえる", () => {
     const rnd = seededRnd(9);
-    const parts = [makePart("power", "D", rnd), makePart("power", "D", rnd), makePart("r:giant", "D", rnd), makePart("m:dash", "D", rnd)];
-    saveInventory({ v: 1, parts, shards: 0, sinceA: 0 });
-    expect(dismantle(parts[0].id)).toBe(4);
-    expect(reroll(parts[1].id)).toBeNull(); // かけら不足（8 必要）
-    const [base, ...mats] = loadInventory().parts.map((p) => p.id);
-    expect(combineInto(base, [mats[0]], new Set())).toBeNull(); // 材料が たりない
-    const np = combineInto(base, mats, new Set())!;
-    expect(np.rarity).toBe("C");
-    expect(np.kind).toBe("power"); // しゅるいは ベースのまま
-    expect(np.id).toBe(base); // ベースが1段上になる（装備したままでよい）
-    expect(loadInventory().parts.length).toBe(1);
+    const base = makeSticker("power", 0, 1, rnd, "base", 0);
+    const pika = makeSticker("power", 2, 1, rnd, "pika", 2);
+    const other = makeSticker("r:giant", 0, 1, rnd, "other", 0);
+    saveInventory({ v: 2, parts: [base, pika, other], sincePika: 0 });
+    expect(stackInto("base", "other", new Set())).toBeNull(); // しゅるいが ちがう
+    expect(stackInto("base", "pika", new Set(["pika"]))).toBeNull(); // はっている シールは のせない
+    const made = stackInto("base", "pika", new Set(), 1)!;
+    expect(made.star).toBe(2);
+    expect(made.shine).toBe(2);
+    expect(made.extras).toEqual([pika.extras[1]]);
+    expect(loadInventory().parts.map((p) => p.id).sort()).toEqual(["base", "other"]);
   });
 
-  it("レア度は SSS まで。SS・SSS は 合成で 作る", () => {
-    const rnd = seededRnd(3);
-    expect(RARITIES.at(-1)).toBe("SSS");
-    const ss = [makePart("power", "SS", rnd), makePart("r:fire", "SS", rnd), makePart("charge", "SS", rnd)];
-    saveInventory({ v: 1, parts: ss, shards: 0, sinceA: 0 });
-    const top = combineInto(ss[0].id, [ss[1].id, ss[2].id], new Set())!;
-    expect(top.rarity).toBe("SSS");
-    expect(top.extras.length).toBe(4);
-    const more = [top, makePart("power", "SSS", rnd), makePart("power", "SSS", rnd)];
-    saveInventory({ v: 1, parts: more, shards: 0, sinceA: 0 });
-    expect(combineInto(top.id, [more[1].id, more[2].id], new Set())).toBeNull(); // SSS が いちばん上
-    expect(planCombines(more, new Set()).length).toBe(0);
-    for (let k = 0; k < 2000; k++) expect(["SS", "SSS"]).not.toContain(rollRarity(7, rnd)); // ドロップでは 出ない
-  });
-
-  it("鍵つき・装備中は材料にも分解にも使わない。まとめて合成の計画とベースの入れかえ", () => {
+  it("★は5まで・おまけは3つまで。まとめて かさねるは 🔒・はっている シールを のせない", () => {
     const rnd = seededRnd(11);
-    const kinds = ["power", "r:giant", "m:dash", "lucky", "r:fire", "pierce", "r:net"] as const;
-    const parts = kinds.map((k) => makePart(k, "C", rnd));
-    saveInventory({ v: 1, parts, shards: 0, sinceA: 0 });
-    toggleLock(parts[0].id);
-    expect(dismantle(parts[0].id)).toBe(0);
-    const eq = new Set([parts[1].id, parts[2].id]);
-    // 鍵1・装備2 → 材料にできるのは4個。ベースは装備中から → 2組
-    const plan = planCombines(loadInventory().parts, eq);
-    expect(plan.length).toBe(2);
-    expect(eq.has(plan[0].baseId)).toBe(true);
-    for (const pl of plan) for (const m of pl.materialIds) { expect(eq.has(m)).toBe(false); expect(m).not.toBe(parts[0].id); }
-    // ベースを入れかえ
-    const other = plan[0].candidates.find((id) => id !== plan[0].baseId && !eq.has(id))!;
-    const re = planCombines(loadInventory().parts, eq, { C: [other] });
-    expect(re[0].baseId).toBe(other);
-    expect(re[0].materialIds).not.toContain(other);
-    expect(combineInto(re[0].baseId, re[0].materialIds, eq)?.rarity).toBe("B");
-    expect(combineInto(parts[0].id, re[1]?.materialIds ?? [], eq)).toBeNull(); // 鍵つきはベースにしない
+    const list = Array.from({ length: 7 }, (_, i) => makeSticker("lucky", 1, 1, rnd, `l${i}`, 1));
+    saveInventory({ v: 2, parts: list, sincePika: 0 });
+    toggleLock("l6");
+    const eq = new Set(["l0"]);
+    const plan = planStacks(loadInventory().parts, eq);
+    expect(plan.length).toBe(1);
+    expect(plan[0].baseId).toBe("l0"); // はっている シールが ベース
+    expect(plan[0].matIds.length).toBe(MAX_STAR - 1);
+    expect(plan[0].matIds).not.toContain("l6");
+    const [made] = stackAll(eq);
+    expect(made.star).toBe(MAX_STAR);
+    expect(made.extras.length).toBe(MAX_EXTRAS);
+    expect(loadInventory().parts.length).toBe(3); // l0・のこり1・🔒の l6
   });
 });

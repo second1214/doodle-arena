@@ -180,6 +180,21 @@
       .ptile .ct { position: absolute; top: 4px; right: 6px; font-size: 12px; font-weight: 800; color: var(--muted); }
       .ptile .ct::before { content: "⚡"; }
       .ptile.off { opacity: .45; }
+      .ptile .st { font-size: 11px; letter-spacing: -1px; color: #f59f00; }
+      .ptile.shine1, .pc.shine1 { background: linear-gradient(135deg, var(--panel) 60%, color-mix(in srgb, #74c0fc 25%, var(--panel))); }
+      .ptile.shine2, .pc.shine2 { background: linear-gradient(135deg, color-mix(in srgb, #ffd43b 18%, var(--panel)), var(--panel) 45%, color-mix(in srgb, #ff922b 22%, var(--panel))); box-shadow: 0 0 10px color-mix(in srgb, #ff922b 45%, transparent); }
+      .scard { display: grid; gap: 6px; margin: 8px 0; }
+      .srow { display: grid; grid-template-columns: 88px 1fr; gap: 8px; align-items: center; padding: 8px; border-radius: 16px; border: 3px solid var(--sc); background: color-mix(in srgb, var(--sc) 10%, var(--panel)); }
+      .slab { display: grid; gap: 2px; }
+      .slab b { font-size: 15px; }
+      .slab small { font-size: 10px; color: var(--muted); line-height: 1.25; }
+      .pbox { border-color: var(--sc, var(--line)); }
+      .tfire { --tf-bg: var(--bg); --tf-floor: var(--line); margin: 8px 0; border-radius: 16px; overflow: hidden; border: 3px solid var(--line); }
+      .tfire canvas { display: block; width: 100%; }
+      .tf-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; }
+      .tf-seg button { min-height: 36px; padding: 4px 8px; white-space: nowrap; }
+      .tf-info { padding: 4px 10px 8px; font-weight: 800; font-size: 14px; min-height: 1.4em; }
+      @media (max-width: 420px) { .srow { grid-template-columns: 1fr; } }
       .ptile:disabled { opacity: .35; }
       .kidhint { font-weight: 800; font-size: 14px; margin-top: 4px; }
       .stabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -478,7 +493,7 @@
         <button class="big" data-go="free"><b>⚔️ じゆうバトル</b><small>すきな あいてと たたかう・みる</small></button>
         <button class="big" data-go="make"><b>✏️ キャラを つくる</b><small>かく・しらべる・うごかす</small></button>
         <button class="big" data-go="tree"><b>🌳 スキルツリー</b><small id="treeHint">ポイントで強くなる</small></button>
-        <button class="big" data-go="parts"><b>🧩 ひっさつパーツ</b><small>もちもの・ぶんかい・ごうせい</small></button>
+        <button class="big" data-go="parts"><b>🧩 ひっさつシール</b><small>もちもの・かさねる</small></button>
         <button class="big" data-go="transfer"><b>📦 ひきつぎ</b><small>データを うつす（おうちの人と）</small></button>
       </div>
       <div class="row" style="justify-content:center;margin-top:12px"><button id="furigana" type="button"></button></div>
@@ -510,8 +525,8 @@
     </section>
     <section id="partsScreen" hidden>
       <div class="tree-head">
-        <div>パーツ <b id="invCount">0</b> / <span id="invCap"></span><div class="note">かけら <b id="shards">0</b></div></div>
-        <button id="bulkCombine" type="button">🔨 まとめて ごうせい</button>
+        <div>シール <b id="invCount">0</b> / <span id="invCap"></span></div>
+        <button id="bulkCombine" type="button">🪄 まとめて かさねる</button>
       </div>
       <div class="seg" id="partFilter">
         <button type="button" data-pf="all" class="on">すべて</button>
@@ -522,7 +537,7 @@
       <div class="row prow">
         <label>ならびかえ <select id="partSort">
           <option value="kind">しゅるい ごと</option>
-          <option value="rare">レアな じゅん</option>
+          <option value="rare">つよい じゅん</option>
           <option value="cost">⚡ コストの じゅん</option>
           <option value="new">あたらしい じゅん</option>
         </select></label>

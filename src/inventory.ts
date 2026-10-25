@@ -1,20 +1,18 @@
-// 持っている必殺パーツ（プレイヤー共通・ブラウザ内に保存）。ドロップ・分解・合成・振り直し。
-import { ALL_KINDS, isKind, makePart, PITY, RARITIES, RARITY_INFO, rarityIndex, rollRarity, TOP_RARITY, type Part, type PartKind, type Rarity } from "./items";
+// 持っている必殺シール（プレイヤー共通・ブラウザ内に保存）。ドロップ・かさねる（★アップ）・鍵。
+// 前の形（レア度・かけら・分解・合成）は 読み込み時に シールへ 読みかえる。
+import { ALL_KINDS, fromRarity, isKind, makeSticker, MAX_EXTRAS, MAX_STAR, partScore, PITY, recalc, rollShine, upgradePart, type Part, type PartKind, type Rarity, type Shine } from "./items";
 
 const KEY = "doodle-arena:inventory";
 export const INVENTORY_CAP = 300;
-export const COMBINE_COUNT = 3; // ベース1こ＋材料2こ（しゅるいは ちがっても よい・レア度は 同じ）
 
 export interface Inventory {
-  v: 1;
+  v: 2;
   parts: Part[];
-  shards: number; // かけら（分解でもらう・振り直しに使う）
-  sinceA: number; // A 以上が出ていない回数（救済用）
+  sincePika: number; // ピカピカが 出ていない回数（救済用）
 }
 
 function valid(p: Partial<Part>): p is Part {
-  return typeof p?.id === "string" && typeof p.kind === "string" && isKind(p.kind) && RARITIES.includes(p.rarity as Rarity)
-    && typeof p.roll === "number" && typeof p.cost === "number" && Array.isArray(p.extras);
+  return typeof p?.id === "string" && typeof p.kind === "string" && isKind(p.kind) && typeof p.roll === "number" && typeof p.cost === "number" && Array.isArray(p.extras);
 }
 
 // 無ければ null（初回の移行判定に使う）
@@ -22,13 +20,14 @@ export function loadInventoryRaw(): Inventory | null {
   try {
     const s = localStorage.getItem(KEY);
     if (!s) return null;
-    const d = JSON.parse(s) as Partial<Inventory>;
-    return { v: 1, parts: Array.isArray(d.parts) ? d.parts.filter(valid) : [], shards: Math.max(0, Number(d.shards) || 0), sinceA: Math.max(0, Number(d.sinceA) || 0) };
+    const d = JSON.parse(s) as { parts?: Part[]; sincePika?: number };
+    const parts = Array.isArray(d.parts) ? d.parts.filter(valid).map(upgradePart) : [];
+    return { v: 2, parts, sincePika: Math.max(0, Number(d.sincePika) || 0) };
   } catch {
     return null;
   }
 }
-export const loadInventory = (): Inventory => loadInventoryRaw() ?? { v: 1, parts: [], shards: 0, sinceA: 0 };
+export const loadInventory = (): Inventory => loadInventoryRaw() ?? { v: 2, parts: [], sincePika: 0 };
 export function saveInventory(inv: Inventory): boolean {
   try {
     localStorage.setItem(KEY, JSON.stringify(inv));
@@ -38,100 +37,105 @@ export function saveInventory(inv: Inventory): boolean {
   }
 }
 
-export interface DropResult { got: Part[]; shardsInstead: number }
+export interface DropResult { got: Part[]; fed: Part[]; lost: number }
 
-// ストーリーの勝利報酬: 1個（ボスは2個で、うち1個は1段上のレア度を保証。ラスボスはその1個が A 確定・4回に1回 S）。
-// 持ち物がいっぱいなら、かけらに変える
+// まだ持っていない しゅるいは 出やすく（2倍）＝しゅるいが 増えても 新しいシールに 出会える
+function pickKind(inv: Inventory, rnd: () => number): PartKind {
+  const owned = new Set(inv.parts.map((x) => x.kind));
+  const pool = ALL_KINDS.flatMap((k) => (owned.has(k) ? [k] : [k, k]));
+  return pool[Math.floor(rnd() * pool.length)];
+}
+
+// 持ち物に入れる。いっぱいなら 同じしゅるいの シールに 自動で かさねる（できなければ なくなる）
+function store(inv: Inventory, p: Part, res: DropResult) {
+  if (inv.parts.length < INVENTORY_CAP) { inv.parts.push(p); res.got.push(p); return; }
+  const base = inv.parts.filter((x) => x.kind === p.kind && x.star < MAX_STAR).sort((a, b) => partScore(b) - partScore(a))[0];
+  if (base) { stack(base, p, p.extras.length ? 0 : -1); res.fed.push(base); } else res.lost++;
+}
+
+// ストーリーの勝利報酬: 1枚（ボスは2枚で、うち1枚は できばえ1段上。ラスボスは その1枚が ピカピカ）
 export function dropParts(chapter: number, boss: boolean, rnd: () => number = Math.random, final = false): DropResult {
   const inv = loadInventory();
-  const res: DropResult = { got: [], shardsInstead: 0 };
+  const res: DropResult = { got: [], fed: [], lost: 0 };
   const n = boss ? 2 : 1;
   for (let k = 0; k < n; k++) {
-    let r = rollRarity(chapter, rnd);
-    if (boss && k === 0) r = RARITIES[Math.min(RARITIES.length - 1, rarityIndex(r) + 1)];
-    if (final && k === 0) r = rnd() < 0.25 ? "S" : "A";
-    if (inv.sinceA + 1 >= PITY && rarityIndex(r) < rarityIndex("A")) r = "A";
-    inv.sinceA = rarityIndex(r) >= rarityIndex("A") ? 0 : inv.sinceA + 1;
-    // まだ持っていない種類は出やすく（2倍）＝種類が増えても新しいパーツに出会える
-    const owned = new Set(inv.parts.map((x) => x.kind));
-    const pool = ALL_KINDS.flatMap((k) => (owned.has(k) ? [k] : [k, k]));
-    const p = makePart(pool[Math.floor(rnd() * pool.length)], r, rnd);
-    if (inv.parts.length >= INVENTORY_CAP) { inv.shards += RARITY_INFO[r].shards; res.shardsInstead += RARITY_INFO[r].shards; }
-    else { inv.parts.push(p); res.got.push(p); }
+    let sh = rollShine(chapter, rnd);
+    if (boss && k === 0) sh = Math.min(2, sh + 1) as Shine;
+    if (final && k === 0) sh = 2;
+    if (inv.sincePika + 1 >= PITY) sh = 2;
+    inv.sincePika = sh === 2 ? 0 : inv.sincePika + 1;
+    store(inv, makeSticker(pickKind(inv, rnd), sh, 1, rnd), res);
   }
   saveInventory(inv);
   return res;
 }
 
-export function dismantle(id: string): number {
+// 決まったレア度相当の シールを1枚もらう（オンライン対戦の報酬）
+export function dropPartOfRarity(rarity: Rarity, rnd: () => number = Math.random): DropResult {
   const inv = loadInventory();
-  const p = inv.parts.find((x) => x.id === id);
-  if (!p || p.locked) return 0; // 鍵つきは分解しない
-  inv.parts = inv.parts.filter((x) => x.id !== id);
-  inv.shards += RARITY_INFO[p.rarity].shards;
+  const res: DropResult = { got: [], fed: [], lost: 0 };
+  store(inv, makeSticker(pickKind(inv, rnd), fromRarity(rarity).shine, 1, rnd), res);
   saveInventory(inv);
-  return RARITY_INFO[p.rarity].shards;
+  return res;
 }
 
-export const rerollCost = (r: Rarity) => RARITY_INFO[r].shards * 2;
-
-// 振り直し: 種類とレア度はそのまま、威力・コスト・おまけ効果を引き直す（装備したままでよい）
-export function reroll(id: string, rnd: () => number = Math.random): Part | null {
-  const inv = loadInventory();
-  const i = inv.parts.findIndex((x) => x.id === id);
-  if (i < 0 || inv.shards < rerollCost(inv.parts[i].rarity)) return null;
-  const old = inv.parts[i];
-  inv.shards -= rerollCost(old.rarity);
-  inv.parts[i] = { ...makePart(old.kind, old.rarity, rnd, old.id), ...(old.locked ? { locked: true } : {}) };
-  saveInventory(inv);
-  return inv.parts[i];
-}
-
-// 合成（ランクアップ）: ベース1個＋同じレア度の材料2個（しゅるいは 何でも）→ ベースが1段上のレア度になる
-// （しゅるいは ベースのまま・数値は引き直し。id・鍵はそのまま＝装備したままでよい）。いちばん上は SSS。
-// 材料にできるのは、装備していない・鍵のかかっていないものだけ（同じパーツを重ねて付けて強くしているのを こわさない）
+// --- かさねる: 同じしゅるいの シールを 1枚 のせると ★が1つ上がる（★5まで）。
+// できばえは 良い方に なり、のせた シールの おまけを 1つ もらえる（空きが あれば）。のせた シールは なくなる
 export const canBeMaterial = (p: Part, equipped: Set<string>) => !p.locked && !equipped.has(p.id);
-export function combinable(rarity: Rarity, equipped: Set<string>): Part[] {
-  return loadInventory().parts.filter((p) => p.rarity === rarity && canBeMaterial(p, equipped));
+export const canStack = (base: Part, mat: Part, equipped: Set<string>) =>
+  base.id !== mat.id && base.kind === mat.kind && base.star < MAX_STAR && canBeMaterial(mat, equipped);
+
+function stack(base: Part, mat: Part, takeExtra: number) {
+  base.star = Math.min(MAX_STAR, base.star + 1);
+  if (mat.shine > base.shine) { base.shine = mat.shine; base.q = mat.q; }
+  else if (mat.shine === base.shine) base.q = Math.max(base.q, mat.q);
+  base.cj = Math.min(base.cj, mat.cj); // 軽い方
+  const e = mat.extras[takeExtra];
+  if (e && base.extras.length < MAX_EXTRAS) base.extras = [...base.extras, e];
+  recalc(base);
 }
-export function combineInto(baseId: string, materialIds: string[], equipped: Set<string>, rnd: () => number = Math.random): Part | null {
+
+export function stackInto(baseId: string, matId: string, equipped: Set<string>, takeExtra = -1): Part | null {
   const inv = loadInventory();
   const base = inv.parts.find((p) => p.id === baseId);
-  if (!base || base.rarity === TOP_RARITY || base.locked) return null;
-  const mats = [...new Set(materialIds)].filter((id) => id !== baseId).map((id) => inv.parts.find((p) => p.id === id));
-  if (mats.length !== COMBINE_COUNT - 1 || mats.some((m) => !m || m.rarity !== base.rarity || !canBeMaterial(m, equipped))) return null;
-  const use = new Set(materialIds);
-  const np: Part = { ...makePart(base.kind, RARITIES[rarityIndex(base.rarity) + 1], rnd, base.id), ...(base.locked ? { locked: true } : {}) };
-  inv.parts = inv.parts.filter((p) => !use.has(p.id)).map((p) => (p.id === base.id ? np : p));
+  const mat = inv.parts.find((p) => p.id === matId);
+  if (!base || !mat || !canStack(base, mat, equipped)) return null;
+  stack(base, mat, takeExtra);
+  inv.parts = inv.parts.filter((p) => p.id !== mat.id);
   saveInventory(inv);
-  return np;
+  return base;
 }
 
-// まとめて合成の計画: レア度ごとに、ベース＋材料2個の組を作れるだけ作る（ピースの数が へって レア度が 上がる）。
-// ベースは 指定があればそれ、無ければ 装備中のもの→出来のよいもの の順。材料は 出来のわるいものから
-export interface CombinePlan { rarity: Rarity; baseId: string; materialIds: string[]; candidates: string[] }
-export function planCombines(parts: Part[], equipped: Set<string>, chosenBases: Partial<Record<Rarity, string[]>> = {}): CombinePlan[] {
-  const out: CombinePlan[] = [];
-  for (const rarity of RARITIES) {
-    if (rarity === TOP_RARITY) continue;
-    const list = parts.filter((p) => p.rarity === rarity && !p.locked);
-    const used = new Set<string>();
-    const byBase = [...list].sort((a, b) => Number(equipped.has(b.id)) - Number(equipped.has(a.id)) || b.roll - a.roll);
-    const byMat = [...list].filter((p) => canBeMaterial(p, equipped)).sort((a, b) => a.roll - b.roll);
-    const wanted = chosenBases[rarity] ?? [];
-    // その部品をベースにしても 材料が そろうか
-    const feasible = (id: string) => byMat.filter((m) => m.id !== id && !used.has(m.id)).length >= COMBINE_COUNT - 1;
-    for (let n = 0; ; n++) {
-      const candidates = byBase.filter((p) => !used.has(p.id) && feasible(p.id)).map((p) => p.id);
-      if (!candidates.length) break;
-      const base = wanted[n] && candidates.includes(wanted[n]) ? wanted[n] : candidates[0];
-      const mats = byMat.filter((m) => m.id !== base && !used.has(m.id)).slice(0, COMBINE_COUNT - 1);
-      used.add(base);
-      mats.forEach((m) => used.add(m.id));
-      out.push({ rarity, baseId: base, materialIds: mats.map((m) => m.id), candidates });
-    }
+// まとめて かさねる: しゅるいごとに いちばん良い（装備中なら それ）シールへ、のこりを 弱い順に かさねる。
+// 装備中・🔒は 材料にしない。おまけは 空きが あれば いちばん 大きいものを もらう
+export interface StackPlan { baseId: string; matIds: string[] }
+export function planStacks(parts: Part[], equipped: Set<string>): StackPlan[] {
+  const out: StackPlan[] = [];
+  const kinds = [...new Set(parts.map((p) => p.kind))];
+  for (const k of kinds) {
+    const list = parts.filter((p) => p.kind === k);
+    if (list.length < 2) continue;
+    const base = [...list].sort((a, b) => Number(equipped.has(b.id)) - Number(equipped.has(a.id)) || partScore(b) - partScore(a))[0];
+    const mats = list.filter((p) => p.id !== base.id && canBeMaterial(p, equipped)).sort((a, b) => partScore(a) - partScore(b)).slice(0, MAX_STAR - base.star);
+    if (mats.length) out.push({ baseId: base.id, matIds: mats.map((m) => m.id) });
   }
   return out;
+}
+export function stackAll(equipped: Set<string>): Part[] {
+  const inv = loadInventory();
+  const made: Part[] = [];
+  for (const pl of planStacks(inv.parts, equipped)) {
+    const base = inv.parts.find((p) => p.id === pl.baseId)!;
+    for (const id of pl.matIds) {
+      const mat = inv.parts.find((p) => p.id === id)!;
+      const best = mat.extras.reduce((bi, e, i, a) => (bi < 0 || e.value > a[bi].value ? i : bi), -1);
+      stack(base, mat, best);
+    }
+    inv.parts = inv.parts.filter((p) => !pl.matIds.includes(p.id));
+    made.push(base);
+  }
+  saveInventory(inv);
+  return made;
 }
 
 // 鍵の付け外し
@@ -144,40 +148,20 @@ export function toggleLock(id: string): boolean {
   return !!p.locked;
 }
 
-// 初回だけ: 今までの必殺（効果の選択）を C 相当のパーツに置き換える。最初の手持ちとして 追尾(遠)・竜巻(近) も配る。
-// 戻り値: 種類 → 作ったパーツ id（キャラの装備の置き換えに使う）
+// 初回だけ: 今までの必殺（効果の選択）を キラ★1 の標準シール（威力 1.0・おまけ無し）に置き換える。最初の手持ちとして 追尾(遠)・竜巻(近) も配る。
+// 戻り値: 種類 → 作ったシール id（キャラの装備の置き換えに使う）
 export function migrateToParts(usedKinds: PartKind[]): Map<PartKind, string> | null {
   if (loadInventoryRaw()) return null;
   const kinds = [...new Set<PartKind>(["r:homing", "m:tornado", ...usedKinds])];
   const map = new Map<PartKind, string>();
-  const inv: Inventory = { v: 1, parts: [], shards: 0, sinceA: 0 };
+  const inv: Inventory = { v: 2, parts: [], sincePika: 0 };
   for (const k of kinds) {
-    // C の標準値（出来 1.0・基準コスト・おまけ無し）
-    const p = makePart(k, "C", () => 0.5);
-    p.roll = 1;
-    p.id = `start-${k.replace(":", "-")}`;
+    const p = makeSticker(k, 1, 1, () => 0.5, `start-${k.replace(":", "-")}`, 0);
+    p.q = 0; p.cj = 0;
+    recalc(p);
     inv.parts.push(p);
     map.set(k, p.id);
   }
   saveInventory(inv);
   return map;
 }
-
-// 決まったレア度のパーツを1つもらう（オンライン対戦の1日1回の報酬）
-export function dropPartOfRarity(rarity: Rarity, rnd: () => number = Math.random): DropResult {
-  const inv = loadInventory();
-  const owned = new Set(inv.parts.map((x) => x.kind));
-  const pool = ALL_KINDS.flatMap((k) => (owned.has(k) ? [k] : [k, k]));
-  const p = makePart(pool[Math.floor(rnd() * pool.length)], rarity, rnd);
-  if (inv.parts.length >= INVENTORY_CAP) { inv.shards += RARITY_INFO[rarity].shards; saveInventory(inv); return { got: [], shardsInstead: RARITY_INFO[rarity].shards }; }
-  inv.parts.push(p);
-  saveInventory(inv);
-  return { got: [p], shardsInstead: 0 };
-}
-
-export function addShards(n: number) {
-  const inv = loadInventory();
-  inv.shards += n;
-  saveInventory(inv);
-}
-
