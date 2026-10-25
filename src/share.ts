@@ -56,7 +56,7 @@ export function shareText(i: ShareInput): string {
     ...(i.charName && o.name ? [`🧑 キャラ「${cut(i.charName, o.name)}」`] : []),
     storyLine(i.cleared, i.chapters, o.detail, o.maxBoss),
     `⭐ Lv${i.level} ツリー${i.spent}/${i.cap}${i.titles.length && o.titles ? `（${i.titles.slice(0, o.titles).join("・")}${i.titles.length > o.titles ? "…" : ""}）` : ""}`,
-    ...(o.parts ? [`🧩 パーツ${i.partCount}こ${i.bestPart && o.best ? `（さいこう ${i.bestPart}）` : ""}`] : []),
+    ...(o.parts ? [`🧩 シール${i.partCount}まい${i.bestPart && o.best ? `（さいこう ${i.bestPart}）` : ""}`] : []),
     ...(o.tag ? ["じぶんで かいた絵が たたかう ゲーム"] : []),
     GAME_URL,
     HASHTAG,
