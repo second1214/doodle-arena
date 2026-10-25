@@ -960,7 +960,8 @@ function stepProjectileCore(w: World, p: Projectile): boolean {
         // 分裂: 落ち始めに 割れて、相手の まわりへ 散らばって 落ちる（重ねた世代の分だけ まとめて割る）
         if (s.split > 0) {
           const n = Math.min(27, 3 ** s.split), ring = 1.2 + 0.5 * s.split, base = w.rng.next() * Math.PI * 2;
-          const cs: ProjSpec = { ...s, split: 0, damage: s.damage * 0.5 ** s.split };
+          // 相手の まわりに 散らばる分 よけにくいので、1つの 威力は まっすぐの 分裂より 低め（0.35 倍）
+          const cs: ProjSpec = { ...s, split: 0, damage: s.damage * 0.35 ** s.split };
           for (let k = 0; k < n && room(w); k++) {
             const a = base + (k * Math.PI * 2) / n, r = k === 0 && n === 3 ? 0 : ring;
             w.spawn.push({ ...p, id: w.nextId++, spec: cs, tx: target.x + Math.cos(a) * r, tz: target.z + Math.sin(a) * r, hitsLeft: cs.hits, rehit: 0 });

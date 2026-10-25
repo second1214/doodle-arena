@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { detect, DEFAULT_PARAMS } from "../src/detect";
 import { ALL_STAGES, enemyParts, isUnlocked } from "../src/story";
-import { buildSpecial, seededRnd } from "../src/items";
+import { buildSpecial, equipCosts, fitsType, partSlot, seededRnd, SPECIAL_BUDGET } from "../src/items";
 import { applyStageResult, expToNext, exportCode, importCode, loadProfile } from "../src/progress";
 import { createWorld, hashWorld, step } from "../src/sim/world";
 import { aiInput, createAi } from "../src/sim/ai";
@@ -94,4 +94,17 @@ describe("自由バトルの CPU キャラ", () => {
       expect(play()).toBe(play());
     }
   }, 120_000);
+});
+
+describe("敵の ひっさつ", () => {
+  it("敵の シールは ぜんぶ 予算内で、とびかた・うごきは 1まいだけ（黙って 効かない シールが 無い）", () => {
+    const bad: string[] = [];
+    for (const st of ALL_STAGES) {
+      const parts = enemyParts(st).filter((p) => fitsType(p, st.specialType));
+      const cost = equipCosts(parts).reduce((a, c) => a + c, 0);
+      const paths = parts.filter((p) => partSlot(p.kind) === "path" && p.kind !== "r:cloud").length;
+      if (parts.length !== st.parts.length || cost > SPECIAL_BUDGET || paths > 1) bad.push(`${st.id} ⚡${cost} とびかた${paths}`);
+    }
+    expect(bad).toEqual([]);
+  });
 });
