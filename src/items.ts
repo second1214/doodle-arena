@@ -1,7 +1,9 @@
-// 必殺パーツ（ハクスラ）。手に入れるたびに威力・装備コスト・おまけ効果がランダムに決まる。レア度 F→E→D→C→B→A→S（ドロップ）→SS→SSS（合成だけ）。
+// 必殺パーツ＝シール（軽いハクスラ）。手に入れるたびに「できばえ（光り方）・威力・重さ・おまけ」がランダムに決まる。
+// できばえ: ふつう / ✨キラ / 🌟ピカピカ。同じしゅるいのシールを かさねると ★が上がる（★5まで）。
+// レア度（F〜SSS）は 敵の設定と 古い持ち物の 読みかえにだけ使う（画面には出さない）。
 // パーツの数値は手に入れた時に確定して保存する（後で表を変えても、持っているパーツは変わらない）。
 // 戦闘には「効果 ID の並び（重ねがけ込み）＋数値（威力倍率など）」だけを渡す。
-import { EFFECTS, type EffectId } from "./sim/special";
+import { EFFECTS, slotOf, type EffectId, type Slot } from "./sim/special";
 import { MELEE_EFFECTS, type MeleeEffectId } from "./sim/melee";
 import type { SpecialMod } from "./sim/world";
 
@@ -85,6 +87,17 @@ const KIND_ICON: Record<string, string> = {
 };
 export const kindIcon = (kind: PartKind) => KIND_ICON[kind] ?? "✨";
 
+// シールが 入る 枠（遠距離: とびかた/ふるまい/こうか、近接: うごき/わざ/こうか）。能力パーツは こうか
+export function partSlot(kind: PartKind): Slot {
+  if (kind.startsWith("r:")) return slotOf(kind.slice(2) as EffectId);
+  if (kind.startsWith("m:")) return MELEE_EFFECTS.find((x) => x.id === kind.slice(2))?.slot ?? "fx";
+  return "fx";
+}
+export const SLOT_LABEL: Record<"ranged" | "melee", Record<Slot, [string, string]>> = {
+  ranged: { path: ["🛤️", "とびかた"], act: ["🔀", "ふるまい"], fx: ["✨", "こうか"] },
+  melee: { path: ["🏃", "うごき"], act: ["🖐️", "わざ"], fx: ["✨", "こうか"] },
+};
+
 export const ALL_KINDS: PartKind[] = [
   ...EFFECTS.map((e) => `r:${e.id}` as PartKind),
   ...MELEE_EFFECTS.map((e) => `m:${e.id}` as PartKind),
@@ -98,32 +111,85 @@ export interface Extra { stat: ExtraStat; value: number }
 const EXTRA_BASE: Record<ExtraStat, number> = { power: 0.08, pspeed: 0.12, duration: 0.12, windup: 1 };
 const EXTRA_KEYS = Object.keys(EXTRA_BASE) as ExtraStat[];
 
+// できばえ（光り方）: 威力の幅と 重さ（装備コスト）の倍率
+export type Shine = 0 | 1 | 2;
+export const SHINE_INFO: Record<Shine, { name: string; icon: string; roll: [number, number]; costMul: number; color: string }> = {
+  0: { name: "ふつう", icon: "", roll: [0.85, 1.0], costMul: 1.1, color: "#8a8f98" },
+  1: { name: "キラ", icon: "✨", roll: [1.0, 1.15], costMul: 0.95, color: "#1c7ed6" },
+  2: { name: "ピカピカ", icon: "🌟", roll: [1.15, 1.3], costMul: 0.8, color: "#e8590c" },
+};
+export const MAX_STAR = 5;
+export const MAX_EXTRAS = 3;
+const STAR_ROLL = 0.05; // ★1つで 威力 +5%（★3・★5 で 重さ −1）
+
 export interface Part {
   id: string;
   kind: PartKind;
-  rarity: Rarity;
-  roll: number; // 手に入れた時の出来（レア度ごとの幅の中）
-  cost: number; // 装備コスト
+  shine: Shine;
+  star: number; // 1〜5（同じしゅるいを かさねると 上がる）
+  q: number; // できばえの幅の中の 位置（0〜1。手に入れた時に決まる）
+  cj: number; // 重さの 個体差（−1〜+1）
+  roll: number; // 威力の倍率（shine・q・star から計算。recalc）
+  cost: number; // 装備コスト（shine・cj・star から計算）
   extras: Extra[];
-  locked?: boolean; // 🔒 鍵（まちがえて 分解・合成の材料にしない）
+  locked?: boolean; // 🔒 鍵（まちがえて かさねる材料にしない）
+  rarity?: Rarity; // 古い形（読み込み時に shine・star へ移す）
 }
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
-// 1つ作る。rnd は 0〜1 の乱数（ドロップは Math.random、敵はシード固定）
-export function makePart(kind: PartKind, rarity: Rarity, rnd: () => number, id = newPartId(rnd)): Part {
-  const info = RARITY_INFO[rarity];
-  const roll = round2(info.roll[0] + (info.roll[1] - info.roll[0]) * rnd());
-  const jitter = Math.floor(rnd() * 3) - 1; // ±1
-  const cost = Math.max(1, Math.round(kindInfo(kind).baseCost * info.costMul) + jitter);
-  const n = info.extras >= 1 ? info.extras : rnd() < info.extras ? 1 : 0;
+export function recalc(p: Part): Part {
+  const info = SHINE_INFO[p.shine];
+  p.roll = round2(info.roll[0] + (info.roll[1] - info.roll[0]) * p.q + STAR_ROLL * (p.star - 1));
+  p.cost = Math.max(1, Math.round(kindInfo(p.kind).baseCost * info.costMul) + p.cj - Math.floor((p.star - 1) / 2));
+  return p;
+}
+
+function rollExtras(n: number, rnd: () => number): Extra[] {
   const extras: Extra[] = [];
   for (let k = 0; k < n; k++) {
     const stat = EXTRA_KEYS[Math.floor(rnd() * EXTRA_KEYS.length)];
     extras.push({ stat, value: stat === "windup" ? 1 : round2(EXTRA_BASE[stat] * (0.75 + rnd() * 0.5)) });
   }
-  return { id, kind, rarity, roll, cost, extras };
+  return extras;
 }
+
+// シールを1枚作る。rnd は 0〜1 の乱数（ドロップは Math.random、敵はシード固定）。extrasN を省くと できばえで決める
+export function makeSticker(kind: PartKind, shine: Shine, star: number, rnd: () => number, id = newPartId(rnd), extrasN?: number): Part {
+  const q = round2(rnd());
+  const cj = Math.floor(rnd() * 3) - 1;
+  const n = extrasN ?? (shine === 0 ? (rnd() < 0.3 ? 1 : 0) : shine === 1 ? 1 : rnd() < 0.5 ? 2 : 1);
+  return recalc({ id, kind, shine, star: Math.max(1, Math.min(MAX_STAR, star)), q, cj, roll: 0, cost: 0, extras: rollExtras(n, rnd) });
+}
+
+// 古いレア度 → できばえ と ★（敵の設定・前の持ち物）
+const FROM_RARITY: Record<Rarity, [Shine, number]> = { F: [0, 1], E: [0, 1], D: [0, 2], C: [1, 1], B: [1, 2], A: [1, 3], S: [2, 2], SS: [2, 4], SSS: [2, 5] };
+export const fromRarity = (r: Rarity) => ({ shine: FROM_RARITY[r][0], star: FROM_RARITY[r][1] });
+
+// レア度で 作る（敵・オンラインの門番。おまけの数は 前と同じにして 強さを変えない）
+export function makePart(kind: PartKind, rarity: Rarity, rnd: () => number, id = newPartId(rnd)): Part {
+  const { shine, star } = fromRarity(rarity);
+  const ex = RARITY_INFO[rarity].extras;
+  const p = makeSticker(kind, shine, star, rnd, id, ex >= 1 ? ex : rnd() < ex ? 1 : 0);
+  return p;
+}
+
+// 前の形（レア度つき）の パーツを シールに 読みかえる。威力・重さの 個体差は できるだけ 残す
+export function upgradePart(p: Part): Part {
+  if (p.shine !== undefined && p.star !== undefined) return p;
+  const r: Rarity = p.rarity && RARITIES.includes(p.rarity) ? p.rarity : "C";
+  const info = RARITY_INFO[r];
+  const { shine, star } = fromRarity(r);
+  const q = Math.max(0, Math.min(1, (p.roll - info.roll[0]) / (info.roll[1] - info.roll[0] || 1)));
+  const cj = Math.max(-1, Math.min(1, Math.round((p.cost ?? 0) - Math.round(kindInfo(p.kind).baseCost * info.costMul))));
+  const { rarity: _old, ...rest } = p;
+  return recalc({ ...rest, shine, star, q: round2(q), cj, extras: Array.isArray(p.extras) ? p.extras : [] });
+}
+
+export const shineText = (p: Pick<Part, "shine">) => `${SHINE_INFO[p.shine].icon}${SHINE_INFO[p.shine].name}`;
+export const starText = (p: Pick<Part, "star">) => "★".repeat(p.star) + "☆".repeat(MAX_STAR - p.star);
+// 強さの ならびかえ用（できばえ → 威力 → おまけ）
+export const partScore = (p: Part) => p.shine * 10 + p.roll + p.extras.length * 0.05;
 
 export function newPartId(rnd: () => number = Math.random): string {
   return Date.now().toString(36) + Math.floor(rnd() * 1e9).toString(36);
@@ -213,7 +279,24 @@ export const DROP_TABLE: number[][] = [
   [0, 0, 5, 25, 38, 25, 7], // 第6章
   [0, 0, 0, 18, 40, 32, 10], // 第7章
 ];
-export const PITY = 20; // A 以上がこの回数出なければ次は A 確定
+export const PITY = 20; // ピカピカが この回数 出なければ 次は ピカピカ確定
+
+// 章ごとの できばえの出やすさ（ふつう / キラ / ピカピカ の %）
+export const SHINE_TABLE: number[][] = [
+  [85, 15, 0],
+  [70, 28, 2],
+  [55, 40, 5],
+  [45, 45, 10],
+  [35, 50, 15],
+  [30, 50, 20], // 第6章
+  [25, 50, 25], // 第7章
+];
+export function rollShine(chapter: number, rnd: () => number): Shine {
+  const row = SHINE_TABLE[Math.max(0, Math.min(SHINE_TABLE.length - 1, chapter - 1))];
+  let x = rnd() * 100;
+  for (let i = 0; i < row.length; i++) { x -= row[i]; if (x < 0) return i as Shine; }
+  return 0;
+}
 
 export function rollRarity(chapter: number, rnd: () => number): Rarity {
   const row = DROP_TABLE[Math.max(0, Math.min(DROP_TABLE.length - 1, chapter - 1))];

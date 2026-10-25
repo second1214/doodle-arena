@@ -1,5 +1,7 @@
 // 近接型の必殺技。遠距離型と同じく「予算20ポイントで効果を選ぶ」。効果は部品で、適用順はフェーズで固定する
 // （選んだ順に依らず同じ構成なら同じ挙動）。矛盾した組み合わせも止めない。数値は調整前提の仮値。
+import type { Slot } from "./special";
+
 
 export type MeleeEffectId = "tornado" | "wobble" | "legbind" | "giantHands" | "rubber" | "dash" | "grab" | "slam" | "crumple"
   | "magnet" | "vampire" | "ice" | "counter" | "mushroom" | "bulldozer"
@@ -47,6 +49,7 @@ export interface MeleeEffectDef {
   id: MeleeEffectId;
   name: string;
   cost: number;
+  slot: Slot; // うごき（path）/ わざ（act）/ こうか（fx）。遠距離と同じ 3つの枠
   phase: Phase;
   apply: (s: MeleeSpec) => void;
 }
@@ -63,27 +66,27 @@ export const BASE_MELEE: MeleeSpec = {
 export const UPPERCUT_COST = 4, DIVE_COST = 5, GUST_COST = 4, FLAME_COST = 7;
 export const MAGNET_COST = 6, VAMPIRE_COST = 14, ICE_COST = 4, COUNTER_COST = 1, MUSHROOM_COST = 1, BULLDOZER_COST = 6;
 export const MELEE_EFFECTS: MeleeEffectDef[] = [
-  { id: "giantHands", name: "巨大な手", cost: 6, phase: "body", apply: (s) => { s.limbScale *= 3; s.range *= 2.2; s.windup += 6; } },
-  { id: "rubber", name: "ゴム伸びパンチ", cost: 4, phase: "body", apply: (s) => { s.rubberScale *= 4; s.range *= 3.5; s.arc *= 0.3; s.recover += 8; } },
-  { id: "tornado", name: "竜巻スピン", cost: 8, phase: "motion", apply: (s) => { s.spinTicks += 45; s.arc = Math.PI; s.hits = Math.max(s.hits, 6); s.hitInterval = 6; } },
-  { id: "dash", name: "突進すり抜け", cost: 5, phase: "motion", apply: (s) => { s.dash += 5; s.arc = Math.PI; } },
-  { id: "slam", name: "地面たたき", cost: 5, phase: "motion", apply: (s) => { s.slam = true; s.windup += 6; } },
-  { id: "grab", name: "つかみ投げ", cost: 7, phase: "hit", apply: (s) => { s.grab = true; s.knock *= 1.8; } },
-  { id: "wobble", name: "グニャグニャ視界", cost: 7, phase: "after", apply: (s) => { s.wobbleTicks += 120; } },
-  { id: "legbind", name: "足封じ", cost: 6, phase: "after", apply: (s) => { s.legbindTicks += 120; } },
-  { id: "crumple", name: "紙くしゃくしゃ", cost: 9, phase: "after", apply: (s) => { s.crumpleTicks += 60; } },
+  { id: "giantHands", name: "巨大な手", cost: 6, slot: "act", phase: "body", apply: (s) => { s.limbScale *= 3; s.range *= 2.2; s.windup += 6; } },
+  { id: "rubber", name: "ゴム伸びパンチ", cost: 4, slot: "act", phase: "body", apply: (s) => { s.rubberScale *= 4; s.range *= 3.5; s.arc *= 0.3; s.recover += 8; } },
+  { id: "tornado", name: "竜巻スピン", cost: 8, slot: "path", phase: "motion", apply: (s) => { s.spinTicks += 45; s.arc = Math.PI; s.hits = Math.max(s.hits, 6); s.hitInterval = 6; } },
+  { id: "dash", name: "突進すり抜け", cost: 5, slot: "path", phase: "motion", apply: (s) => { s.dash += 5; s.arc = Math.PI; } },
+  { id: "slam", name: "地面たたき", cost: 5, slot: "path", phase: "motion", apply: (s) => { s.slam = true; s.windup += 6; } },
+  { id: "grab", name: "つかみ投げ", cost: 7, slot: "act", phase: "hit", apply: (s) => { s.grab = true; s.knock *= 1.8; } },
+  { id: "wobble", name: "グニャグニャ視界", cost: 7, slot: "fx", phase: "after", apply: (s) => { s.wobbleTicks += 120; } },
+  { id: "legbind", name: "足封じ", cost: 6, slot: "fx", phase: "after", apply: (s) => { s.legbindTicks += 120; } },
+  { id: "crumple", name: "紙くしゃくしゃ", cost: 9, slot: "fx", phase: "after", apply: (s) => { s.crumpleTicks += 60; } },
  
-  { id: "magnet", name: "じしゃくの手", cost: MAGNET_COST, phase: "motion", apply: (s) => { s.pull += 1; s.active += 4; } },
-  { id: "vampire", name: "すいとりパンチ", cost: VAMPIRE_COST, phase: "after", apply: (s) => { s.lifesteal += 0.6; } },
-  { id: "ice", name: "こおりタッチ", cost: ICE_COST, phase: "after", apply: (s) => { s.freezeTicks += 120; } },
-  { id: "counter", name: "カウンター", cost: COUNTER_COST, phase: "hit", apply: (s) => { s.counter = true; s.windup += 22; } },
-  { id: "mushroom", name: "でっかくなる", cost: MUSHROOM_COST, phase: "after", apply: (s) => { s.bigTicks += 180; s.damage *= 0.5; } },
+  { id: "magnet", name: "じしゃくの手", cost: MAGNET_COST, slot: "act", phase: "motion", apply: (s) => { s.pull += 1; s.active += 4; } },
+  { id: "vampire", name: "すいとりパンチ", cost: VAMPIRE_COST, slot: "fx", phase: "after", apply: (s) => { s.lifesteal += 0.6; } },
+  { id: "ice", name: "こおりタッチ", cost: ICE_COST, slot: "fx", phase: "after", apply: (s) => { s.freezeTicks += 120; } },
+  { id: "counter", name: "カウンター", cost: COUNTER_COST, slot: "act", phase: "hit", apply: (s) => { s.counter = true; s.windup += 22; } },
+  { id: "mushroom", name: "でっかくなる", cost: MUSHROOM_COST, slot: "act", phase: "after", apply: (s) => { s.bigTicks += 180; s.damage *= 0.5; } },
   // 高さの ある 戦い用（コストは CPU 対戦の 測定で 決めた）
-  { id: "uppercut", name: "アッパー", cost: UPPERCUT_COST, phase: "hit", apply: (s) => { s.vreach += 2.6; s.launch += 9; s.arc = Math.max(s.arc, Math.PI / 2); } },
-  { id: "dive", name: "ダイブ", cost: DIVE_COST, phase: "motion", apply: (s) => { s.dive = true; s.dash += 4; s.vreach += 3; s.arc = Math.PI; s.windup += 2; } },
-  { id: "gust", name: "かぜおこし", cost: GUST_COST, phase: "hit", apply: (s) => { s.arc = Math.PI; s.knock *= 1.9; s.vreach += 1.8; s.netTicks += 120; s.damage *= 0.9; } },
-  { id: "flame", name: "ほのおパンチ", cost: FLAME_COST, phase: "after", apply: (s) => { s.burnTicks += 150; } },
-  { id: "bulldozer", name: "ブルドーザー", cost: BULLDOZER_COST, phase: "motion", apply: (s) => { s.push += 1; s.active += 20; s.knock = 0; s.damage *= 0.6; } }, // 測定1回目は1回平均50ダメで強すぎ
+  { id: "uppercut", name: "アッパー", cost: UPPERCUT_COST, slot: "act", phase: "hit", apply: (s) => { s.vreach += 2.6; s.launch += 9; s.arc = Math.max(s.arc, Math.PI / 2); } },
+  { id: "dive", name: "ダイブ", cost: DIVE_COST, slot: "path", phase: "motion", apply: (s) => { s.dive = true; s.dash += 4; s.vreach += 3; s.arc = Math.PI; s.windup += 2; } },
+  { id: "gust", name: "かぜおこし", cost: GUST_COST, slot: "act", phase: "hit", apply: (s) => { s.arc = Math.PI; s.knock *= 1.9; s.vreach += 1.8; s.netTicks += 120; s.damage *= 0.9; } },
+  { id: "flame", name: "ほのおパンチ", cost: FLAME_COST, slot: "fx", phase: "after", apply: (s) => { s.burnTicks += 150; } },
+  { id: "bulldozer", name: "ブルドーザー", cost: BULLDOZER_COST, slot: "path", phase: "motion", apply: (s) => { s.push += 1; s.active += 20; s.knock = 0; s.damage *= 0.6; } }, // 測定1回目は1回平均50ダメで強すぎ
 ];
 
 export function composeMelee(ids: MeleeEffectId[]): MeleeSpec {

@@ -5,7 +5,7 @@ import { buildCharacter } from "../battle/character";
 import { DEFAULT_PARAMS, type DetectParams, type Stroke } from "../detect";
 import { CPU_CHARS, type CpuChar } from "../cpuChars";
 import { buildSpecial, equipCosts, hashStr, makePart, seededRnd, SPECIAL_BUDGET, type Part, type Rarity } from "../items";
-import { addShards, dropPartOfRarity, type DropResult } from "../inventory";
+import { dropPartOfRarity, type DropResult } from "../inventory";
 import { frontierStage, gainExp, loadProfile, totalPoints } from "../progress";
 import { thumbnail } from "../roster";
 import { preloadImages } from "../imagestroke";
@@ -140,8 +140,12 @@ export function initOnline(root: HTMLElement, deps: OnlineDeps) {
       writeJson(SEEN_KEY, seen);
       if (defended > 0) {
         const d = daily();
-        const give = Math.min(defended * 2, 20 - d.shards);
-        if (give > 0) { addShards(give); d.shards += give; writeJson(DAILY_KEY, d); lines.push(`まもったごほうびに かけら +${give}`); }
+        // まもった ごほうび: 1日1回 シールを1枚（shards は 前の かけらの 名残り。もらった回数として使う）
+        if (d.shards < 1) {
+          const drop = dropPartOfRarity("D");
+          d.shards = 1; writeJson(DAILY_KEY, d);
+          if (drop.got.length || drop.fed.length) lines.push(`まもったごほうびに シールを 1まい もらったよ`);
+        }
       }
       newsEl.hidden = !lines.length;
       newsEl.innerHTML = lines.map((l) => `<div>📣 ${l}</div>`).join("");
