@@ -131,6 +131,17 @@ export function buildStage(scene: THREE.Scene, arena: Arena, disposables: { disp
     scene.add(grp);
   }
 
+  // 水たまり（プール）: すこし 透ける 水色の 円と、白い ふち
+  for (const pl of arena.pools ?? []) {
+    const water = mesh(new THREE.CircleGeometry(pl.r, 48), keep(new THREE.MeshStandardMaterial({ color: 0x4dabf7, transparent: true, opacity: 0.7, roughness: 0.15, metalness: 0.1 })));
+    water.rotation.x = -Math.PI / 2;
+    water.position.set(pl.x, 0.02, pl.z);
+    water.receiveShadow = true;
+    const rim = mesh(new THREE.RingGeometry(pl.r, pl.r + 0.25, 48), mat(0xffffff, 0.6));
+    rim.rotation.x = -Math.PI / 2;
+    rim.position.set(pl.x, 0.025, pl.z);
+  }
+
   // 背景の 飾り
   if (arena.backdrop === "night" || arena.backdrop === "cave") {
     const n = arena.backdrop === "night" ? 260 : 60;

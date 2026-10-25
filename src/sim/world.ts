@@ -6,7 +6,7 @@ import { DEFAULT_TRAITS, type Hurt, type Traits } from "../shape";
 import { composeMelee, type MeleeEffectId, type MeleeSpec } from "./melee";
 import { BASE_CHARGE_NEED, BASE_DODGE_COST, statEffects, type Boost, type StatEffects } from "./stats";
 import { ARENA_RADIUS, BODY_HEIGHT, BODY_RADIUS } from "./consts";
-import { groundAt, ladderAt, STEP, type Arena } from "./arena";
+import { groundAt, inWater, ladderAt, STEP, type Arena } from "./arena";
 export { ARENA_RADIUS, BODY_HEIGHT, BODY_RADIUS };
 
 // 戦闘ルールの版。ルールを変えたら上げる（オンラインの公開キャラに記録し、古い版のキャラも戦えるようにする）
@@ -41,6 +41,7 @@ const SHOVE_WINDUP = slow(3), SHOVE_ACTIVE = slow(2), SHOVE_RECOVER = slow(9), S
 // 回避: 入力方向へ素早く移動し、その間は当たらない。方向が無ければ後ろへ
 const DODGE_TICKS = slow(8), DODGE_RECOVER = slow(5), DODGE_SPEED = 13 * 0.75;
 const MOVE_SPEED = 3;
+const WATER_SPEED = 0.6; // 水の 中を 歩く 速さ
 // 必殺に必要な命中数（標準5・防御された攻撃も数える）、防御で減らす割合（標準7割）、回避のスタミナ（標準22）、
 // 防御成功で防いだ側に溜まるゲージ（標準0.5・攻撃1回につき1度）は、強化で変わるのでキャラごとの st に持つ（stats.ts）
 const SHOOT_SLOW = 15; // 必殺技を撃った直後に足が遅くなる tick
@@ -119,6 +120,7 @@ export const NO_INPUT: Input = { mx: 0, mz: 0, attack: false, guard: false, spec
 export type AttackPhase = "none" | "windup" | "active" | "recover";
 
 export interface Fighter {
+  team: number; // 0 = 自分の チーム、1 = 相手の チーム（1対多の 試合では 相手が 何人か いる）
   cfg: FighterConfig;
   spec: ProjSpec;
   x: number; z: number;
@@ -216,7 +218,7 @@ export interface Projectile {
 export interface World {
   tick: number;
   rng: Rng;
-  fighters: [Fighter, Fighter];
+  fighters: Fighter[]; // [0] は 自分。1対1 なら [自分, 相手]
   projectiles: Projectile[];
   nextId: number;
   arena?: Arena; // 地形（無ければ 平らな舞台）
@@ -238,7 +240,7 @@ export interface BattleEvent {
   pid?: number; // 弾の id（必殺技のみ）
   tags?: (EffectId | MeleeEffectId)[]; // 必殺技の効果（見た目用）
   restrained?: boolean;
-  status?: "wobble" | "legbind" | "crumple" | "net" | "burn" | "shock" | "launch";
+  status?: "wobble" | "legbind" | "crumple" | "net" | "burn" | "shock" | "launch" | "steam";
   heal?: number; // 防御成功で回復した量
   gap?: boolean; // 空白を素通りした（描いていない所に当たった）
 }
@@ -266,12 +268,12 @@ function modMelee(s: MeleeSpec, m: Partial<SpecialMod> = {}): MeleeSpec {
 function paceProj(s: ProjSpec): ProjSpec { return { ...s, speed: s.speed * PROJ_PACE }; }
 function paceMelee(s: MeleeSpec): MeleeSpec { return { ...s, windup: slow(s.windup), active: slow(s.active), recover: slow(s.recover) }; }
 
-function makeFighter(cfg: FighterConfig, x: number): Fighter {
+function makeFighter(cfg: FighterConfig, x: number, team: number, z = 0): Fighter {
   const st = statEffects(cfg.boost);
   return {
-    st, maxHp: st.maxHp, maxStamina: st.maxStamina,
+    team, st, maxHp: st.maxHp, maxStamina: st.maxStamina,
     cfg, spec: paceProj(modProj(composeSpecial(cfg.special), cfg.specialMod)),
-    x, z: 0, vx: 0, vz: 0, fx: x < 0 ? 1 : -1, fz: 0,
+    x, z, vx: 0, vz: 0, fx: x < 0 ? 1 : -1, fz: 0,
     hp: st.maxHp, stamina: st.maxStamina, guarding: false, guardBroken: 0,
     attack: "none", attackT: 0, attackHit: false, charge: 0, specialSeq: 0, guardedSeq: 0, shootSlow: 0, rooted: 0, hitFlash: 0, moving: false,
     kx: 0, kz: 0, stun: 0, guardStun: false, regenDelay: 0, preSpeed: 0, swingHits: 0,
@@ -283,14 +285,31 @@ function makeFighter(cfg: FighterConfig, x: number): Fighter {
   };
 }
 
-export function createWorld(a: FighterConfig, b: FighterConfig, seed: number, arena?: Arena): World {
-  const fs: [Fighter, Fighter] = [makeFighter(a, -4), makeFighter(b, 4)];
+// more: 相手の チームに 足す キャラ（1対多。相手の まわりに ならべる）
+export function createWorld(a: FighterConfig, b: FighterConfig, seed: number, arena?: Arena, more: FighterConfig[] = []): World {
+  const fs: Fighter[] = [makeFighter(a, -4, 0), makeFighter(b, 4, 1), ...more.map((c, k) => makeFighter(c, 4.5, 1, (k % 2 ? 1 : -1) * 2.6 * (1 + Math.floor(k / 2))))];
   for (const f of fs) f.y = groundAt(arena, f.x, f.z);
   return {
     tick: 0, rng: new Rng(seed),
     fighters: fs, arena,
     projectiles: [], nextId: 1, winner: -1, hitstop: 0, events: [], spawn: [],
   };
+}
+
+// いちばん 近い 生きている 相手（1対1 なら もう片方）。全員 たおれていたら 相手の 1人目
+export function foeOf(w: World, i: number): number {
+  return foeNear(w, w.fighters[i].team, w.fighters[i].x, w.fighters[i].z);
+}
+export function foeNear(w: World, team: number, x: number, z: number): number {
+  let best = -1, bd = Infinity, first = -1;
+  w.fighters.forEach((f, k) => {
+    if (f.team === team) return;
+    if (first < 0) first = k;
+    if (f.hp <= 0) return;
+    const d = Math.hypot(f.x - x, f.z - z);
+    if (d < bd) { bd = d; best = k; }
+  });
+  return best >= 0 ? best : first;
 }
 
 // 地面から はなれているか（飛ぶ・落ちる・はしご）
@@ -315,6 +334,7 @@ export const attackCost = ATTACK_COST;
 export const dodgeCost = BASE_DODGE_COST; // 標準の値（実際は st.dodgeCost）
 
 interface Hit {
+  by: number; // 当てた キャラ
   amount: number;
   src: "melee" | "special";
   dx: number; dz: number; // 吹き飛ばす向き（単位ベクトル）
@@ -340,7 +360,7 @@ function damage(w: World, ti: number, hit: Hit) {
     return;
   }
   // 打ちおとし（対空）: 飛んでいる相手には 強化の分だけ 多く与える
-  const antiAir = airborne(w, target) ? w.fighters[1 - ti].st.antiAir : 1;
+  const antiAir = airborne(w, target) ? w.fighters[hit.by].st.antiAir : 1;
   hit = { ...hit, amount: hit.amount * antiAir };
   // カウンター: 構え中に必殺以外で殴られたら受け流し、すぐ2倍で出す
   if (hit.src === "melee" && target.mspec.counter && target.ms.phase === "windup") {
@@ -350,7 +370,7 @@ function damage(w: World, ti: number, hit: Hit) {
   }
   const guarded = target.guarding && !hit.ignoreGuard;
   const rolling = !target.feetNow && Math.hypot(target.vx, target.vz) > MOVE_SPEED * 0.5;
-  const atkF = w.fighters[1 - ti];
+  const atkF = w.fighters[hit.by];
   const base = hit.amount * atkF.st.dealt * target.st.taken * (atkF.big > 0 ? 1.5 : 1) * (target.big > 0 ? 0.8 : 1); // 能力値（攻撃力・防御力）＋でっかくなる
   hit = { ...hit, amount: base };
   const dmg = base * (guarded ? 1 - (rolling ? tr(target.cfg).rollGuardCut : target.st.guardCut) * (1 - Math.min(1, hit.pierce ?? 0)) : 1); // pierce
@@ -381,7 +401,11 @@ function damage(w: World, ti: number, hit: Hit) {
     st("wobble", hit.wobble);
     st("legbind", hit.legbind);
     st("crumple", hit.crumple);
-    if (hit.freeze) target.ice = Math.max(target.ice, hit.freeze); // こおり
+    // 水の 中: こおりは 長く、かみなりは 水を つたって 長く しびれ、ほのおは ジュッと 消える（画面に 出す）
+    const wet = inWater(w.arena, target.x, target.z, target.y);
+    if (hit.freeze) target.ice = Math.max(target.ice, Math.round(hit.freeze * (wet ? 1.5 : 1))); // こおり
+    if (wet && hit.shock) hit = { ...hit, shock: Math.round(hit.shock * 1.6) };
+    if (wet && hit.burn) { hit = { ...hit, burn: 0 }; w.events.push({ kind: "status", x: target.x, z: target.z, h: 2, amount: 0, src: "special", target: ti, dx: 0, dz: 0, size: 0, status: "steam" }); }
     const st2 = (kind: "net" | "burn" | "shock", ticks?: number) => {
       if (!ticks) return;
       target[kind] = Math.max(target[kind], ticks);
@@ -401,8 +425,8 @@ function damage(w: World, ti: number, hit: Hit) {
   if (restrained) target.rooted = Math.max(target.rooted, hit.restrain!);
   w.events.push({ kind: guarded ? "guard" : "hit", x: hit.x, z: hit.z, h: hit.h - target.y, y: target.y, amount: dmg, src: hit.src, target: ti, dx: hit.dx, dz: hit.dz, size: hit.size, pid: hit.pid, tags: hit.tags, restrained, heal });
   // 通常攻撃が当たるたびに攻撃側の必殺技ゲージが溜まる（防御されても溜まる）
-  const atk = w.fighters[1 - ti];
-  if (hit.src === "melee" && hit.firstOfSwing) addCharge(w, 1 - ti, 1);
+  const atk = w.fighters[hit.by];
+  if (hit.src === "melee" && hit.firstOfSwing) addCharge(w, hit.by, 1);
   // 防御に成功すると防いだ側も少し溜まる（通常攻撃は1回の攻撃につき1度、必殺は1回の必殺につき1度）
   if (guarded) {
     if (hit.src === "melee" && hit.firstOfSwing) addCharge(w, ti, target.st.guardCharge);
@@ -428,9 +452,10 @@ function addCharge(w: World, i: number, n: number) {
 // 同じ tick の通常攻撃は両者の行動処理が終わってから同時に当てる（同時に殴ったら相打ち）
 let pendingMelee: [number, Hit][] = [];
 
-function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
+function stepFighter(w: World, i: number, rawInp: Input) {
   const me = w.fighters[i];
-  const op = w.fighters[1 - i];
+  const oi = foeOf(w, i);
+  const op = w.fighters[oi];
   const ddx = op.x - me.x, ddz = op.z - me.z;
   const dist = Math.hypot(ddx, ddz) || 1;
   me.fx = ddx / dist; me.fz = ddz / dist;
@@ -543,6 +568,7 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
   const flyingNow = me.flying && inAir;
   let speed = MOVE_SPEED * me.st.speed * (flyingNow ? me.st.flySpeed : me.feetNow ? tr(me.cfg).walk : tr(me.cfg).top) * (me.guarding ? me.st.guardMove : 1);
   if (me.shootSlow > 0) speed *= 0.3;
+  if (!inAir && inWater(w.arena, me.x, me.z, me.y)) speed *= WATER_SPEED; // 水の 中は 足が おそい
   if (mx * me.fx + mz * me.fz < -0.3) speed *= RETREAT_SPEED; // 相手から離れる向き
   if (rooted || me.attack === "active" || me.attack === "windup") speed *= rooted ? 0 : 0.3;
   const mp = me.ms.phase;
@@ -591,7 +617,7 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
         if (touch) break;
       }
       if (!touch && !me.attackHit && me.swingHits === 0 && me.attackT === activeTicks(me.cfg) - 1) {
-        w.events.push({ kind: "evade", x: op.x, z: op.z, h: 1.2, amount: 0, src: "melee", target: 1 - i, dx: 0, dz: 0, size: 0, gap: true });
+        w.events.push({ kind: "evade", x: op.x, z: op.z, h: 1.2, amount: 0, src: "melee", target: oi, dx: 0, dz: 0, size: 0, gap: true });
       }
     }
     // 手が多いと 2tick おきに複数回当たる（合計威力は回数の 0.25 乗）
@@ -606,7 +632,8 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
           w.events.push({ kind: "recoil", x: me.x, z: me.z, h: 1, amount: self, src: "melee", target: i, dx: -me.fx, dz: -me.fz, size: 0 });
         }
       }
-      pendingMelee.push([1 - i, {
+      pendingMelee.push([oi, {
+        by: i,
         amount, src: "melee",
         dx: me.fx, dz: me.fz, knock: ((me.cfg.hasHands ? MELEE_KNOCK : TACKLE_KNOCK) * T.knockGiven * mom) / T.hits,
         stun: MELEE_STUN, x: (me.x + op.x) / 2, z: (me.z + op.z) / 2, h: op.y + 1.0, size: 0,
@@ -650,7 +677,7 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
         if (op.attack !== "none") { op.attack = "none"; op.attackT = 0; }
         if (op.ms.phase === "windup") op.ms = idleMelee();
         w.hitstop = Math.max(w.hitstop, HITSTOP_LIGHT);
-        w.events.push({ kind: "shove", x: (me.x + op.x) / 2, z: (me.z + op.z) / 2, h: 1, amount: 0, src: "melee", target: 1 - i, dx: me.fx, dz: me.fz, size: 0 });
+        w.events.push({ kind: "shove", x: (me.x + op.x) / 2, z: (me.z + op.z) / 2, h: 1, amount: 0, src: "melee", target: oi, dx: me.fx, dz: me.fz, size: 0 });
       }
     }
   }
@@ -682,7 +709,7 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
 
 // 撃つ人の 手元から 相手へ向けた 弾を 1つ作る
 function launch(w: World, i: number, s: ProjSpec, mult: number): Projectile {
-  const me = w.fighters[i], op = w.fighters[1 - i];
+  const me = w.fighters[i], op = w.fighters[foeOf(w, i)];
   const dist = Math.max(1, Math.hypot(op.x - me.x, op.z - me.z));
   return {
     id: w.nextId++, owner: i, spec: s,
@@ -701,7 +728,7 @@ const DROP_SPLIT_AGE = 3; // しずくが 割れる時（落ちはじめ すぐ�
 // 撃つ係（雲・時間差分割）。子の弾は 時間差分割の回数だけを 取り除き、ほかの性質は 全部 受け継ぐ
 function stepEmitter(w: World, p: Projectile): boolean {
   const s = p.spec;
-  const target = w.fighters[1 - p.owner];
+  const target = w.fighters[foeOf(w, p.owner)];
   const me = w.fighters[p.owner];
   p.age++;
   const per = s.drip > 0 ? DRIP_DMG : 1;
@@ -741,9 +768,9 @@ export function meleeSpecialRange(cfg: FighterConfig, spec: MeleeSpec, target?: 
   return rad(cfg) + (target ? rad(target) : BODY_RADIUS) + limb * spec.range;
 }
 
-function stepMelee(w: World, i: 0 | 1, dist: number) {
+function stepMelee(w: World, i: number, dist: number) {
   const me = w.fighters[i];
-  const op = w.fighters[1 - i];
+  const op = w.fighters[foeOf(w, i)];
   const ms = me.ms;
   const s = me.mspec;
   if (ms.phase === "none") return;
@@ -845,8 +872,9 @@ function stepMelee(w: World, i: 0 | 1, dist: number) {
 
 function hitWith(w: World, i: number, x: number, z: number, dx: number, dz: number, amount: number, knock: number, ignoreGuard: boolean) {
   const s = w.fighters[i].mspec;
-  damage(w, 1 - i, {
-    amount: amount * w.fighters[i].st.special * w.fighters[i].ms.mult, src: "special", dx, dz, knock, stun: SPECIAL_STUN, x, z, h: w.fighters[1 - i].y + 1, size: 0, tags: s.tags,
+  const oi = foeOf(w, i);
+  damage(w, oi, {
+    by: i, amount: amount * w.fighters[i].st.special * w.fighters[i].ms.mult, src: "special", dx, dz, knock, stun: SPECIAL_STUN, x, z, h: w.fighters[oi].y + 1, size: 0, tags: s.tags,
     ignoreGuard, wobble: s.wobbleTicks, legbind: s.legbindTicks, crumple: s.crumpleTicks,
     net: s.netTicks, burn: s.burnTicks, launch: s.launch,
     lifesteal: s.lifesteal, freeze: s.freezeTicks, pierce: w.fighters[i].cfg.specialMod?.pierce ?? 0,
@@ -859,12 +887,13 @@ function stepProjectile(w: World, p: Projectile): boolean {
   const alive = stepProjectileCore(w, p);
   const s = p.spec;
   if (!alive && s.blast > 0) {
-    const target = w.fighters[1 - p.owner];
+    const ti = foeNear(w, w.fighters[p.owner].team, p.x, p.z);
+    const target = w.fighters[ti];
     const ox = target.x - p.x, oz = target.z - p.z, ol = Math.hypot(ox, oz) || 1;
     w.events.push({ kind: "land", x: p.x, z: p.z, h: Math.max(0, p.h - groundAt(w.arena, p.x, p.z)), y: groundAt(w.arena, p.x, p.z), amount: 0, src: "special", target: p.owner, dx: 0, dz: 0, size: s.blast, tags: s.tags });
     if (ol <= s.blast + rad(target.cfg) && Math.abs(target.y + 0.9 - p.h) <= s.blast + 1) {
-      damage(w, 1 - p.owner, {
-        amount: s.damage * 0.7 * p.mult * w.fighters[p.owner].st.special, src: "special", dx: ox / ol, dz: oz / ol, knock: 8, stun: SPECIAL_STUN,
+      damage(w, ti, {
+        by: p.owner, amount: s.damage * 0.7 * p.mult * w.fighters[p.owner].st.special, src: "special", dx: ox / ol, dz: oz / ol, knock: 8, stun: SPECIAL_STUN,
         x: target.x, z: target.z, h: target.y + 1, size: s.blast, pid: p.id, tags: s.tags, lifesteal: s.lifesteal, freeze: s.freezeTicks, pierce: w.fighters[p.owner].cfg.specialMod?.pierce ?? 0,
         net: s.netTicks, shock: s.shockTicks, burn: s.burnTicks,
       });
@@ -882,7 +911,7 @@ function steerPitch(p: Projectile, target: Fighter, rate: number) {
 
 function stepProjectileCore(w: World, p: Projectile): boolean {
   const s = p.spec;
-  const target = w.fighters[1 - p.owner];
+  const target = w.fighters[foeNear(w, w.fighters[p.owner].team, p.x, p.z)]; // 弾に いちばん 近い 相手
   p.age++;
   if (p.rehit > 0) p.rehit--;
   // すいこみ: 近くの相手を弾へ引き寄せる
@@ -1060,7 +1089,8 @@ function hitCheck(w: World, p: Projectile, target: Fighter): boolean {
       if (ol > 0.01) { kdx = ox / ol; kdz = oz / ol; }
     }
     const restrain = s.restrainTicks > 0 && !target.guarding;
-    damage(w, 1 - p.owner, {
+    damage(w, w.fighters.indexOf(target), {
+      by: p.owner,
       amount: s.damage * p.mult * w.fighters[p.owner].st.special, src: "special", dx: kdx, dz: kdz,
       lifesteal: s.lifesteal, freeze: s.freezeTicks, pierce: w.fighters[p.owner].cfg.specialMod?.pierce ?? 0,
       net: s.netTicks, shock: s.shockTicks, burn: s.burnTicks,
@@ -1074,19 +1104,21 @@ function hitCheck(w: World, p: Projectile, target: Fighter): boolean {
   return true;
 }
 
-export function step(w: World, inputs: [Input, Input]) {
+export function step(w: World, inputs: Input[]) {
   w.events = []; // 決着後も必ず空にする（前の tick のイベントを繰り返し配らない）
   if (w.winner !== -1) return;
   if (w.hitstop > 0) { w.hitstop--; return; } // ヒットストップ中は全体が止まる（試合時間も進まない）
   w.tick++;
-  // 処理順で先手が有利にならないよう、tick ごとに順番を入れ替える
-  const first = (w.tick & 1) as 0 | 1;
-  const second = (1 - first) as 0 | 1;
+  // 処理順で先手が有利にならないよう、tick ごとに順番を入れ替える（たおれた キャラは 動かない）
+  const n = w.fighters.length;
   pendingMelee = [];
-  stepFighter(w, first, inputs[first]);
-  stepFighter(w, second, inputs[second]);
+  for (let k = 0; k < n; k++) {
+    const i = (k + w.tick) % n;
+    if (w.fighters[i].hp > 0 || n === 2) stepFighter(w, i, inputs[i] ?? NO_INPUT);
+  }
   for (const [ti, hit] of pendingMelee) damage(w, ti, hit);
   for (const f of w.fighters) {
+    if (f.hp <= 0 && n > 2) continue;
     moveH(w, f, (f.vx + f.kx) * DT, (f.vz + f.kz) * DT);
     f.kx *= KNOCK_DECAY; f.kz *= KNOCK_DECAY;
     if (Math.abs(f.kx) < 0.05) f.kx = 0;
@@ -1097,13 +1129,16 @@ export function step(w: World, inputs: [Input, Input]) {
     moveV(w, f);
   }
   // 体同士の押し合い（同じくらいの 高さに いる時だけ）
-  const [a, b] = w.fighters;
-  const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz);
-  const RR = rad(a.cfg) + rad(b.cfg);
-  if (d > 0 && d < RR && Math.abs(a.y - b.y) < BODY_HEIGHT * 0.8) {
-    const push = (RR - d) / 2;
-    a.x -= (dx / d) * push; a.z -= (dz / d) * push;
-    b.x += (dx / d) * push; b.z += (dz / d) * push;
+  for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) {
+    const a = w.fighters[p], b = w.fighters[q];
+    if (n > 2 && (a.hp <= 0 || b.hp <= 0)) continue;
+    const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz);
+    const RR = rad(a.cfg) + rad(b.cfg);
+    if (d > 0 && d < RR && Math.abs(a.y - b.y) < BODY_HEIGHT * 0.8) {
+      const push = (RR - d) / 2;
+      a.x -= (dx / d) * push; a.z -= (dz / d) * push;
+      b.x += (dx / d) * push; b.z += (dz / d) * push;
+    }
   }
   w.spawn = [];
   w.projectiles = w.projectiles.filter((p) => stepProjectile(w, p));
@@ -1112,9 +1147,12 @@ export function step(w: World, inputs: [Input, Input]) {
   // 見た目の 高さの基準（イベントの h は ここからの高さ）
   for (const e of w.events) if (e.y === undefined) e.y = w.fighters[e.target]?.y ?? 0;
 
-  const [ha, hb] = [a.hp, b.hp];
-  if (ha <= 0 || hb <= 0) w.winner = ha <= 0 && hb <= 0 ? 2 : ha <= 0 ? 1 : 0;
-  else if (w.tick >= MATCH_TICKS) w.winner = ha === hb ? 2 : ha > hb ? 0 : 1;
+  // 決着: チームの 全員が たおれたら 負け。時間切れは チームの 体力の 合計で くらべる
+  const teamHp = (t: number) => w.fighters.reduce((a, f) => a + (f.team === t ? Math.max(0, f.hp) : 0), 0);
+  const alive = (t: number) => w.fighters.some((f) => f.team === t && f.hp > 0);
+  const [a0, a1] = [alive(0), alive(1)];
+  if (!a0 || !a1) w.winner = !a0 && !a1 ? 2 : !a0 ? 1 : 0;
+  else if (w.tick >= MATCH_TICKS) { const [ha, hb] = [teamHp(0), teamHp(1)]; w.winner = ha === hb ? 2 : ha > hb ? 0 : 1; }
 }
 
 // 横の移動: 歩いて 入れない 段差（かべ）の手前で 止まる。片方の向きだけ 通れるなら そちらへ すべる

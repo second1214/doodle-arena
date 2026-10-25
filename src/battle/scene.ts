@@ -2,7 +2,7 @@
 // 演出（火花・閃光・衝撃波・画面揺れ・ダメージ数字・KO）は見た目専用で、戦闘計算には影響しない。
 import * as THREE from "three";
 import { CANVAS_SIZE } from "../detect";
-import { ARENA_RADIUS, BODY_RADIUS, meleeSpecialRange, type BattleEvent, type Fighter, type World } from "../sim/world";
+import { ARENA_RADIUS, BODY_RADIUS, foeOf, meleeSpecialRange, type BattleEvent, type Fighter, type World } from "../sim/world";
 import type { CharacterBuild } from "./character";
 import { arcTexture, glowTexture, Particles, Popups, ringTexture, sparkTexture, starTexture, type Flash } from "./fx";
 import { ProjectileVisual, SpecialTextures } from "./specialfx";
@@ -380,7 +380,7 @@ export class BattleScene {
   private arena: Arena;
   private evY = 0; // いま 描いている イベントの 高さの基準
 
-  constructor(private container: HTMLElement, builds: [CharacterBuild, CharacterBuild], private viewer: number, arena?: Arena) {
+  constructor(private container: HTMLElement, builds: CharacterBuild[], private viewer: number, arena?: Arena) {
     this.arena = arena ?? arenaById("flat");
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -395,7 +395,7 @@ export class BattleScene {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.sun = buildStage(this.scene, this.arena, this.disposables).sun;
 
-    this.fighters = builds.map((b, i) => new FighterVisual(b, PROJ_COLORS[i], this.tex, this.disposables));
+    this.fighters = builds.map((b, i) => new FighterVisual(b, PROJ_COLORS[i === 0 ? 0 : 1], this.tex, this.disposables)); // 色は チームで
     for (const f of this.fighters) this.scene.add(f.root);
     this.particles = new Particles(this.tex.glow, true);
     this.sparks = new Particles(this.tex.spark, false);
@@ -416,10 +416,17 @@ export class BattleScene {
 
   // 2体の中間を追い、離れるほど引く（縦長画面でも2体が横に収まる距離）。KO 時は寄る。
   private updateCamera(w: World, dt: number) {
-    const [a, b] = w.fighters;
+    // 1対多: 生きている キャラ 全員が 入るように（いちばん 離れた 2体の 間）
+    const live = w.fighters.length > 2 ? w.fighters.filter((f) => f.hp > 0) : w.fighters;
+    let [a, b] = [live[0] ?? w.fighters[0], live[1] ?? live[0] ?? w.fighters[1]];
+    let far = -1;
+    for (let p = 0; p < live.length; p++) for (let q = p + 1; q < live.length; q++) {
+      const d = Math.hypot(live[p].x - live[q].x, live[p].z - live[q].z);
+      if (d > far) { far = d; a = live[p]; b = live[q]; }
+    }
     const mid = new THREE.Vector3((a.x + b.x) / 2, 0, (a.z + b.z) / 2);
     const sep = Math.hypot(a.x - b.x, a.z - b.z) + Math.abs(a.y - b.y) * 0.8;
-    const avgY = (a.y + b.y) / 2, topY = Math.max(a.y, b.y);
+    const avgY = (a.y + b.y) / 2, topY = Math.max(...live.map((f) => f.y));
     const vHalf = THREE.MathUtils.degToRad(this.camera.fov / 2);
     const hHalf = Math.atan(Math.tan(vHalf) * this.camera.aspect);
     const need = Math.max(2.0, sep / 2 + 1.5);
@@ -487,7 +494,7 @@ export class BattleScene {
       case "hit": {
         const big = e.src === "special";
         const tags = e.tags ?? [];
-        const col = big ? PROJ_COLORS[1 - e.target] : HIT_COLOR;
+        const col = big ? PROJ_COLORS[e.target === 0 ? 1 : 0] : HIT_COLOR;
         const multi = tags.includes("multi");
         const n = multi && e.pid ? (this.combo.get(e.pid) ?? 0) + 1 : 1;
         if (multi && e.pid) this.combo.set(e.pid, n);
@@ -571,7 +578,7 @@ export class BattleScene {
         this.pop("つかれた…", new THREE.Vector3(e.x, 2.6, e.z), "guard");
         break;
       case "status": {
-        const STATUS_LABEL: Record<string, string> = { wobble: "グニャ〜", legbind: "足封じ!", crumple: "クシャッ!", net: "あみ!", burn: "アチチ!", shock: "ビリビリ!", launch: "ボーン!" };
+        const STATUS_LABEL: Record<string, string> = { wobble: "グニャ〜", legbind: "足封じ!", crumple: "クシャッ!", net: "あみ!", burn: "アチチ!", shock: "ビリビリ!", launch: "ボーン!", steam: "ジュッ!" };
         const label = STATUS_LABEL[e.status ?? ""] ?? "!?";
         this.pop(label, new THREE.Vector3(e.x, 2.9, e.z), "bind");
         if (e.status === "crumple") this.emitS({ count: 14, x: e.x, y: 1, z: e.z, color: 0xffffff, speed: 4, spread: 1, life: 0.4, size: 0.25 });
@@ -649,7 +656,7 @@ export class BattleScene {
     for (const e of events) this.onEvent(e);
     this.updateCamera(w, dt);
     w.fighters.forEach((f, i) => {
-      this.fighters[i].meleeReach = meleeSpecialRange(f.cfg, f.mspec, w.fighters[1 - i].cfg);
+      this.fighters[i].meleeReach = meleeSpecialRange(f.cfg, f.mspec, w.fighters[foeOf(w, i)].cfg);
       const gnd = groundAt(w.arena, f.x, f.z);
       this.fighters[i].update(f, t, dt, gnd);
       // 吹き飛び中の砂ぼこり・のけぞり中の星・やけどの火の粉
@@ -669,7 +676,7 @@ export class BattleScene {
       alive.add(p.id);
       let v = this.proj.get(p.id);
       if (!v) {
-        v = new ProjectileVisual(p, PROJ_COLORS[p.owner], this.specialTex, this.tex.glow, this.shadowGeo, p.owner === this.viewer);
+        v = new ProjectileVisual(p, PROJ_COLORS[w.fighters[p.owner].team], this.specialTex, this.tex.glow, this.shadowGeo, p.owner === this.viewer);
         this.scene.add(v.group);
         this.proj.set(p.id, v);
       }

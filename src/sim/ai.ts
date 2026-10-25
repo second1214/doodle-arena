@@ -1,6 +1,6 @@
 // CPU の操作。性格ごとに行動の重みを変える（猛攻 / 慎重 / 狙撃 / トリッキー）。
 // 反応の遅れ・迷いはシード固定の乱数で決めるので、同じシードなら同じ試合になる。
-import { airborne, attackCostOf, grabRange, meleeRange, meleeSpecialRange, type Input, type Personality, type World } from "./world";
+import { airborne, attackCostOf, foeOf, grabRange, meleeRange, meleeSpecialRange, type Input, type Personality, type World } from "./world";
 import { groundAt, STEP } from "./arena";
 
 export type { Personality };
@@ -45,7 +45,7 @@ export function createAi(level: AiLevel = DEFAULT_AI_LEVEL): AiState {
   return { level, hold: { mx: 0, mz: 0, attack: false, guard: false, special: false }, wait: 0, strafe: 1, backoff: 0, route: -1, flyT: 0 };
 }
 
-export function aiInput(w: World, i: 0 | 1, ai: AiState): Input {
+export function aiInput(w: World, i: number, ai: AiState): Input {
   const rng = w.rng;
   // 押した瞬間だけ有効な入力は毎 tick 消す
   const out: Input = { ...ai.hold, attack: false, special: false, shove: false, dodge: false };
@@ -55,7 +55,7 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState): Input {
   // 反応の間（グニャグニャ中は鈍る）
   ai.wait = ai.level.wait[0] + Math.floor(rng.next() * ai.level.wait[1]) + (me.wobble > 0 || me.dizzy > 0 ? 2 + Math.floor(rng.next() * 3) : 0);
 
-  const op = w.fighters[1 - i];
+  const op = w.fighters[foeOf(w, i)];
   const base = PERSONAS[me.cfg.personality ?? "aggressive"];
   const D = ai.level.defend;
   const P = D === 1 ? base : { ...base, guard: Math.min(1, base.guard * D), react: Math.min(1, base.react * D), dodge: Math.min(1, base.dodge * D) };
@@ -66,7 +66,7 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState): Input {
 
   // 見えている敵の弾で、自分に向かってくるもの（見えない弾には反応できない）
   const threat = w.projectiles.find((p) => {
-    if (p.owner === i || !p.spec.visible || p.emitter !== undefined) return false;
+    if (w.fighters[p.owner].team === me.team || !p.spec.visible || p.emitter !== undefined) return false;
     const rx = me.x - p.x, rz = me.z - p.z;
     const d = Math.hypot(rx, rz);
     if (p.spec.meteor) return p.age >= 40 && Math.hypot(me.x - p.tx, me.z - p.tz) < p.spec.size + 1.5;
