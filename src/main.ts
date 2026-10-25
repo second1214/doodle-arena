@@ -16,6 +16,7 @@ import { sumBoost, type Boost } from "./sim/stats";
 import { ALL_KINDS, buildSpecial, equipCosts, extraText, fitsType, hashStr, kindIcon, kindInfo, mainText, makePart, MAX_EXTRAS, MAX_STAR, partScore, partSlot, seededRnd, SHINE_INFO, shineText, SLOT_LABEL, SPECIAL_BUDGET, starText, type Part, type PartKind } from "./items";
 import { pathOf, type EffectId, type Slot } from "./sim/special";
 import { TestFire } from "./testfire";
+import { normalizeMelee, type MeleeEffectId } from "./sim/melee";
 import { canStack, dropParts, INVENTORY_CAP, loadInventory, migrateToParts, planStacks, stackAll, stackInto, toggleLock, type DropResult } from "./inventory";
 import { autoTree, boostOf, BRANCHES, bridges, canTake, masteredBranches, nodeById, nodeId, randomTree, spentOf, talents, TREE_CAP, TREE_TOTAL, type ShapeFlags } from "./tree";
 import type { Personality } from "./sim/world";
@@ -1091,7 +1092,10 @@ function renderEffects() {
   const used = costs.reduce((a, c) => a + c, 0);
   // 古いデータで とびかたが 2まい あれば、つかわれる 1まいの ほかは 効かない
   const usedPath = type === "ranged" ? pathOf(active.filter((p) => p.kind.startsWith("r:")).map((p) => p.kind.slice(2) as EffectId)) : undefined;
-  const pathOff = (p: Part) => type === "ranged" && partSlot(p.kind) === "path" && p.kind.slice(2) !== usedPath && !(usedPath === "rain" && p.kind === "r:cloud");
+  const usedMoves = new Set(normalizeMelee(active.filter((p) => p.kind.startsWith("m:")).map((p) => p.kind.slice(2) as MeleeEffectId)));
+  const pathOff = (p: Part) => partSlot(p.kind) === "path" && (type === "ranged"
+    ? p.kind.slice(2) !== usedPath && !(usedPath === "rain" && p.kind === "r:cloud")
+    : !usedMoves.has(p.kind.slice(2) as MeleeEffectId));
   const save = (next: string[]) => { setLoadout(type, next); renderEffects(); persistDraft(); };
   effectsEl.innerHTML = "";
 

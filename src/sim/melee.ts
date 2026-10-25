@@ -71,7 +71,7 @@ export const MELEE_EFFECTS: MeleeEffectDef[] = [
   { id: "tornado", name: "竜巻スピン", cost: 8, slot: "path", phase: "motion", apply: (s) => { s.spinTicks += 45; s.arc = Math.PI; s.hits = Math.max(s.hits, 6); s.hitInterval = 6; } },
   { id: "dash", name: "突進すり抜け", cost: 5, slot: "path", phase: "motion", apply: (s) => { s.dash += 5; s.arc = Math.PI; } },
   { id: "slam", name: "地面たたき", cost: 5, slot: "path", phase: "motion", apply: (s) => { s.slam = true; s.windup += 6; } },
-  { id: "grab", name: "つかみ投げ", cost: 7, slot: "act", phase: "hit", apply: (s) => { s.grab = true; s.knock *= 1.8; } },
+  { id: "grab", name: "つかみ投げ", cost: 7, slot: "act", phase: "hit", apply: (s) => { if (s.grab) s.damage *= 1.15; s.grab = true; s.knock *= 1.8; } }, // 重ねると 投げも 強く（押しこみで ふっとばしが 0 でも 変わる）,
   { id: "wobble", name: "グニャグニャ視界", cost: 7, slot: "fx", phase: "after", apply: (s) => { s.wobbleTicks += 120; } },
   { id: "legbind", name: "足封じ", cost: 6, slot: "fx", phase: "after", apply: (s) => { s.legbindTicks += 120; } },
   { id: "crumple", name: "紙くしゃくしゃ", cost: 9, slot: "fx", phase: "after", apply: (s) => { s.crumpleTicks += 60; } },
@@ -89,7 +89,16 @@ export const MELEE_EFFECTS: MeleeEffectDef[] = [
   { id: "bulldozer", name: "ブルドーザー", cost: BULLDOZER_COST, slot: "path", phase: "motion", apply: (s) => { s.push += 1; s.active += 20; s.knock = 0; s.damage *= 0.6; } }, // 測定1回目は1回平均50ダメで強すぎ
 ];
 
-export function composeMelee(ids: MeleeEffectId[]): MeleeSpec {
+// うごきは 1つだけ。古いデータで 2つ以上 付いていたら この順で 1つ選ぶ
+const MOVE_PRIORITY: MeleeEffectId[] = ["dive", "tornado", "dash", "slam", "bulldozer"];
+export const meleeSlotOf = (id: MeleeEffectId): Slot => MELEE_EFFECTS.find((e) => e.id === id)?.slot ?? "fx";
+export function normalizeMelee(ids: MeleeEffectId[]): MeleeEffectId[] {
+  const move = MOVE_PRIORITY.find((m) => ids.includes(m));
+  return ids.filter((id) => meleeSlotOf(id) !== "path" || id === move);
+}
+
+export function composeMelee(raw: MeleeEffectId[]): MeleeSpec {
+  const ids = normalizeMelee(raw);
   const s: MeleeSpec = { ...BASE_MELEE };
   const chosen = MELEE_EFFECTS.flatMap((e) => ids.filter((x) => x === e.id).map(() => e)); // 同じ効果は重ねてかける
   for (const phase of PHASE_ORDER) for (const e of chosen) if (e.phase === phase) e.apply(s);
