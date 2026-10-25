@@ -21,6 +21,7 @@ export interface BattleOptions {
   onResultShown?: (resultEl: HTMLElement) => void; // 結果画面のボタン（👎 など）に動きを付ける
   fastButton?: boolean; // 観戦用: 2倍速ボタンを出す
   arena?: Arena; // ステージ（地形と背景。無ければ 平らな ひろば）
+  more?: CharacterBuild[]; // 相手の なかま（1対多。同じ CPU の強さで 動く）
 }
 
 const pips = (i: number) => `<div class="b-charge" data-ch="${i}"></div>`; // 中身は必要な命中数ぶん（キャラごとに違う）
@@ -68,10 +69,20 @@ export function startBattle(opts: BattleOptions) {
   document.body.classList.add("in-battle");
   const q = <T extends HTMLElement>(s: string) => el.querySelector(s) as T;
 
-  let world: World = createWorld(opts.player.cfg, opts.cpu.cfg, opts.seed, opts.arena);
-  let ais = [createAi(), createAi(opts.cpuLevel)];
+  const more = opts.more ?? [];
+  const newWorld = () => createWorld(opts.player.cfg, opts.cpu.cfg, opts.seed, opts.arena, more.map((b) => b.cfg));
+  const newAis = () => [createAi(), createAi(opts.cpuLevel), ...more.map(() => createAi(opts.cpuLevel))];
+  let world: World = newWorld();
+  let ais = newAis();
   let stats = [newStats(), newStats()];
-  const scene = new BattleScene(q(".b-view"), [opts.player, opts.cpu], opts.spectate ? -1 : 0, opts.arena);
+  const scene = new BattleScene(q(".b-view"), [opts.player, opts.cpu, ...more], opts.spectate ? -1 : 0, opts.arena);
+  // 相手の なかまの 体力（右の 下に 小さく）
+  for (let k = 0; k < more.length; k++) {
+    const d = document.createElement("div");
+    d.className = "b-bar mini";
+    d.innerHTML = `<i data-hp="${k + 2}"></i>`;
+    q(".b-side.right").appendChild(d);
+  }
   if (opts.exitLabel) q(".b-result-buttons [data-exit]").textContent = opts.exitLabel;
   // 相手のひとこと（始まりに少しだけ出す）
   const say = () => {
@@ -184,7 +195,7 @@ export function startBattle(opts: BattleOptions) {
   };
 
   // --- HUD ---
-  const hpEls = [q("[data-hp='0']"), q("[data-hp='1']")];
+  const hpEls = world.fighters.map((_, i) => q(`[data-hp='${i}']`));
   const hpNums = [q("[data-hpn='0']"), q("[data-hpn='1']")];
   const stEls = [q("[data-st='0']"), q("[data-st='1']")];
   const chEls = [q("[data-ch='0']"), q("[data-ch='1']")];
@@ -200,7 +211,8 @@ export function startBattle(opts: BattleOptions) {
   const countEl = q(".b-count");
   const updateHud = () => {
     world.fighters.forEach((f, i) => {
-      hpEls[i].style.width = `${(f.hp / f.maxHp) * 100}%`;
+      hpEls[i].style.width = `${(Math.max(0, f.hp) / f.maxHp) * 100}%`;
+      if (i > 1) return; // なかまは 体力だけ
       hpNums[i].textContent = `${Math.ceil(f.hp)}`;
       stEls[i].style.width = `${(f.stamina / f.maxStamina) * 100}%`;
       stEls[i].parentElement!.classList.toggle("low", f.stamina < attackCostOf(f.cfg));
@@ -222,7 +234,9 @@ export function startBattle(opts: BattleOptions) {
 
   // --- 効果音と戦績 ---
   const onEvent = (e: BattleEvent) => {
-    const atk = 1 - e.target;
+    // 戦績は チームで まとめる（0 = 自分、1 = 相手の チーム）
+    const tgt = e.target === 0 ? 0 : 1;
+    const atk = 1 - tgt;
     switch (e.kind) {
       case "hit":
         stats[atk].dealt += e.amount;
@@ -231,16 +245,16 @@ export function startBattle(opts: BattleOptions) {
         if (e.restrained) sfx.bind();
         break;
       case "guard":
-        stats[e.target].guards++;
+        stats[tgt].guards++;
         stats[atk].dealt += e.amount;
         if (e.src === "melee") stats[atk].melee++; else stats[atk].specialHits++;
         sfx.guard();
         break;
-      case "shoot": stats[e.target].shots++; sfx.shoot(e.size); break;
+      case "shoot": stats[tgt].shots++; sfx.shoot(e.size); break;
       case "land": sfx.land(e.size); break;
       case "ready": sfx.ready(); break;
       case "ko": sfx.ko(); break;
-      case "mstart": stats[e.target].shots++; sfx.shoot(0.5); break;
+      case "mstart": stats[tgt].shots++; sfx.shoot(0.5); break;
       case "mactive": {
         const tags = (e.tags ?? []) as string[];
         if (tags.includes("tornado")) sfx.spin();
@@ -310,8 +324,7 @@ export function startBattle(opts: BattleOptions) {
         while (acc >= DT) {
           acc -= DT;
           const p0 = opts.spectate ? aiInput(world, 0, ais[0]) : playerInput();
-          const p1 = aiInput(world, 1, ais[1]);
-          step(world, [p0, p1]);
+          step(world, [p0, ...world.fighters.slice(1).map((_, k) => aiInput(world, k + 1, ais[k + 1]))]);
           events.push(...world.events);
         }
       });
@@ -325,7 +338,7 @@ export function startBattle(opts: BattleOptions) {
       ended = true;
       const win = world.winner;
       const msg = win === 2 || win === -1 ? "引き分け" : opts.spectate
-        ? `${world.fighters[win].cfg.name} の勝ち`
+        ? `${world.fighters[win === 0 ? 0 : 1].cfg.name}${win === 1 && more.length ? " たち" : ""} の勝ち`
         : win === 0 ? "勝ち！" : "負け…";
       q(".b-result-text").textContent = msg;
       const n = (i: number) => world.fighters[i].cfg.name;
@@ -368,8 +381,9 @@ export function startBattle(opts: BattleOptions) {
   el.querySelectorAll("[data-exit]").forEach((b) => b.addEventListener("click", exit));
   q("[data-again]").addEventListener("click", () => {
     sfx.unlock();
-    world = createWorld(opts.player.cfg, opts.cpu.cfg, (opts.seed = (opts.seed * 1664525 + 1013904223) >>> 0), opts.arena);
-    ais = [createAi(), createAi(opts.cpuLevel)];
+    opts.seed = (opts.seed * 1664525 + 1013904223) >>> 0;
+    world = newWorld();
+    ais = newAis();
     stats = [newStats(), newStats()];
     ended = false;
     endAt = 0;

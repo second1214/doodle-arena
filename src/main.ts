@@ -28,6 +28,7 @@ import { initOnline } from "./online/screen";
 import { api } from "./online/client";
 import { AttractHeader } from "./battle/attract";
 import { ALL_STAGES, CHAPTERS, chapterOf, enemyParts, isUnlocked, UPCOMING, type Stage } from "./story";
+import { CHALLENGES, challengeOpen, foeStages, UNLOCK_STAGE, type Challenge } from "./challenge";
 
 const STORAGE_KEY = "doodle-arena:proto1";
 // よく使う色（黒・白・灰・茶・はだ・赤・もも・だいだい・黄・黄緑・緑・水色・青・むらさき）。ほかの色は「🌈 すきな色」と「💧 スポイト」で
@@ -2082,6 +2083,16 @@ function renderStory() {
     b.addEventListener("click", () => { storyCh = i; renderStory(); });
     chips.appendChild(b);
   });
+  // 🏆 チャレンジ（ストーリーの あと）
+  const chOpen = !!cleared[UNLOCK_STAGE];
+  const cb = document.createElement("button");
+  cb.type = "button";
+  cb.textContent = chOpen ? "🏆" : "🔒🏆";
+  cb.setAttribute("aria-label", "チャレンジ");
+  cb.classList.toggle("on", storyCh === CHAPTERS.length);
+  cb.classList.toggle("lock", !chOpen);
+  cb.addEventListener("click", () => { storyCh = CHAPTERS.length; renderStory(); });
+  chips.appendChild(cb);
   for (const t of UPCOMING) {
     const b = document.createElement("button");
     b.type = "button";
@@ -2092,6 +2103,7 @@ function renderStory() {
     chips.appendChild(b);
   }
   chaptersEl.appendChild(chips);
+  if (storyCh === CHAPTERS.length) { renderChallenges(cleared); return; }
   for (const ch of [CHAPTERS[storyCh]]) {
     const sec = document.createElement("div");
     sec.className = "chapter";
@@ -2128,12 +2140,70 @@ function renderStory() {
   }
 }
 
-function rewardHtml(r: Reward, stage: Stage, drop: DropResult | null): string {
+// チャレンジ: 1対多・プール。絵が かさなった 札（何人と たたかうか 見て わかる）
+function renderChallenges(cleared: Record<string, number>) {
+  const sec = document.createElement("div");
+  sec.className = "chapter";
+  const h = document.createElement("h2");
+  h.textContent = cleared[UNLOCK_STAGE] ? "🏆 チャレンジ" : "🏆 チャレンジ（ストーリーを ぜんぶ クリアすると ひらく）";
+  const grid = document.createElement("div");
+  grid.className = "stages challenges";
+  for (const c of CHALLENGES) {
+    const b = document.createElement("button");
+    b.disabled = !challengeOpen(c, cleared);
+    const pics = document.createElement("span");
+    pics.className = "foes";
+    for (const st of foeStages(c)) {
+      if (!thumbs.has(st.id)) thumbs.set(st.id, thumbnail(st.strokes()));
+      const img = document.createElement("img");
+      img.src = thumbs.get(st.id)!;
+      img.alt = "";
+      pics.appendChild(img);
+    }
+    const no = document.createElement("span");
+    no.className = "no";
+    no.textContent = `${c.icon} ${"👤".repeat(c.foes.length)}`;
+    const t = document.createElement("span");
+    t.textContent = b.disabled ? "？？？" : c.title;
+    b.append(pics, no, t);
+    if (cleared[c.id]) { const star = document.createElement("span"); star.className = "clear"; star.textContent = "★"; b.appendChild(star); }
+    b.addEventListener("click", () => startChallenge(c));
+    grid.appendChild(b);
+  }
+  sec.append(h, grid);
+  chaptersEl.appendChild(sec);
+}
+
+function startChallenge(c: Challenge) {
+  sfx.unlock();
+  const player = buildPlayer(storyCharSel.value);
+  const foes = foeStages(c).map((st) => {
+    const b = buildCharacter(st.enemy, st.strokes(), [], DEFAULT_PARAMS, st.marks?.() ?? []);
+    applyData(b, st, enemyParts(st), sumBoost([boostOf(autoTree(st.boostPoints, st.prefer)), { hp: (st.hp ?? 0) + c.hpEach }]));
+    return b;
+  });
+  const [cpu, ...more] = foes;
+  runBattle({
+    player, cpu, more,
+    arena: arenaById(c.arena),
+    spectate: false,
+    seed: (Math.random() * 0xffffffff) >>> 0,
+    sfx,
+    cpuLevel: foeStages(c)[0].ai,
+    exitLabel: "チャレンジへ",
+    onResult: (winner) => {
+      const r = applyStageResult(c.no, c.id, true, winner === 0);
+      return rewardHtml(r, null, winner === 0 ? dropParts(7, true) : null);
+    },
+  });
+}
+
+function rewardHtml(r: Reward, stage: Stage | null, drop: DropResult | null): string {
   const p = loadProfile();
   let h = `<div class="exp">経験値 +${r.exp}</div>`;
   if (r.levelsUp) h += `<div class="up">レベルアップ！ Lv ${p.level}</div>`;
   if (r.points) h += `<div>スキルポイント +${r.points}（メイン画面の「スキルツリー」で使えます）</div>`;
-  if (r.firstClear) {
+  if (r.firstClear && stage) {
     const next = ALL_STAGES[ALL_STAGES.indexOf(stage) + 1];
     h += `<div>${next ? `次のステージ「${next.enemy}」が開きました` : "ここまでクリア！ 続きの章は準備中です"}</div>`;
   }

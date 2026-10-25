@@ -11,6 +11,9 @@ export interface Ladder { x: number; z: number; nx: number; nz: number; h: numbe
 // CPU の道しるべ: foot（下の入口）から top（上の出口）へ歩けば 高さ h の所へ上がれる
 export interface Path { foot: [number, number]; top: [number, number]; h: number }
 
+// 浅い 水たまり（プール）。地面の 高さは 0 のまま。中では 足が おそくなり、かみなり・こおりが 強く、ほのおは 消える
+export interface Pool { x: number; z: number; r: number }
+
 export type Backdrop = "day" | "night" | "sunset" | "indoor" | "beach" | "cave";
 
 export interface Arena {
@@ -21,6 +24,7 @@ export interface Arena {
   ramps: Ramp[];
   ladders: Ladder[];
   paths: Path[];
+  pools?: Pool[];
 }
 
 export const STEP = 0.35; // 歩いて のぼれる 段差
@@ -37,6 +41,12 @@ export function groundAt(a: Arena | undefined, x: number, z: number): number {
     if (h > g) g = h;
   }
   return g;
+}
+
+// 水の 中に 立っているか（とんでいる・台の 上は ちがう）
+export function inWater(a: Arena | undefined, x: number, z: number, y: number): boolean {
+  if (!a?.pools?.length || y > 0.05) return false;
+  return a.pools.some((p) => Math.hypot(x - p.x, z - p.z) <= p.r);
 }
 
 // 近くの はしご（つかまれる距離にあり、まだ上まで登っていないもの）
@@ -83,6 +93,12 @@ export const ARENAS: Record<string, Arena> = {
     ramps: [{ x0: -3.5, x1: -1.5, z0: 0.6, z1: 2.2, axis: "x", h0: 1.8, h1: 0 }, { x0: 1.5, x1: 3.5, z0: -2.2, z1: -0.6, axis: "x", h0: 0, h1: 1.8 }],
     ladders: [{ x: -3.25, z: -2.4, nx: -1, nz: 0, h: 1.8 }, { x: 3.25, z: 2.4, nx: 1, nz: 0, h: 1.8 }],
     paths: [{ foot: [-1.0, 1.4], top: [-4.0, 1.4], h: 1.8 }, { foot: [1.0, -1.4], top: [4.0, -1.4], h: 1.8 }, { foot: [-2.9, -2.4], top: [-4.2, -2.4], h: 1.8 }, { foot: [2.9, 2.4], top: [4.2, 2.4], h: 1.8 }],
+  },
+  // みずあそび プール: まん中に 大きな プール、まわりに 小さな 水たまり。水の 中は 足が おそい
+  pool: {
+    id: "pool", name: "みずあそび プール", backdrop: "day",
+    blocks: [], ramps: [], ladders: [], paths: [],
+    pools: [{ x: 0, z: 0, r: 3 }, { x: -5.6, z: 4.2, r: 1.5 }, { x: 5.6, z: -4.2, r: 1.5 }],
   },
   // ほしぞらの とう（夜）: まん中に 高い 塔。左の 中だんから 坂、右から はしご
   sky: {
