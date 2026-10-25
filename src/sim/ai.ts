@@ -66,7 +66,7 @@ export function aiInput(w: World, i: 0 | 1, ai: AiState): Input {
 
   // 見えている敵の弾で、自分に向かってくるもの（見えない弾には反応できない）
   const threat = w.projectiles.find((p) => {
-    if (p.owner === i || !p.spec.visible) return false;
+    if (p.owner === i || !p.spec.visible || p.emitter !== undefined) return false;
     const rx = me.x - p.x, rz = me.z - p.z;
     const d = Math.hypot(rx, rz);
     if (p.spec.meteor) return p.age >= 40 && Math.hypot(me.x - p.tx, me.z - p.tz) < p.spec.size + 1.5;

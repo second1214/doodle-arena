@@ -23,7 +23,7 @@ const OLD: [string, string, string, Omit<CpuProfile, "intro"> & { intro: string 
   ["タコ", "タコすけ", "どうぶつ", { intro: "足がいっぱい。うねうね揺さぶる", personality: "tricky", specialType: "ranged", parts: ["r:restrain", "r:homing"], prefer: ["tec", "spd"], catchphrase: "すみを はくぞ〜" }],
   ["まんまる（塗りつぶし）", "まんまる", "らくがき", { intro: "手も足も無い。転がって体当たり", personality: "aggressive", specialType: "melee", parts: ["m:dash", "power"], prefer: ["spd", "hp"], catchphrase: "ころころ〜っと" }],
   ["巨大な片手", "かたてマン", "らくがき", { intro: "片手だけがとても長い", personality: "cautious", specialType: "melee", parts: ["m:rubber", "m:slam"], prefer: ["atk", "def"], catchphrase: "とどく とどく〜" }],
-  ["胴長ノッポ", "ノッポ", "らくがき", { intro: "ひょろっと背が高い", personality: "sniper", specialType: "ranged", parts: ["r:meteor", "r:homing"], prefer: ["sp", "spd"], catchphrase: "うえから みてるよ" }],
+  ["胴長ノッポ", "ノッポ", "らくがき", { intro: "ひょろっと背が高い", personality: "sniper", specialType: "ranged", parts: ["r:meteor", "r:split"], prefer: ["sp", "spd"], catchphrase: "うえから みてるよ" }],
   ["短足ずんぐり", "ずんぐり", "らくがき", { intro: "足が短くて重い。押しても動かない", personality: "cautious", specialType: "melee", parts: ["m:grab", "power"], prefer: ["hp", "def"], catchphrase: "どっこいしょ" }],
 ];
 
@@ -40,7 +40,7 @@ const BOSSES: [string, string, CpuProfile][] = [
   ["1-6", "らくがき大王", { intro: "第1章のボス。王冠と大きな拳", personality: "aggressive", specialType: "melee", parts: ["m:giantHands", "m:slam"], prefer: ["atk", "hp"], catchphrase: "わしが この町の 王じゃ！" }],
   ["2-6", "インクの竜", { intro: "第2章のボス。背中のトゲとしっぽ", personality: "aggressive", specialType: "melee", parts: ["m:tornado", "m:legbind"], prefer: ["hp", "atk", "sta"], catchphrase: "インクの うずに のまれろ" }],
   ["3-6", "消しゴム将軍", { intro: "第3章のボス。つかんで消しに来る", personality: "cautious", specialType: "melee", parts: ["m:giantHands", "m:grab"], prefer: ["def", "hp", "atk"], catchphrase: "まちがいは けしてやる" }],
-  ["4-6", "クレヨン魔女", { intro: "第4章のボス。空から隕石を降らせる", personality: "sniper", specialType: "ranged", parts: ["r:meteor", "r:homing"], prefer: ["sp", "sta", "def"], catchphrase: "いろとりどりの のろいを" }],
+  ["4-6", "クレヨン魔女", { intro: "第4章のボス。空から隕石を降らせる（落ちる前に 散らばる）", personality: "sniper", specialType: "ranged", parts: ["r:meteor", "r:split"], prefer: ["sp", "sta", "def"], catchphrase: "いろとりどりの のろいを" }],
   ["5-6", "白紙の王", { intro: "ラスボス。見えない弾が追いかけてくる", personality: "aggressive", specialType: "ranged", parts: ["r:invisible", "r:homing"], prefer: ["hp", "atk", "sp", "def"], catchphrase: "すべてを まっしろに" }],
 ];
 
