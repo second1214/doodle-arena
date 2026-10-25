@@ -1,0 +1,51 @@
+# Kenney（kenney.nl・CC0）の 3D モデル（木・岩・家具など）を 取って kenney-3d ブランチに 置く。
+# 作業用の環境からは kenney.nl に つながらないため、GitHub の 自動処理で 取ってくる。GLB（three.js で そのまま 読める形）だけ のこす。
+name: Kenney の3D素材を取る
+on:
+  workflow_dispatch:
+  push:
+    branches: [proto/character]
+    paths: [.github/workflows/kenney3d.yml]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ダウンロードして GLB を のこす
+        run: |
+          mkdir -p out
+          for pack in nature-kit furniture-kit pirate-kit graveyard-kit space-kit; do
+            echo "== $pack"
+            curl -sSL -A "Mozilla/5.0" "https://kenney.nl/assets/$pack" -o page.html
+            key=$(echo "$pack" | tr -d '-')
+            grep -oE '(https?://kenney\.nl)?/[^"'"'"' ]+\.zip' page.html | sort -u > "zips-$pack.txt"
+            url=$(while read -r u; do k=$(basename "$u" | tr 'A-Z' 'a-z' | tr -cd 'a-z0-9.'); case "$k" in *"$key"*) echo "$u";; esac; done < "zips-$pack.txt" | head -1)
+            case "$url" in /*) url="https://kenney.nl$url";; esac
+            mkdir -p "out/$pack"
+            cp "zips-$pack.txt" "out/$pack/zips-on-page.txt"
+            echo "$url" > "out/$pack/url.txt"
+            if [ -z "$url" ]; then echo "zip が 見つからない"; continue; fi
+            curl -sSL -A "Mozilla/5.0" "$url" -o pack.zip || continue
+            rm -rf x && mkdir x && unzip -q pack.zip -d x || continue
+            find x -iname 'license*' -exec cp {} "out/$pack/License.txt" \; -quit
+            # GLB と、GLB が 使う 画像（Textures/colormap.png など）
+            g=$(find x -type d -iname 'glb*' -o -type d -iname 'GLB format' | head -1)
+            [ -z "$g" ] && g=$(dirname "$(find x -iname '*.glb' | head -1)")
+            [ -n "$g" ] && cp -r "$g"/. "out/$pack/" 2>/dev/null
+            find "out/$pack" -type f ! -iname '*.glb' ! -iname '*.png' ! -iname '*.txt' -delete
+            ( cd "out/$pack" && find . -iname '*.glb' | sort > index.txt )
+            echo "$(wc -l < out/$pack/index.txt) models"
+          done
+          du -sh out/*
+      - name: kenney-3d ブランチに 置く（前の版は 消して 作り直す）
+        run: |
+          cd out
+          git init -q -b kenney-3d
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          printf '# Kenney の 3D 素材（CC0）\nhttps://kenney.nl/ から 取った GLB。ライセンスは 各フォルダの License.txt（Creative Commons Zero）。\n' > README.md
+          git add -A && git commit -q -m "Kenney の 3D 素材（CC0）"
+          remote="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git push "$remote" --delete kenney-3d || true
+          git push "$remote" kenney-3d
