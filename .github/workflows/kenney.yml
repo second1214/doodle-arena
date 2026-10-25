@@ -22,8 +22,10 @@ jobs:
           for pack in impact-sounds interface-sounds digital-audio rpg-audio sci-fi-sounds ui-audio; do
             echo "== $pack"
             curl -sSL -A "Mozilla/5.0" "https://kenney.nl/assets/$pack" -o page.html
-            url=$(grep -oE 'https?://[^"'"'"' ]+\.zip' page.html | head -1)
-            [ -z "$url" ] && url=$(grep -oE '/media/[^"'"'"' ]+\.zip' page.html | head -1 | sed 's#^#https://kenney.nl#')
+            # ページには ほかの パックの zip も 並ぶので、名前が 合う zip だけを えらぶ（kenney_rpg-audio.zip など）
+            key=$(echo "$pack" | tr -d '-')
+            url=$(grep -oE '(https?://kenney\.nl)?/[^"'"'"' ]+\.zip' page.html | sort -u | while read -r u; do k=$(basename "$u" | tr 'A-Z' 'a-z' | tr -cd 'a-z0-9.'); case "$k" in *"$key"*) echo "$u";; esac; done | head -1)
+            case "$url" in /*) url="https://kenney.nl$url";; esac
             if [ -z "$url" ]; then echo "zip が 見つからない: $pack"; grep -o 'href="[^"]*"' page.html | head -40; continue; fi
             echo "$url"
             curl -sSL -A "Mozilla/5.0" "$url" -o pack.zip
