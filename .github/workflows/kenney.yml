@@ -1,0 +1,51 @@
+# Kenney（kenney.nl・CC0＝だれでも自由に使える素材）の 効果音を ダウンロードして、kenney-assets ブランチに 置く。
+# 作業用の環境からは kenney.nl に つながらないため、GitHub の 自動処理で 取ってくる。
+# 音は iPhone でも 鳴るように mp3（モノラル）に 変える。ゲームへの 組みこみは 別の作業で 必要な音だけ えらぶ。
+name: Kenney の素材を取る
+on:
+  workflow_dispatch:
+  push:
+    branches: [proto/character]
+    paths: [.github/workflows/kenney.yml]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ffmpeg を入れる
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+      - name: ダウンロードして mp3 に する
+        run: |
+          set -e
+          mkdir -p out
+          for pack in impact-sounds interface-sounds digital-audio rpg-audio sci-fi-sounds ui-audio; do
+            echo "== $pack"
+            curl -sSL -A "Mozilla/5.0" "https://kenney.nl/assets/$pack" -o page.html
+            url=$(grep -oE 'https?://[^"'"'"' ]+\.zip' page.html | head -1)
+            [ -z "$url" ] && url=$(grep -oE '/media/[^"'"'"' ]+\.zip' page.html | head -1 | sed 's#^#https://kenney.nl#')
+            if [ -z "$url" ]; then echo "zip が 見つからない: $pack"; grep -o 'href="[^"]*"' page.html | head -40; continue; fi
+            echo "$url"
+            curl -sSL -A "Mozilla/5.0" "$url" -o pack.zip
+            rm -rf x && mkdir x && unzip -q pack.zip -d x
+            mkdir -p "out/$pack"
+            find x -iname 'license*' -exec cp {} "out/$pack/License.txt" \; -quit
+            find x -type f \( -iname '*.ogg' -o -iname '*.wav' -o -iname '*.mp3' \) | while read -r f; do
+              n=$(basename "${f%.*}")
+              ffmpeg -loglevel error -y -i "$f" -ac 1 -ar 44100 -b:a 64k "out/$pack/$n.mp3" < /dev/null
+            done
+            ( cd "out/$pack" && for m in *.mp3; do d=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$m"); echo "$m $d"; done > index.txt )
+            echo "$(ls out/$pack/*.mp3 | wc -l) files"
+          done
+          du -sh out
+      - name: kenney-assets ブランチに 置く（前の版は 消して 作り直す）
+        run: |
+          cd out
+          git init -q -b kenney-assets
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          printf '# Kenney の素材（CC0）\nhttps://kenney.nl/ から 取った 効果音（mp3 に 変換）。ライセンスは 各フォルダの License.txt（Creative Commons Zero）。\n' > README.md
+          git add -A && git commit -q -m "Kenney の効果音（CC0）"
+          remote="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git push "$remote" --delete kenney-assets || true
+          git push "$remote" kenney-assets
