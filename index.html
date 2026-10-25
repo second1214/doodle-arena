@@ -295,7 +295,7 @@
       }
       .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
       .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
-      .swatch { width: 40px; height: 40px; border-radius: 50%; padding: 0; border: 3px solid #fff; box-shadow: 0 0 0 2px var(--line), var(--shadow); }
+      .swatch { width: 34px; height: 34px; border-radius: 50%; padding: 0; border: 3px solid #fff; box-shadow: 0 0 0 2px var(--line), var(--shadow); }
       .swatch.on { box-shadow: 0 0 0 3px var(--accent); transform: scale(1.08); }
       #palette { gap: 6px; }
       #palette .swatch { width: 34px; height: 34px; min-height: 0; }
@@ -513,6 +513,19 @@
       .pcards button span { font-size: 12px; }
       .pcards button small { display: none; }
       .badges span { padding: 4px 10px; font-size: 13px; }
+      /* かく: 道具は 絵で 1行に、おたすけは たたむ */
+      #drawTools .row.tl { flex-wrap: nowrap; gap: 6px; }
+      #drawTools .row.tl button { flex: 1; min-height: 44px; padding: 4px 2px; font-size: 18px; font-weight: 800; white-space: nowrap; }
+      #drawTools .layers .ic { flex: 0 0 48px; font-size: 20px; }
+      .talents { grid-template-columns: repeat(3, 1fr); gap: 4px; }
+      .talent { padding: 4px 6px; }
+      .talent b, .talent > span:first-child { font-size: 12px; }
+      .talent small { font-size: 9.5px; }
+      #drawTools .layers button { min-height: 40px; font-size: 14px; }
+      #drawTools details.more summary { cursor: pointer; font-weight: 800; color: var(--muted); padding: 6px 0; font-size: 13px; }
+      /* じゆうバトル: 「たたかう」は いつも 見える 所に */
+      #startBattle { position: sticky; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); z-index: 5; box-shadow: 0 4px 0 #d9573a, 0 6px 18px rgba(0,0,0,.15); }
+      .chips button { min-height: 36px; padding: 2px 12px; font-size: 13px; }
       /* ===== シール（ダイカットの ステッカー）===== */
       .stk { --rot: 0deg; --sc: #e9e4ff; position: relative; display: grid; place-items: center; width: 74px; height: 84px; min-height: 0; padding: 0; border: 0; border-radius: 20px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 3px 0 rgba(84,64,140,.18), 0 6px 12px rgba(84,64,140,.18); transform: rotate(var(--rot)); transition: transform .15s; overflow: visible; color: #2d2640; flex: none; }
       .stk:active { transform: rotate(var(--rot)) scale(.92); }
@@ -684,10 +697,9 @@
       <div class="label">🎨 らくがき才能（絵の形に合うキャラだけに効く）</div>
       <div class="talents" id="talents"></div>
       <div class="node-info" id="nodeInfo">丸をタップすると説明が出ます。中心から外へ順に取れます。先端の大きな丸は強い代わりに損もある大技です。</div>
-      <div class="field">
-        <div class="label">今の強化（全キャラ共通）</div>
+      <details class="help"><summary>📊 今の強化（全キャラ共通）</summary>
         <ul id="treeTotal" class="traits"></ul>
-      </div>
+      </details>
     </section>
     <section id="partsScreen" hidden>
       <div class="albumbar">
@@ -777,7 +789,7 @@
         <select id="arenaSel"></select>
       </div>
       <label class="check"><input type="checkbox" id="spectate" /> 観戦モード（自分のキャラも CPU が操作）</label>
-      <button id="startBattle" class="primary">戦闘開始</button>
+      <button id="startBattle" class="primary">⚔️ たたかう！</button>
       <details class="help"><summary>🎮 そうさの しかた</summary><div class="note">操作: 左下のスティックで移動、右下のボタンで攻撃・防御（押している間）・必殺・突き飛ばし（スタミナ不要）・回避（入力方向へ素早く移動、その間は当たらない。方向なしなら後ろへ）。PC は WASD / J=攻撃 / K=防御 / L=必殺 / H=突き飛ばし / スペース=回避 / U=飛ぶ（羽があるキャラ）。坂は 歩いて のぼれる。はしごは かべに 向かって 進むと のぼる。</div></details>
     </section>
     <div class="stage">
@@ -818,16 +830,19 @@
       <div class="row seg layers">
         <button id="layerDraw" class="on">✏️ 絵を かく</button>
         <button id="layerLimb">🖐 手足を きめる</button>
+        <button id="undo" class="ic" aria-label="1つ もどす">↶</button>
+        <button id="clear" class="ic" aria-label="ぜんぶ けす">🗑</button>
       </div>
       <div id="paintTools">
       <div class="row" id="palette"></div>
-      <div class="row">
-        <button data-width="4">細</button>
-        <button data-width="9" class="on">中</button>
-        <button data-width="18">太</button>
-        <button id="fillTool">塗りつぶし</button>
-        <button id="eraser">消しゴム</button>
+      <div class="row tl">
+        <button data-width="4" aria-label="ほそい ペン">細</button>
+        <button data-width="9" class="on" aria-label="ふつうの ペン">中</button>
+        <button data-width="18" aria-label="ふとい ペン">太</button>
+        <button id="fillTool" aria-label="塗りつぶし">🪣</button>
+        <button id="eraser" aria-label="消しゴム">🧽</button>
       </div>
+      <details class="more"><summary>✨ おたすけ・📷 しゃしん・サンプル</summary>
       <div class="row assist">
         <button id="aSmooth" title="ガタガタの線を なめらかにする">〰 手ぶれ補正</button>
         <button id="aMirror" title="左半分に かくと 右にも 同じ線が でる">🪞 左右対称</button>
@@ -836,7 +851,9 @@
       </div>
       <div class="row">
         <label class="filebtn">📷 しゃしんから とりこむ<input id="photoInput" type="file" accept="image/*" hidden /></label>
+        <select id="sample"><option value="">サンプルを読み込む…</option></select>
       </div>
+      </details>
       </div>
       <div id="limbTools" hidden>
         <div class="row">
@@ -848,11 +865,7 @@
         </div>
         <div class="note">絵の 手に なる所を 手ペン、足に なる所を 足ペン、羽に なる所を 羽ペンで ざっくり ぬってね（はみ出しても 大丈夫）。手ペン・足ペンで 1つでも ぬると、手足は ぬった所だけに なるよ。何も ぬらなければ 自動で 見つけるよ。羽を ぬると 空を とべる（羽が 無いと とべない）。</div>
       </div>
-      <div class="row">
-        <button id="undo">1つ戻す</button>
-        <button id="clear">全部消す</button>
-        <select id="sample"><option value="">サンプルを読み込む…</option></select>
-      </div>
+
     </div>
     <details id="tuneBox">
       <summary>検知の調整</summary>
