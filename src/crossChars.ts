@@ -158,7 +158,7 @@ export const CROSS: Record<string, CrossChar> = {
       ...oval(222, 420, 28, 20, "#74c0fc"), ...oval(292, 420, 28, 20, "#74c0fc"),
     ],
     marks: () => [mk("hand", [222, 254, 184, 292], 32), mk("hand", [334, 254, 370, 282], 32), mk("foot", [222, 410, 222, 436], 42), mk("foot", [292, 410, 292, 436], 42)],
-    profile: { intro: "こうらで かたい。地面を はう 水の 波を うつ", personality: "cautious", specialType: "ranged", parts: ["r:wave", "r:bounce"], prefer: ["def", "hp", "sp"], catchphrase: "ゼニゼニ〜 なみのり！" },
+    profile: { intro: "こうらで かたい。地面を はう 水の 波を うつ", personality: "cautious", specialType: "ranged", parts: ["r:wave", "r:freeze"], prefer: ["def", "hp", "sp"], catchphrase: "ゼニゼニ〜 なみのり！" },
   },
   "フシギタネ": {
     group: "ふしぎ",

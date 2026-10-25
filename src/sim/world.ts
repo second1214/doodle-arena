@@ -1,7 +1,7 @@
 // 戦闘シミュレーション（DOM・描画非依存）。30Hz 固定ステップ、乱数はシード固定。
 // 空間は地面の平面(x, z)＋高さ h。数値はすべて調整前提の仮値。
 import { Rng } from "./rng";
-import { composeSpecial, type EffectId, type ProjSpec } from "./special";
+import { BASE_SPEC, composeSpecial, DRIP_DMG, type EffectId, type ProjSpec } from "./special";
 import { DEFAULT_TRAITS, type Hurt, type Traits } from "../shape";
 import { composeMelee, type MeleeEffectId, type MeleeSpec } from "./melee";
 import { BASE_CHARGE_NEED, BASE_DODGE_COST, statEffects, type Boost, type StatEffects } from "./stats";
@@ -206,7 +206,11 @@ export interface Projectile {
   bouncesLeft: number;
   sl: number; // 上下の傾き（横に 1 進むと 高さが sl 変わる）。撃った時に 相手の高さへ 向ける
   sh: number; // 打ち上げの はじめの高さ
-  drop?: boolean; // あめあられの しずく（まっすぐ 下へ 落ちる）
+  drop?: boolean; // 雲から 落ちる しずく（まっすぐ 下へ 落ちる）
+  vh?: number; // しずくの 横の速さ（分裂した しずくが 広がる）
+  emitter?: number; // 時間差分割・雲: あと何回 撃つか（それ自体は 当たらない）
+  start?: number; // 雲が 降らせはじめた age
+  parked?: number; // 地面に 止まって 待っている（この age で 消える）。おき罠・多段の着地
 }
 
 export interface World {
@@ -667,17 +671,64 @@ function stepFighter(w: World, i: 0 | 1, rawInp: Input) {
     me.charge = Math.min(me.st.chargeNeed, carry); // carry
     me.shootSlow = SHOOT_SLOW;
     const s = me.spec;
-    w.projectiles.push({
-      id: w.nextId++, owner: i, spec: s,
-      x: me.x + me.fx * 0.8, z: me.z + me.fz * 0.8, h: me.y + 1.0,
-      dx: me.fx, dz: me.fz, age: 0, hitsLeft: s.rain > 0 ? s.rain : s.hits, rehit: 0,
-      tx: op.x, tz: op.z, sx: me.x, sz: me.z, mult: crit, bouncesLeft: s.bounces,
-      // 相手の高さへ 向けて撃つ（飛んでいる相手・台の上の相手にも 届く）
-      sl: Math.max(-3, Math.min(3, (op.y - me.y) / Math.max(1, dist))), sh: me.y + 1.0,
-    });
+    const shot = launch(w, i, s, crit);
+    // 雲・時間差分割は「撃つ係」を置き、そこから 弾を 何回かに分けて 出す
+    if (s.cloud || s.drip > 0) shot.emitter = s.cloud ? Math.max(1, s.drip) : s.drip;
+    w.projectiles.push(shot);
     w.events.push({ kind: "shoot", x: me.x, z: me.z, h: 1, amount: 0, src: "special", target: i, dx: me.fx, dz: me.fz, size: s.size, tags: s.tags });
   }
   stepMelee(w, i, dist);
+}
+
+// 撃つ人の 手元から 相手へ向けた 弾を 1つ作る
+function launch(w: World, i: number, s: ProjSpec, mult: number): Projectile {
+  const me = w.fighters[i], op = w.fighters[1 - i];
+  const dist = Math.max(1, Math.hypot(op.x - me.x, op.z - me.z));
+  return {
+    id: w.nextId++, owner: i, spec: s,
+    x: me.x + me.fx * 0.8, z: me.z + me.fz * 0.8, h: me.y + 1.0,
+    dx: me.fx, dz: me.fz, age: 0, hitsLeft: s.hits, rehit: 0,
+    tx: op.x, tz: op.z, sx: me.x, sz: me.z, mult, bouncesLeft: s.bounces,
+    // 相手の高さへ 向けて撃つ（飛んでいる相手・台の上の相手にも 届く）
+    sl: Math.max(-3, Math.min(3, (op.y - me.y) / dist)), sh: me.y + 1.0,
+  };
+}
+
+const room = (w: World) => w.projectiles.length + w.spawn.length < MAX_PROJECTILES;
+const DRIP_EVERY = 10; // 時間差分割の 間かく（tick）
+const DROP_SPLIT_AGE = 3; // しずくが 割れる時（落ちはじめ すぐ）
+
+// 撃つ係（雲・時間差分割）。子の弾は 時間差分割の回数だけを 取り除き、ほかの性質は 全部 受け継ぐ
+function stepEmitter(w: World, p: Projectile): boolean {
+  const s = p.spec;
+  const target = w.fighters[1 - p.owner];
+  const me = w.fighters[p.owner];
+  p.age++;
+  const per = s.drip > 0 ? DRIP_DMG : 1;
+  const child: ProjSpec = { ...s, drip: 0, damage: s.damage * per };
+  if (s.cloud) {
+    // 相手の上の 雲になり、ときどき しずくを 落とす（雲そのものは 当たらない）
+    const ox = target.x - p.x, oz = target.z - p.z, ol = Math.hypot(ox, oz);
+    const sp = Math.min(ol, s.speed * DT);
+    if (ol > 0.01) { p.x += (ox / ol) * sp; p.z += (oz / ol) * sp; p.dx = ox / ol; p.dz = oz / ol; }
+    p.h += (Math.max(target.y, groundAt(w.arena, p.x, p.z)) + 4.5 - p.h) * 0.1;
+    // 相手の 真上に 着いてから（遅くても 60tick で）降らせはじめる
+    if (p.start === undefined && (ol < 0.6 || p.age >= 60)) p.start = p.age;
+    if (p.start !== undefined && (p.age - p.start) % DRIP_EVERY === 0 && p.emitter! > 0 && room(w)) {
+      p.emitter!--;
+      const jit = s.drip > 0 ? 1.6 : 0;
+      const jx = (w.rng.next() - 0.5) * jit, jz = (w.rng.next() - 0.5) * jit;
+      w.spawn.push({ ...p, id: w.nextId++, spec: { ...child, size: s.size * (0.3 / BASE_SPEC.size) }, x: p.x + jx, z: p.z + jz, age: 0, hitsLeft: child.hits, rehit: 0, drop: true, vh: 0, emitter: undefined });
+    }
+    return p.emitter! > 0;
+  }
+  // 手元から 間かくを あけて 1発ずつ 撃つ
+  p.x = me.x; p.z = me.z; p.h = me.y + 1;
+  if ((p.age - 1) % DRIP_EVERY === 0 && p.emitter! > 0 && room(w)) {
+    p.emitter!--;
+    w.spawn.push(launch(w, p.owner, child, p.mult));
+  }
+  return p.emitter! > 0;
 }
 
 // つかみ投げが掴める中心間距離（体が触れる距離）
@@ -804,6 +855,7 @@ function hitWith(w: World, i: number, x: number, z: number, dx: number, dz: numb
 
 // 弾が消える時の後始末（ばくはつ）。元の処理は stepProjectileCore
 function stepProjectile(w: World, p: Projectile): boolean {
+  if (p.emitter !== undefined) return stepEmitter(w, p);
   const alive = stepProjectileCore(w, p);
   const s = p.spec;
   if (!alive && s.blast > 0) {
@@ -833,40 +885,55 @@ function stepProjectileCore(w: World, p: Projectile): boolean {
   const target = w.fighters[1 - p.owner];
   p.age++;
   if (p.rehit > 0) p.rehit--;
-  // あめあられの しずく: まっすぐ 下へ 落ちる
-  if (p.drop) {
-    p.h -= 9 * DT;
-    if (p.h <= groundAt(w.arena, p.x, p.z)) return false;
+  // すいこみ: 近くの相手を弾へ引き寄せる
+  if (s.pull > 0 && target.dodgeT === 0) {
+    const ox = p.x - target.x, oz = p.z - target.z, ol = Math.hypot(ox, oz);
+    if (ol < 3.5 && ol > 0.3) { const k = s.pull * 0.075 * tr(target.cfg).knockTaken; target.kx += (ox / ol) * k; target.kz += (oz / ol) * k; }
+  }
+  const overlapping = Math.hypot(target.x - p.x, target.z - p.z) <= s.size + rad(target.cfg) && hurtHit(target, p.x, p.h, p.z, s.size);
+  const moveScale = s.grind && overlapping ? 0.15 : 1; // 多段ヒットは相手に食い込んで削る
+  // 地面に 止まって 待つ（おき罠・多段の着地）
+  if (p.parked !== undefined) {
+    p.h = groundAt(w.arena, p.x, p.z) + 0.3;
+    if (p.age > p.parked) return false;
     return hitCheck(w, p, target);
   }
-  // あめあられ: 相手の上の 雲になり、ときどき しずくを 落とす（雲そのものは 当たらない）
-  if (s.rain > 0) {
-    const ox = target.x - p.x, oz = target.z - p.z, ol = Math.hypot(ox, oz);
-    const sp = Math.min(ol, s.speed * DT);
-    if (ol > 0.01) { p.x += (ox / ol) * sp; p.z += (oz / ol) * sp; p.dx = ox / ol; p.dz = oz / ol; }
-    p.h += (Math.max(target.y, groundAt(w.arena, p.x, p.z)) + 4.5 - p.h) * 0.1;
-    if (p.age >= 15 && (p.age - 15) % 10 === 0 && p.hitsLeft > 0 && w.projectiles.length + w.spawn.length < MAX_PROJECTILES) {
-      p.hitsLeft--; // 雲では「落とせる回数」として使う
-      const ds: ProjSpec = { ...s, rain: 0, split: 0, trap: false, meteor: false, homing: 0, wobble: 0, ground: false, size: 0.3, damage: s.damage * 0.18, hits: 1, bounces: 0, boomerang: false, blast: 0 };
-      const jx = (w.rng.next() - 0.5) * 1.6, jz = (w.rng.next() - 0.5) * 1.6;
-      w.spawn.push({ ...p, id: w.nextId++, spec: ds, x: p.x + jx, z: p.z + jz, age: 0, hitsLeft: 1, rehit: 0, drop: true, bouncesLeft: 0 });
+  // 雲から 落ちる しずく: まっすぐ 下へ 落ちる（分裂していれば 横へ 広がる）
+  if (p.drop) {
+    if (s.split > 0 && p.age === DROP_SPLIT_AGE) {
+      const base = w.rng.next() * Math.PI * 2;
+      for (let k = 0; k < 3 && room(w); k++) {
+        const a = base + (k * Math.PI * 2) / 3;
+        const cs: ProjSpec = { ...s, split: s.split - 1, damage: s.damage * 0.5 };
+        w.spawn.push({ ...p, id: w.nextId++, spec: cs, dx: Math.cos(a), dz: Math.sin(a), vh: 2.5, age: 0, hitsLeft: cs.hits, rehit: 0 });
+      }
+      return false;
     }
-    return p.hitsLeft > 0 || p.age < 15;
+    const v = (p.vh ?? 0) * DT * moveScale;
+    p.x += p.dx * v; p.z += p.dz * v;
+    p.h -= s.speed * DT * moveScale;
+    const gnd = groundAt(w.arena, p.x, p.z);
+    if (p.h <= gnd) {
+      if (!park(p, s)) return false;
+      p.drop = false;
+    }
+    return hitCheck(w, p, target);
   }
-  // 分裂: 20tick で 3つに割れる（子は1世代少ない・威力半分）
-  if (s.split > 0 && p.age === 20) {
+  // 分裂: 20tick で 3つに割れる（子は1世代少ない・威力半分）。打ち上げは 落ち始めに 割れる
+  if (s.split > 0 && p.age === 20 && !s.meteor) {
     const cur = Math.atan2(p.dz, p.dx);
     for (const a of [-0.45, 0, 0.45]) {
-      if (w.projectiles.length + w.spawn.length >= MAX_PROJECTILES) break;
+      if (!room(w)) break;
       const cs: ProjSpec = { ...s, split: s.split - 1, damage: s.damage * 0.5 };
       w.spawn.push({ ...p, id: w.nextId++, spec: cs, dx: Math.cos(cur + a), dz: Math.sin(cur + a), age: 0, hitsLeft: cs.hits, rehit: 0 });
     }
     return false;
   }
-  // すいこみ: 近くの相手を弾へ引き寄せる
-  if (s.pull > 0 && target.dodgeT === 0) {
-    const ox = p.x - target.x, oz = p.z - target.z, ol = Math.hypot(ox, oz);
-    if (ol < 3.5 && ol > 0.3) { const k = s.pull * 0.075 * tr(target.cfg).knockTaken; target.kx += (ox / ol) * k; target.kz += (oz / ol) * k; }
+  // ブーメラン＋おき罠: 行く とちゅうで 罠を 1つ 落として、本体は そのまま 戻ってくる
+  if (s.boomerang && s.trap && p.age === 18 && room(w)) {
+    const tp: Projectile = { ...p, id: w.nextId++, h: groundAt(w.arena, p.x, p.z) + 0.3, rehit: 0 };
+    park(tp, s);
+    w.spawn.push(tp);
   }
   // ブーメラン: 35tick 後から持ち主へ向きを変え、手元に戻ったら消える
   if (s.boomerang && p.age >= 35) {
@@ -880,8 +947,6 @@ function stepProjectileCore(w: World, p: Projectile): boolean {
     p.sl += Math.max(-0.1, Math.min(0.1, (me.y + 1 - p.h) / Math.max(0.5, Math.hypot(me.x - p.x, me.z - p.z)) - p.sl));
     if (p.age > 45 && Math.hypot(me.x - p.x, me.z - p.z) < 0.9) return false;
   }
-  const overlapping = Math.hypot(target.x - p.x, target.z - p.z) <= s.size + rad(target.cfg) && hurtHit(target, p.x, p.h, p.z, s.size);
-  const moveScale = s.grind && overlapping ? 0.15 : 1; // 多段ヒットは相手に食い込んで削る
 
   if (s.meteor) {
     // 0〜30tick: 上昇 / 30〜45: 滞空 / 45で狙い確定 / 以降: 落下（落ちる先の 地面の高さまで）
@@ -890,7 +955,19 @@ function stepProjectileCore(w: World, p: Projectile): boolean {
     if (p.age <= RISE) {
       p.h = p.sh + (p.age / RISE) * 7;
     } else if (p.age <= RISE + HOVER) {
-      if (p.age === RISE + HOVER) { p.tx = target.x; p.tz = target.z; p.sx = p.x; p.sz = p.z; }
+      if (p.age === RISE + HOVER) {
+        p.tx = target.x; p.tz = target.z; p.sx = p.x; p.sz = p.z;
+        // 分裂: 落ち始めに 割れて、相手の まわりへ 散らばって 落ちる（重ねた世代の分だけ まとめて割る）
+        if (s.split > 0) {
+          const n = Math.min(27, 3 ** s.split), ring = 1.2 + 0.5 * s.split, base = w.rng.next() * Math.PI * 2;
+          const cs: ProjSpec = { ...s, split: 0, damage: s.damage * 0.5 ** s.split };
+          for (let k = 0; k < n && room(w); k++) {
+            const a = base + (k * Math.PI * 2) / n, r = k === 0 && n === 3 ? 0 : ring;
+            w.spawn.push({ ...p, id: w.nextId++, spec: cs, tx: target.x + Math.cos(a) * r, tz: target.z + Math.sin(a) * r, hitsLeft: cs.hits, rehit: 0 });
+          }
+          return false;
+        }
+      }
     } else {
       // 落ちながら相手を追いかける（落下地点を毎 tick 相手の方へずらす。速さ METEOR_TRACK 単位/秒、追尾付きならさらに速い）
       const track = (METEOR_TRACK + s.homing * 0.5) * DT;
@@ -904,6 +981,7 @@ function stepProjectileCore(w: World, p: Projectile): boolean {
       if (t >= 1 && p.age === RISE + HOVER + FALL) {
         w.events.push({ kind: "land", x: p.x, z: p.z, h: 0, y: gnd, amount: 0, src: "special", target: p.owner, dx: 0, dz: 0, size: s.size, tags: s.tags });
       }
+      if (t >= 1 && p.age === RISE + HOVER + FALL && park(p, s)) return hitCheck(w, p, target); // おき罠・多段は 着地して 残る
       if (t >= 1 && p.hitsLeft === s.hits) return false; // 外れたら着地で消える
     }
   }
@@ -918,13 +996,19 @@ function stepProjectileCore(w: World, p: Projectile): boolean {
       p.dx = Math.cos(cur + turn); p.dz = Math.sin(cur + turn);
       if (!s.meteor) steerPitch(p, target, s.homing * DT * 0.8);
     }
-    if (s.trap && !s.meteor && p.age > 18) {
-      p.h = groundAt(w.arena, p.x, p.z) + 0.3; // おき罠: 地面に止まって待つ
+    // おき罠: 少し飛んだら 地面に止まって待つ。はね返りなら 地面を ころがって 跳ね終わってから 止まる。ブーメランは 手元で 止まる
+    const trapNow = s.trap && !s.meteor && !s.boomerang && p.age > (s.split > 0 ? 22 : 18); // 分裂は 割れてから 止まる
+    const rolling = trapNow && p.bouncesLeft > 0 && p.age < 240;
+    if (trapNow && !rolling) {
+      park(p, s);
+      return hitCheck(w, p, target);
     } else if (!s.meteor) {
       const side = Math.sin(p.age * 0.25) * s.wobble * DT;
-      const nx = p.x + (p.dx * s.speed * DT - p.dz * side) * moveScale;
-      const nz = p.z + (p.dz * s.speed * DT + p.dx * side) * moveScale;
-      if (s.ground) {
+      const k = moveScale * (rolling ? 0.4 : 1);
+      const nx = p.x + (p.dx * s.speed * DT - p.dz * side) * k;
+      const nz = p.z + (p.dz * s.speed * DT + p.dx * side) * k;
+      if (rolling) p.h = groundAt(w.arena, nx, nz) + 0.3;
+      else if (s.ground) {
         // じめん波: 地面に そって進む。段差の かべに ぶつかると 消える
         const gn = groundAt(w.arena, nx, nz);
         if (gn > p.h - 0.4 + STEP) return false;
@@ -945,10 +1029,19 @@ function stepProjectileCore(w: World, p: Projectile): boolean {
   }
   // 地形（台・坂）に ぶつかったら 消える（地面より 下に 入った）
   if (!s.meteor && w.arena && p.h < groundAt(w.arena, p.x, p.z) - 0.05) return false;
-  if (!hitCheck(w, p, target)) return false;
+  // 打ち上げ＋おき罠: 落ちてくる間は 当たらず、着地して 罠になる
+  if (!(s.meteor && s.trap) && !hitCheck(w, p, target)) return false;
   if (p.age > s.lifetime + (s.meteor ? 45 : 0)) return false;
   if (Math.hypot(p.x, p.z) > ARENA_RADIUS + 4) return false;
   if (!Number.isFinite(p.x) || !Number.isFinite(p.z) || !Number.isFinite(p.h)) return false;
+  return true;
+}
+
+// 地面に止めて 待たせる（おき罠は 長く、多段は 少しだけ 削り続ける）。止まらないなら false
+function park(p: Projectile, s: ProjSpec): boolean {
+  if (!s.trap && !s.grind) return false;
+  p.parked = s.trap ? Math.max(p.age + 60, s.lifetime) : p.age + 40;
+  p.vh = 0;
   return true;
 }
 

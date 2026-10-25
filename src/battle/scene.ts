@@ -665,6 +665,7 @@ export class BattleScene {
 
     const alive = new Set<number>();
     for (const p of w.projectiles) {
+      if (p.emitter !== undefined && !p.spec.cloud) continue; // 時間差分割の 撃つ係は 見えない（雲だけ 見える）
       alive.add(p.id);
       let v = this.proj.get(p.id);
       if (!v) {
