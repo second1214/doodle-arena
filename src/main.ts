@@ -35,7 +35,7 @@ const HAND_COLORS = ["#e8590c", "#f76707", "#d9480f", "#fd7e14", "#c2255c"];
 const FOOT_COLORS = ["#1c7ed6", "#1971c2", "#3b5bdb", "#0c8599", "#5f3dc4"];
 const TORSO_COLOR = "#9aa0a6";
 
-type View = "draw" | "detect" | "anim" | "char" | "battle";
+type View = "draw" | "detect" | "anim" | "char" | "special" | "battle";
 
 const canvas = document.getElementById("view") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -126,7 +126,7 @@ function limbColor(res: DetectResult, k: number) {
 }
 
 function render() {
-  if (view === "battle" || view === "char") return;
+  if (view === "battle" || view === "char" || view === "special") return;
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
   if (view === "draw") {
     if (photo) syncPhotoVisibility(); // 描くたびに 取り込みの操作が 見えているか 確かめる
@@ -236,10 +236,18 @@ function setView(v: View) {
   document.querySelectorAll<HTMLButtonElement>(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
   syncPhotoVisibility();
   legendEl.hidden = v !== "detect";
-  const panel = v === "battle" || v === "char";
+  const panel = v === "battle" || v === "char" || v === "special";
   stageEl.hidden = panel;
   battleSetup.hidden = v !== "battle";
-  charSetup.hidden = v !== "char";
+  charSetup.hidden = v !== "char" && v !== "special";
+  // キャラ: なまえ・とくちょう・たたかいかた・ほぞん / ひっさつ: 作業台だけ（1画面に おさめる）
+  for (const el of charSetup.children) (el as HTMLElement).hidden = (el.id === "specialCard") !== (v === "special");
+  document.getElementById("tuneBox")!.hidden = v !== "detect";
+  if (v === "special") {
+    resultEl.textContent = "";
+    renderEffects();
+    return;
+  }
   if (v === "char") {
     resultEl.textContent = strokes.length ? "" : "まだ絵が ないので「棒人間」で 見せているよ（「かく」で 描いてね）";
     renderTraits();
@@ -980,45 +988,41 @@ function syncPersonality() {
 const stypeTabs = document.getElementById("stypeTabs")!;
 const effectsEl = document.getElementById("effects")!;
 
-// シール1枚の札（できばえ・★・名前・数値・重さ）
+// シール1枚（ダイカットの ステッカー）。光り方で できばえ（ふつう / キラ / ホログラム）、下の ★で かさねた数、左上で おまけ
 const SLOT_COLOR: Record<Slot, string> = { path: "#4dabf7", act: "#b197fc", fx: "#fcc419" };
-const extraIcons = (p: Part) => p.extras.map((e) => kindIcon(e.stat)).join("");
-function partChip(p: Part, cost = p.cost, note = ""): HTMLElement {
-  const el = document.createElement("span");
-  el.className = `pc shine${p.shine}`;
-  el.style.setProperty("--rc", SHINE_INFO[p.shine].color);
-  const rk = document.createElement("b");
-  rk.className = "rk";
-  rk.textContent = starText(p);
-  const nm = document.createElement("span");
-  nm.className = "pn";
-  nm.textContent = `${kindIcon(p.kind)} ${kindInfo(p.kind).name}${p.shine ? ` ${shineText(p)}` : ""}`;
-  const sub = document.createElement("small");
-  sub.textContent = [mainText(p), ...p.extras.map((e) => `${kindIcon(e.stat)}${extraText(e)}`)].join("・") + (note ? `（${note}）` : "");
-  const c = document.createElement("span");
-  c.className = "pcost";
-  c.textContent = `${cost}`;
-  c.title = "おもさ（装備コスト）";
-  el.append(rk, nm, sub, c);
-  return el;
-}
-// 子ども向けの大きなシールの札（キャラタブ用）。光り方＝できばえ、★＝かさねた数、角の絵＝おまけ
-function partTile(p: Part, cost: number, note = ""): HTMLButtonElement {
+const SLOT_TINT: Record<Slot, string> = { path: "#a5d8ff", act: "#d0bfff", fx: "#ffec99" };
+const shortName = (k: PartKind) => kindInfo(k).name.replace(/\((遠|近)\)$/, "");
+interface StickerOpt { cost?: number; mark?: "x" | "plus" | "swap"; count?: number; off?: boolean; big?: boolean }
+function sticker(p: Part, o: StickerOpt = {}): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
-  b.className = `ptile shine${p.shine}`;
-  b.style.setProperty("--rc", SHINE_INFO[p.shine].color);
-  const name = kindInfo(p.kind).name;
-  b.innerHTML = `<span class="rk"></span><span class="ct"></span><span class="ic"></span><span class="nm"></span><span class="st"></span><span class="pw"></span>`;
-  b.querySelector(".rk")!.textContent = SHINE_INFO[p.shine].icon + extraIcons(p);
-  b.querySelector(".ct")!.textContent = `${cost}`;
+  b.className = `stk h${p.shine}${o.big ? " big" : ""}${o.off ? " off" : ""}`;
+  b.style.setProperty("--sc", SLOT_TINT[partSlot(p.kind)]);
+  b.style.setProperty("--rot", `${(hashStr(p.id) % 7) - 3}deg`);
+  b.innerHTML = `<span class="face"><span class="ic"></span><span class="nm"></span></span>${p.shine ? `<span class="holo"></span><span class="spark"></span>` : ""}<span class="cost"></span>`;
   b.querySelector(".ic")!.textContent = kindIcon(p.kind);
-  b.querySelector(".nm")!.textContent = name;
-  b.querySelector(".st")!.textContent = starText(p);
-  // 効果パーツは「何が起きるか」を、能力パーツは数値を見せる
-  b.querySelector(".pw")!.textContent = note || (p.kind.includes(":") ? kindInfo(p.kind).desc : mainText(p));
-  b.title = `${name}・${shineText(p)} ${starText(p)}・${[mainText(p), ...p.extras.map(extraText)].join("・")}・おもさ${cost}`;
+  b.querySelector(".nm")!.textContent = shortName(p.kind);
+  b.querySelector(".cost")!.textContent = `${o.cost ?? p.cost}`;
+  const add = (cls: string, text: string) => { const e = document.createElement("span"); e.className = cls; e.textContent = text; b.appendChild(e); };
+  if (p.star > 1) add("stars", "★".repeat(p.star));
+  if (p.extras.length) add("ex", p.extras.map((e) => kindIcon(e.stat)).join(""));
+  if (o.mark) add(`mark ${o.mark}`, o.mark === "x" ? "✖" : o.mark === "swap" ? "⇄" : "＋");
+  if (o.count && o.count > 1) add("cnt", `×${o.count}`);
+  b.setAttribute("aria-label", `${shortName(p.kind)} ${starText(p)} ${shineText(p)}`);
   return b;
+}
+// 文字の 一覧（ごほうびの 表示などで 使う。シール＋名前）
+function partChip(p: Part): HTMLElement {
+  const el = document.createElement("span");
+  el.className = "pc";
+  el.style.setProperty("--rc", SHINE_INFO[p.shine].color);
+  const s = sticker(p);
+  s.tabIndex = -1;
+  const t = document.createElement("span");
+  t.className = "pn";
+  t.textContent = shortName(p.kind);
+  el.append(s, t);
+  return el;
 }
 const partsById = (ids: string[]): Part[] => {
   const inv = loadInventory();
@@ -1033,12 +1037,19 @@ function withinBudget(parts: Part[], type: "ranged" | "melee"): Part[] {
   }
   return out;
 }
+// シールの 説明（1行。何が起きるか＋数値＋おまけ）
+function stickerInfo(p: Part): string {
+  const what = p.kind.includes(":") ? kindInfo(p.kind).desc : mainText(p);
+  return [what, ...p.extras.map((e) => `${kindIcon(e.stat)}${extraText(e)}`)].join("　");
+}
 
-const TYPE_LABEL = { ranged: ["🎯", "とおくの ひっさつ"], melee: ["👊", "ちかくの ひっさつ"] } as const;
+const TYPE_LABEL = { ranged: ["🎯", "とおく"], melee: ["👊", "ちかく"] } as const;
 const SLOTS: Slot[] = ["path", "act", "fx"];
-const SLOT_RULE: Record<Slot, string> = { path: "1まいだけ（はると いれかわる）", act: "かさねると かけざんで ふえる", fx: "ぜんぶ たしざん" };
 const setLoadout = (type: "ranged" | "melee", ids: string[]) => { if (type === "ranged") editor.partsR = ids; else editor.partsM = ids; };
 const testFire = new TestFire();
+let traySlot: Slot = "path"; // 下の シール置き場で 見せる 枠
+let infoId: string | null = null; // 説明を 出す シール（さいごに さわった）
+let popId: string | null = null; // 貼った ばかりの シール（ぽんっと 出す）
 
 // 貼る: とびかた（うごき）は 1まいだけなので、もう 貼ってあれば 入れかえる
 function withSticker(ids: string[], p: Part): string[] {
@@ -1047,6 +1058,7 @@ function withSticker(ids: string[], p: Part): string[] {
   return [...parts.filter((x) => partSlot(x.kind) !== "path").map((x) => x.id), p.id];
 }
 
+// ひっさつの 作業台: ①ためしうち ②3つの 枠（タップで はがす）③シール置き場（タップで 貼る）。スマホで 1画面に おさめる
 function renderEffects() {
   const inv = loadInventory();
   const fits = (type: "ranged" | "melee") => (id: string) => { const p = inv.parts.find((x) => x.id === id); return !!p && fitsType(p, type); };
@@ -1056,7 +1068,7 @@ function renderEffects() {
   const type = editor.specialType;
   const usedOf = (t: "ranged" | "melee") => equipCosts(withinBudget(partsById(loadoutOf(editor, t)), t)).reduce((a, c) => a + c, 0);
 
-  // 上: 2つの札（それぞれの のこりポイント）。えらんだ方を たたかいで つかう
+  // とおく / ちかく（えらんだ方を たたかいで つかう）
   stypeTabs.innerHTML = "";
   for (const t of ["ranged", "melee"] as const) {
     const b = document.createElement("button");
@@ -1067,7 +1079,7 @@ function renderEffects() {
     b.innerHTML = `<b></b><span></span><small></small>`;
     b.querySelector("b")!.textContent = TYPE_LABEL[t][0];
     b.querySelector("span")!.textContent = TYPE_LABEL[t][1];
-    b.querySelector("small")!.textContent = `⚡ ${usedOf(t)} / ${SPECIAL_BUDGET}${t === type ? "　⭐ つかう" : ""}`;
+    b.querySelector("small")!.textContent = `⚡${usedOf(t)}`;
     b.addEventListener("click", () => { editor.specialType = t; renderEffects(); persistDraft(); });
     stypeTabs.appendChild(b);
   }
@@ -1077,92 +1089,100 @@ function renderEffects() {
   const active = withinBudget(mine, type);
   const costs = equipCosts(active);
   const used = costs.reduce((a, c) => a + c, 0);
-  const other = new Set(loadoutOf(editor, type === "ranged" ? "melee" : "ranged"));
-  // 古いデータで とびかたが 2まい あれば、つかわれる 1まいの ほかは 「きいてない」
+  // 古いデータで とびかたが 2まい あれば、つかわれる 1まいの ほかは 効かない
   const usedPath = type === "ranged" ? pathOf(active.filter((p) => p.kind.startsWith("r:")).map((p) => p.kind.slice(2) as EffectId)) : undefined;
   const pathOff = (p: Part) => type === "ranged" && partSlot(p.kind) === "path" && p.kind.slice(2) !== usedPath && !(usedPath === "rain" && p.kind === "r:cloud");
-  effectsEl.innerHTML = "";
-  const add = (cls: string, text: string, parent: HTMLElement = effectsEl) => { const d = document.createElement("div"); d.className = cls; d.textContent = text; parent.appendChild(d); return d; };
   const save = (next: string[]) => { setLoadout(type, next); renderEffects(); persistDraft(); };
+  effectsEl.innerHTML = "";
 
-  add("kidhint", `⭐ たたかいでは ${TYPE_LABEL[type][0]} ${TYPE_LABEL[type][1]}を つかうよ`);
-  // おもさの つぶ（1つぶ = 1。枠ごとに 色を わける）
+  // おもさ（⚡）の めもり
+  const wbar = document.createElement("div");
+  wbar.className = "wbar";
   const pips = document.createElement("div");
   pips.className = "pips";
   pips.setAttribute("aria-label", `おもさ ${used} / ${SPECIAL_BUDGET}`);
   let k = 0;
   active.forEach((p, i) => { for (let j = 0; j < costs[i] && k < SPECIAL_BUDGET; j++, k++) { const d = document.createElement("i"); d.style.background = SLOT_COLOR[partSlot(p.kind)]; pips.appendChild(d); } });
   for (; k < SPECIAL_BUDGET; k++) pips.appendChild(document.createElement("i"));
-  const left = document.createElement("b");
-  left.textContent = `のこり ⚡${SPECIAL_BUDGET - used}`;
-  pips.appendChild(left);
-  effectsEl.appendChild(pips);
+  const left = document.createElement("span");
+  left.className = "left";
+  left.textContent = `⚡${SPECIAL_BUDGET - used}`;
+  wbar.append(pips, left);
 
-  // ひっさつの カード: 3つの 段に シールを 貼る（タップで はがす）
-  const card = document.createElement("div");
-  card.className = "scard";
-  for (const slot of SLOTS) {
-    const row = document.createElement("div");
-    row.className = "srow";
-    row.style.setProperty("--sc", SLOT_COLOR[slot]);
-    const lab = document.createElement("div");
-    lab.className = "slab";
-    lab.innerHTML = `<b></b><small></small>`;
-    lab.querySelector("b")!.textContent = SLOT_LABEL[type][slot].join(" ");
-    lab.querySelector("small")!.textContent = SLOT_RULE[slot];
-    const g = document.createElement("div");
-    g.className = "tgrid";
-    const list = mine.filter((p) => partSlot(p.kind) === slot);
-    if (!list.length) add("empty", slot === "path" ? (type === "ranged" ? "なし＝ まっすぐ とぶ" : "なし＝ そのばで なぐる") : "ここに はれるよ", g);
-    for (const p of list) {
-      const i = active.indexOf(p);
-      const off = i < 0 || pathOff(p);
-      const t = partTile(p, i >= 0 ? costs[i] : p.cost, i < 0 ? "⚡が たりなくて きいてない" : pathOff(p) ? "とびかたは 1まいだけ。きいてない" : "");
-      t.classList.add("equipped");
-      if (off) t.classList.add("off");
-      t.insertAdjacentHTML("beforeend", `<span class="badge x">✖</span>`);
-      t.addEventListener("click", () => save(ids.filter((id) => id !== p.id)));
-      g.appendChild(t);
-    }
-    row.append(lab, g);
-    card.appendChild(row);
-  }
-  effectsEl.appendChild(card);
-
-  // ためしうち（貼りかえるたびに 撃ちなおす）
-  effectsEl.appendChild(testFire.el);
-  // 読み込みの とちゅうでも 呼ばれるので、組み立ては 次の すきまに（キャラの 絵が 無い時は 棒人間）
+  // ためしうち（貼りかえるたびに 撃ちなおす）。読み込みの とちゅうでも 呼ばれるので、組み立ては 次の すきまに
   setTimeout(() => { try { testFire.set(buildPlayer("").cfg); } catch (e) { console.warn("testfire", e); } });
 
-  // もっている シール（枠ごと。タップで 貼る）
+  // 3つの 枠
+  const slots = document.createElement("div");
+  slots.className = "slots";
+  for (const slot of SLOTS) {
+    const box = document.createElement("div");
+    box.className = `slot${slot === traySlot ? " on" : ""}`;
+    box.style.setProperty("--sc", SLOT_COLOR[slot]);
+    const h = document.createElement("b");
+    h.textContent = SLOT_LABEL[type][slot].join("");
+    const pile = document.createElement("div");
+    pile.className = "pile";
+    const list = mine.filter((p) => partSlot(p.kind) === slot);
+    for (const p of list) {
+      const i = active.indexOf(p);
+      const st = sticker(p, { cost: i >= 0 ? costs[i] : p.cost, mark: "x", off: i < 0 || pathOff(p) });
+      if (p.id === popId) st.classList.add("pop");
+      st.addEventListener("click", (e) => { e.stopPropagation(); infoId = p.id; save(ids.filter((id) => id !== p.id)); });
+      pile.appendChild(st);
+    }
+    // 空きの 穴（とびかたは 1まいだけ）
+    if (!list.length || slot !== "path") {
+      const hole = document.createElement("span");
+      hole.className = "hole";
+      hole.textContent = "＋";
+      pile.appendChild(hole);
+    }
+    box.append(h, pile);
+    box.addEventListener("click", () => { traySlot = slot; renderEffects(); });
+    slots.appendChild(box);
+  }
+
+  // シール置き場（えらんだ 枠の シールだけ。横に スクロール）
+  const tray = document.createElement("div");
+  tray.className = "tray";
+  const seg = document.createElement("div");
+  seg.className = "seg";
   const cand = inv.parts.filter((p) => fitsType(p, type) && !ids.includes(p.id))
     .sort((a, b) => partScore(b) - partScore(a) || kindInfo(a.kind).name.localeCompare(kindInfo(b.kind).name));
-  if (!cand.length) add("empty", "はれる シールが ないよ。ストーリーで かつと もらえる！");
   for (const slot of SLOTS) {
-    const list = cand.filter((p) => partSlot(p.kind) === slot);
-    if (!list.length) continue;
-    const wrap = document.createElement("div");
-    wrap.className = "pbox";
-    wrap.style.setProperty("--sc", SLOT_COLOR[slot]);
-    add("kidhint", `🧰 ${SLOT_LABEL[type][slot].join(" ")}の シール（タップで はる）`, wrap);
-    const g = document.createElement("div");
-    g.className = "tgrid";
-    wrap.appendChild(g);
-    effectsEl.appendChild(wrap);
-    for (const p of list) {
-      const next = withSticker(ids, p);
-      const nextUsed = equipCosts(partsById(next).filter((x) => fitsType(x, type))).reduce((a, c) => a + c, 0);
-      const short = nextUsed > SPECIAL_BUDGET;
-      const swap = next.length <= ids.length;
-      const t = partTile(p, equipCosts([...active, p]).at(-1)!, short ? `⚡が ${nextUsed - SPECIAL_BUDGET} たりない` : swap ? "🔁 いれかえる" : "");
-      t.disabled = short;
-      t.insertAdjacentHTML("beforeend", `<span class="badge plus">${swap ? "⇄" : "＋"}</span>`);
-      if (kindInfo(p.kind).type === "both") t.insertAdjacentHTML("beforeend", `<span class="tag">${other.has(p.id) ? `${TYPE_LABEL[type === "ranged" ? "melee" : "ranged"][0]}にも はってる` : "🔁 どっちにも はれる"}</span>`);
-      t.addEventListener("click", () => save(next));
-      g.appendChild(t);
-    }
+    const b = document.createElement("button");
+    b.type = "button";
+    b.classList.toggle("on", slot === traySlot);
+    b.textContent = `${SLOT_LABEL[type][slot].join("")} ${cand.filter((p) => partSlot(p.kind) === slot).length}`;
+    b.addEventListener("click", () => { traySlot = slot; renderEffects(); });
+    seg.appendChild(b);
   }
-  add("ksub", `⚡は シールの おもさ。🎯と👊で べつべつに ${SPECIAL_BUDGET}まで はれるよ。✨🌟は できばえ（よく光るほど つよくて かるい）、★は かさねた かず、左上の 絵は おまけ。同じ シールを 2まい はると こうかも かさなる！`);
+  const strip = document.createElement("div");
+  strip.className = "strip";
+  const list = cand.filter((p) => partSlot(p.kind) === traySlot);
+  if (!list.length) { const e = document.createElement("div"); e.className = "empty"; e.textContent = "まだ ないよ。ストーリーで かつと もらえる！"; strip.appendChild(e); }
+  for (const p of list) {
+    const next = withSticker(ids, p);
+    const nextUsed = equipCosts(partsById(next).filter((x) => fitsType(x, type))).reduce((a, c) => a + c, 0);
+    const st = sticker(p, { cost: equipCosts([...active, p]).at(-1)!, mark: next.length <= ids.length ? "swap" : "plus" });
+    st.disabled = nextUsed > SPECIAL_BUDGET;
+    st.addEventListener("click", () => { infoId = p.id; popId = p.id; save(next); });
+    strip.appendChild(st);
+  }
+  tray.append(seg, strip);
+
+  // さいごに さわった シールの 説明（1行）
+  const info = document.createElement("div");
+  info.className = "sinfo";
+  const ip = inv.parts.find((p) => p.id === infoId);
+  if (ip) {
+    const b = document.createElement("b");
+    b.textContent = `${kindIcon(ip.kind)} ${shortName(ip.kind)} ${starText(ip)}`;
+    info.append(b, document.createElement("br"), stickerInfo(ip));
+  } else info.textContent = "👇 シールを タップすると はれるよ。はった シールを タップすると はがせるよ";
+  effectsEl.append(wbar, testFire.el, slots, tray, info);
+  popId = null;
 }
 
 function syncEditor() {
@@ -1366,6 +1386,7 @@ function cpuThumb(id: string, strokesOf: () => Stroke[]) {
   sel.value = "flat";
 }
 const cpuUnlocked = (c: CpuChar) => !c.bossStage || !!loadStory().cleared[c.bossStage];
+let cpuGroup = "";
 function refreshCpuOptions() {
   const grid = document.getElementById("cpuGrid")!;
   grid.innerHTML = "";
@@ -1383,26 +1404,26 @@ function refreshCpuOptions() {
     b.addEventListener("click", () => { cpuPick = id; refreshCpuOptions(); });
     return b;
   };
-  const section = (title: string) => {
-    const h = document.createElement("div");
-    h.className = "cgroup";
-    h.textContent = title;
-    const g = document.createElement("div");
-    g.className = "cgrid";
-    grid.append(h, g);
-    return g;
-  };
-  section("おまかせ").appendChild(card("", "おまかせ", null));
-  for (const group of CPU_GROUPS) {
-    const list = CPU_CHARS.filter((c) => c.group === group);
-    if (!list.length) continue;
-    const g = section(group === "ボス" ? "ボス（ストーリーで たおすと えらべる）" : group);
-    for (const c of list) g.appendChild(card(c.id, c.name, cpuThumb(c.id, c.strokes), !cpuUnlocked(c)));
+  // なかまわけは 上の 札で 1つずつ（ながい 一覧に しない）
+  const groups = [...CPU_GROUPS.filter((g) => CPU_CHARS.some((c) => c.group === g)), ...(saved.length ? ["じぶんの キャラ"] : [])];
+  if (!groups.includes(cpuGroup)) cpuGroup = cpuCharById(cpuPick)?.group ?? (cpuPick.startsWith("saved:") ? "じぶんの キャラ" : groups[0]);
+  const chips = document.createElement("div");
+  chips.className = "chips";
+  const dice = card("", "おまかせ", null);
+  for (const gname of groups) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = gname;
+    b.classList.toggle("on", gname === cpuGroup);
+    b.addEventListener("click", () => { cpuGroup = gname; refreshCpuOptions(); });
+    chips.appendChild(b);
   }
-  if (saved.length) {
-    const g = section("じぶんの キャラ");
-    for (const c of saved) g.appendChild(card(`saved:${c.id}`, c.name, c.thumb ?? null));
-  }
+  const g = document.createElement("div");
+  g.className = "cgrid";
+  g.appendChild(dice);
+  if (cpuGroup === "じぶんの キャラ") for (const c of saved) g.appendChild(card(`saved:${c.id}`, c.name, c.thumb ?? null));
+  else for (const c of CPU_CHARS.filter((x) => x.group === cpuGroup)) g.appendChild(card(c.id, c.name, cpuThumb(c.id, c.strokes), !cpuUnlocked(c)));
+  grid.append(chips, g);
   // 選んだ相手の紹介
   const pick = document.getElementById("cpuPick")!;
   pick.innerHTML = "";
@@ -1520,7 +1541,7 @@ document.getElementById("startBattle")!.addEventListener("click", () => {
 
 // --- 画面の移動（メイン ⇄ 各画面）。端末やブラウザの「戻る」でも1つ前に戻る ---
 type Screen = "home" | "story" | "make" | "free" | "transfer" | "tree" | "parts" | "online";
-const SCREEN_TITLES: Record<Screen, string> = { home: "", story: "📖 ストーリー", make: "✏️ キャラを つくる", free: "⚔️ じゆうバトル", transfer: "📦 ひきつぎ", tree: "🌳 スキルツリー", parts: "🧩 ひっさつパーツ", online: "🌐 オンライン" };
+const SCREEN_TITLES: Record<Screen, string> = { home: "", story: "📖 ストーリー", make: "✏️ キャラを つくる", free: "⚔️ じゆうバトル", transfer: "📦 ひきつぎ", tree: "🌳 スキルツリー", parts: "🧩 シール", online: "🌐 オンライン" };
 const onlineEl = document.getElementById("onlineScreen")!;
 const partsEl = document.getElementById("partsScreen")!;
 const treeEl = document.getElementById("treeScreen")!;
@@ -1550,6 +1571,7 @@ function show(s: Screen) {
   topbar.hidden = s === "home";
   screenTitle.textContent = SCREEN_TITLES[s];
   makeTabs.hidden = s !== "make";
+  document.querySelectorAll<HTMLButtonElement>("[data-nav]").forEach((b) => b.classList.toggle("on", b.dataset.nav === s));
   if (s !== "make") stopPreview();
   if (s === "home") attract.start(); else attract.stop();
   if (s === "home") renderProfile();
@@ -1607,7 +1629,7 @@ function renderProfile() {
   document.getElementById("pExp")!.textContent = max ? "最大レベル" : `経験値 ${p.exp} / ${need}（次のレベルまで ${need - p.exp}）`;
   document.getElementById("pPoints")!.textContent = String(p.points);
   const usable = Math.min(p.points, TREE_CAP - spentOf(p.nodes));
-  document.getElementById("treeHint")!.textContent = usable > 0 ? `ポイント ${usable} を使えます` : spentOf(p.nodes) >= TREE_CAP ? "上限まで育った！" : "ポイントで強くなる";
+  document.getElementById("treeHint")!.textContent = usable > 0 ? `🔴 ${usable}` : spentOf(p.nodes) >= TREE_CAP ? "👑" : "";
 }
 
 // --- じまんの文（拡散用）: ストーリーの進み具合とステータスから作って、コピー／共有 ---
@@ -1896,15 +1918,8 @@ resetBtn.addEventListener("click", () => {
   renderTree();
 });
 
-// --- 必殺シール（持ち物）: 一覧・ならびかえ・キャラに 貼る/はがす・鍵・かさねる ---
+// --- シール アルバム: しゅるいごとに いちばん良い 1まいを 見せる（同じ しゅるいが あれば ×N）。タップで 大きく 見て、かさねる・🔒 ---
 let partFilter: "all" | "ranged" | "melee" | "both" = "all";
-let selectedPart: string | null = null;
-const PART_SORT_KEY = "doodle-arena:partSort";
-const partSortSel = document.getElementById("partSort") as HTMLSelectElement;
-try { partSortSel.value = localStorage.getItem(PART_SORT_KEY) || "kind"; } catch { /* 無視 */ }
-partSortSel.addEventListener("change", () => { try { localStorage.setItem(PART_SORT_KEY, partSortSel.value); } catch { /* 無視 */ } renderParts(); });
-const equipCharSel = document.getElementById("equipChar") as HTMLSelectElement;
-equipCharSel.addEventListener("change", () => renderParts());
 document.querySelectorAll<HTMLButtonElement>("[data-pf]").forEach((b) => b.addEventListener("click", () => {
   partFilter = b.dataset.pf as typeof partFilter;
   document.querySelectorAll("[data-pf]").forEach((o) => o.classList.toggle("on", o === b));
@@ -1912,153 +1927,38 @@ document.querySelectorAll<HTMLButtonElement>("[data-pf]").forEach((b) => b.addEv
 }));
 // どれかのキャラ（編集中・保存済み）が付けているシール
 const equippedIds = () => new Set([editor, ...loadRoster()].flatMap((c) => [...c.partsR, ...c.partsM]));
-
-// 付けかえるキャラ: "" = 編集中、"saved:id" = 保存したキャラ
-type CharRef = string;
-function charOf(ref: CharRef): (Pick<CharacterData, "name" | "partsR" | "partsM">) | undefined {
-  if (!ref) return { name: editor.name || "編集中のキャラ", partsR: editor.partsR, partsM: editor.partsM };
-  return loadRoster().find((c) => `saved:${c.id}` === ref);
-}
-function setCharLoadout(ref: CharRef, type: "ranged" | "melee", ids: string[]) {
-  const key = type === "ranged" ? "partsR" : "partsM";
-  const id = ref.startsWith("saved:") ? ref.slice(6) : null;
-  if (id) writeRoster(loadRoster().map((c) => (c.id === id ? { ...c, [key]: ids } : c)));
-  // 編集中のキャラ（保存したキャラを呼び出し中なら そちらも同じに）
-  if (!id || id === editId) { setLoadout(type, ids); persistDraft(); renderEffects(); }
-}
-function refreshEquipChars() {
-  const keep = equipCharSel.value;
-  equipCharSel.innerHTML = "";
-  equipCharSel.add(new Option(`編集中のキャラ（${editor.name || "名無し"}）`, ""));
-  for (const c of loadRoster()) if (c.id !== editId) equipCharSel.add(new Option(c.name, `saved:${c.id}`));
-  equipCharSel.value = [...equipCharSel.options].some((o) => o.value === keep) ? keep : "";
-}
-
 const TYPE_ORDER = { ranged: 0, melee: 1, both: 2 };
-function sortParts(list: Part[], order: string, all: Part[]): Part[] {
-  const name = (p: Part) => kindInfo(p.kind).name;
-  const byGood = (a: Part, b: Part) => partScore(b) - partScore(a) || b.star - a.star;
-  if (order === "rare") return list.sort((a, b) => byGood(a, b) || name(a).localeCompare(name(b)));
-  if (order === "cost") return list.sort((a, b) => a.cost - b.cost || byGood(a, b));
-  if (order === "new") return list.sort((a, b) => all.indexOf(b) - all.indexOf(a));
-  return list.sort((a, b) => TYPE_ORDER[kindInfo(a.kind).type] - TYPE_ORDER[kindInfo(b.kind).type] || name(a).localeCompare(name(b)) || byGood(a, b));
-}
-const partNote = (p: Part, eq: Set<string>) => [p.locked ? "🔒" : "", eq.has(p.id) ? "はってる" : ""].filter(Boolean).join("・");
+const bestFirst = (a: Part, b: Part) => partScore(b) - partScore(a) || b.star - a.star;
 
 function renderParts() {
-  refreshEquipChars();
   const inv = loadInventory();
   document.getElementById("invCount")!.textContent = String(inv.parts.length);
   document.getElementById("invCap")!.textContent = String(INVENTORY_CAP);
-  const eq = equippedIds();
-  const plans = planStacks(inv.parts, eq);
+  const plans = planStacks(inv.parts, equippedIds());
   const bulk = document.getElementById("bulkCombine") as HTMLButtonElement;
   bulk.disabled = !plans.length;
-  bulk.textContent = plans.length ? `🪄 まとめて かさねる（${plans.length}）` : "🪄 まとめて かさねる";
-  bulk.title = plans.length ? "" : "同じ しゅるいの シールが 2まい あると かさねられるよ";
+  bulk.textContent = plans.length ? `🪄 ${plans.length}` : "🪄";
+  bulk.setAttribute("aria-label", "まとめて かさねる");
   const listEl = document.getElementById("partList")!;
   listEl.innerHTML = "";
-  const shown = sortParts(inv.parts.filter((p) => partFilter === "all" || kindInfo(p.kind).type === partFilter), partSortSel.value, inv.parts);
-  if (!shown.length) listEl.textContent = "ありません。ストーリーで勝つと手に入ります。";
-  let lastType = "";
-  for (const p of shown) {
-    // しゅるい ごと: 🎯/👊/🔁 の見出し
-    const t = kindInfo(p.kind).type;
-    if (partSortSel.value === "kind" && t !== lastType) {
-      lastType = t;
-      const h = document.createElement("div");
-      h.className = "kidhint";
-      h.textContent = t === "ranged" ? "🎯 とおくの ひっさつ" : t === "melee" ? "👊 ちかくの ひっさつ" : "🔁 どっちにも つかえる";
-      listEl.appendChild(h);
-    }
-    const b = document.createElement("button");
-    b.type = "button";
-    b.classList.toggle("sel", p.id === selectedPart);
-    b.appendChild(partChip(p, p.cost, partNote(p, eq)));
-    b.addEventListener("click", () => { selectedPart = p.id; renderParts(); });
-    listEl.appendChild(b);
+  const shown = inv.parts.filter((p) => partFilter === "all" || kindInfo(p.kind).type === partFilter);
+  const kinds = [...new Set(shown.map((p) => p.kind))]
+    .sort((a, b) => TYPE_ORDER[kindInfo(a).type] - TYPE_ORDER[kindInfo(b).type] || SLOTS.indexOf(partSlot(a)) - SLOTS.indexOf(partSlot(b)) || kindInfo(a).name.localeCompare(kindInfo(b).name));
+  if (!kinds.length) listEl.textContent = "まだ ないよ。ストーリーで かつと もらえる！";
+  for (const k of kinds) {
+    const list = shown.filter((p) => p.kind === k).sort(bestFirst);
+    const st = sticker(list[0], { count: list.length });
+    st.addEventListener("click", () => openSheet(k));
+    listEl.appendChild(st);
   }
-
-  // 選んだシールの操作
-  const info = document.getElementById("partInfo")!;
-  info.innerHTML = "";
-  const p = inv.parts.find((x) => x.id === selectedPart);
-  if (!p) { info.textContent = "シールを タップすると、キャラに はる・はがす・🔒鍵・かさねる が できます。"; return; }
-  info.appendChild(partChip(p, p.cost, partNote(p, eq)));
-  const desc = document.createElement("div");
-  desc.className = "note";
-  const sl = partSlot(p.kind);
-  desc.textContent = `${kindInfo(p.kind).desc}（${SLOT_LABEL[kindInfo(p.kind).type === "melee" ? "melee" : "ranged"][sl].join(" ")}の シール）`;
-  info.appendChild(desc);
-
-  // キャラに はる・はがす
-  const ref = equipCharSel.value;
-  const ch = charOf(ref);
-  const users = [editor, ...loadRoster().filter((c) => c.id !== editId)].flatMap((c) => [
-    ...(c.partsR.includes(p.id) ? [`${c.name || "編集中"}🎯`] : []), ...(c.partsM.includes(p.id) ? [`${c.name || "編集中"}👊`] : []),
-  ]);
-  if (ch) {
-    const er = document.createElement("div");
-    er.className = "row";
-    for (const t of ["ranged", "melee"] as const) {
-      if (!fitsType(p, t)) continue;
-      const ids = t === "ranged" ? ch.partsR : ch.partsM;
-      const on = ids.includes(p.id);
-      const used = equipCosts(withinBudget(partsById(ids), t)).reduce((a, c) => a + c, 0);
-      const next = withStickerOf(ids, p);
-      const nextUsed = equipCosts(partsById(next).filter((x) => fitsType(x, t))).reduce((a, c) => a + c, 0);
-      const b = document.createElement("button");
-      b.className = on ? "" : "primary inline";
-      const icon = t === "ranged" ? "🎯" : "👊";
-      b.textContent = on ? `${icon} はがす（⚡${used}/${SPECIAL_BUDGET}）` : nextUsed > SPECIAL_BUDGET ? `${icon} ⚡が たりない（${nextUsed}/${SPECIAL_BUDGET}）` : `${icon} ${next.length <= ids.length ? "いれかえて はる" : "はる"}（⚡${nextUsed}/${SPECIAL_BUDGET}）`;
-      b.disabled = !on && nextUsed > SPECIAL_BUDGET;
-      b.addEventListener("click", () => { setCharLoadout(ref, t, on ? ids.filter((x) => x !== p.id) : next); renderParts(); });
-      er.appendChild(b);
-    }
-    const who = document.createElement("div");
-    who.className = "note";
-    who.textContent = `「${ch.name || "名無し"}」に はる・はがす（上の「つけかえる キャラ」で かえられる）${users.length ? `　いま はっている: ${users.join("・")}` : ""}`;
-    info.append(who, er);
-  }
-
-  const row = document.createElement("div");
-  row.className = "row";
-  const lk = document.createElement("button");
-  lk.textContent = p.locked ? "🔓 鍵を はずす" : "🔒 鍵を かける";
-  lk.addEventListener("click", () => { toggleLock(p.id); renderParts(); });
-  row.append(lk);
-  info.append(row);
-
-  // かさねる: 同じ しゅるいの シールを のせると ★が 上がる
-  const box = document.createElement("div");
-  box.className = "pbox";
-  const mats = inv.parts.filter((m) => canStack(p, m, eq)).sort((a, b) => partScore(a) - partScore(b));
-  add2(box, "kidhint", p.star >= MAX_STAR ? "🧩 ★5 まで かさねたよ！" : `🧩 かさねる（同じ しゅるいを のせると ★${p.star} → ★${p.star + 1}）`);
-  if (p.star < MAX_STAR) {
-    if (!mats.length) add2(box, "note", "同じ しゅるいの シールが ないよ（はっている・🔒の シールは のせられない）。");
-    const g = document.createElement("div");
-    g.className = "tgrid";
-    for (const m of mats) {
-      const t = partTile(m, m.cost, m.shine > p.shine ? `${shineText(m)}に なる！` : "");
-      t.insertAdjacentHTML("beforeend", `<span class="badge plus">＋</span>`);
-      t.addEventListener("click", () => askStack(p, m));
-      g.appendChild(t);
-    }
-    box.appendChild(g);
-  }
-  info.append(box);
 }
-function add2(parent: HTMLElement, cls: string, text: string) { const d = document.createElement("div"); d.className = cls; d.textContent = text; parent.appendChild(d); }
-// 保存したキャラにも 同じ「とびかたは 1まい」の 決まりで 貼る
-function withStickerOf(ids: string[], p: Part): string[] { return withSticker(ids, p); }
 
-// かさねる前の かくにん: のせる シールの おまけを 1つ もらうか えらぶ（空きが なければ 聞かない）
 function openModal(build: (box: HTMLElement, close: () => void) => void) {
   const modal = document.createElement("div");
   modal.className = "modal";
   modal.setAttribute("role", "dialog");
   modal.setAttribute("aria-modal", "true");
-  const close = () => modal.remove();
+  const close = () => { modal.remove(); renderParts(); renderEffects(); };
   modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
   const box = document.createElement("div");
   box.className = "modal-box";
@@ -2066,59 +1966,79 @@ function openModal(build: (box: HTMLElement, close: () => void) => void) {
   document.body.appendChild(modal);
   build(box, close);
 }
-function askStack(base: Part, mat: Part) {
-  const doIt = (take: number) => {
-    const made = stackInto(base.id, mat.id, equippedIds(), take);
-    if (made) toast(`🧩 ${kindIcon(made.kind)}${kindInfo(made.kind).name} が ${starText(made)} に なったよ！`);
-    renderParts();
-    renderEffects();
-  };
-  if (!mat.extras.length || base.extras.length >= MAX_EXTRAS) { doIt(-1); return; }
+const bestExtra = (m: Part) => m.extras.reduce((bi, e, i, a) => (bi < 0 || e.value > a[bi].value ? i : bi), -1);
+
+// 1しゅるいの シール: 大きく 見せる・🔒・ここに かさねる（同じ しゅるいの ほかの シールを のせて ★アップ）
+function openSheet(kind: PartKind) {
+  let focus: string | null = null;
   openModal((box, close) => {
-    add2(box, "kidhint", "🎁 のせる シールの おまけを 1つ もらえるよ。どれに する？");
-    box.appendChild(partChip(mat));
-    const row = document.createElement("div");
-    row.className = "row";
-    mat.extras.forEach((e, i) => {
-      const b = document.createElement("button");
-      b.className = "primary inline";
-      b.textContent = `${kindIcon(e.stat)} ${extraText(e)} を もらう`;
-      b.addEventListener("click", () => { close(); doIt(i); });
-      row.appendChild(b);
-    });
-    const no = document.createElement("button");
-    no.textContent = "もらわない";
-    no.addEventListener("click", () => { close(); doIt(-1); });
-    row.appendChild(no);
-    box.appendChild(row);
+    const draw = () => {
+      const inv = loadInventory();
+      const eq = equippedIds();
+      const list = inv.parts.filter((p) => p.kind === kind).sort(bestFirst);
+      if (!list.length) { close(); return; }
+      const cur = list.find((p) => p.id === focus) ?? list[0];
+      box.innerHTML = "";
+      const sheet = document.createElement("div");
+      sheet.className = "sheet";
+      const big = sticker(cur, { big: true });
+      big.tabIndex = -1;
+      const name = document.createElement("b");
+      name.textContent = `${shortName(kind)} ${starText(cur)}`;
+      const desc = document.createElement("div");
+      desc.className = "desc";
+      desc.textContent = stickerInfo(cur);
+      const users = [editor, ...loadRoster().filter((c) => c.id !== editId)].flatMap((c) => [
+        ...(c.partsR.includes(cur.id) ? [`${c.name || "へんしゅう中"}🎯`] : []), ...(c.partsM.includes(cur.id) ? [`${c.name || "へんしゅう中"}👊`] : []),
+      ]);
+      const who = document.createElement("div");
+      who.className = "note";
+      who.textContent = users.length ? `🧑 ${users.join("・")}` : "";
+      const row = document.createElement("div");
+      row.className = "row";
+      const mats = list.filter((m) => canStack(cur, m, eq)).sort((a, b) => partScore(a) - partScore(b)).slice(0, MAX_STAR - cur.star);
+      const st = document.createElement("button");
+      st.className = "primary inline";
+      st.textContent = cur.star >= MAX_STAR ? "★5 まんたん！" : `🧩 かさねる ★${cur.star}→★${cur.star + mats.length}`;
+      st.disabled = !mats.length;
+      st.addEventListener("click", () => {
+        for (const m of mats) stackInto(cur.id, m.id, equippedIds(), cur.extras.length < MAX_EXTRAS ? bestExtra(m) : -1);
+        focus = cur.id;
+        toast(`🧩 ${starText(loadInventory().parts.find((p) => p.id === cur.id)!)}`);
+        draw();
+      });
+      const lk = document.createElement("button");
+      lk.textContent = cur.locked ? "🔒" : "🔓";
+      lk.setAttribute("aria-label", cur.locked ? "鍵を はずす" : "鍵を かける（かさねる 材料に しない）");
+      lk.addEventListener("click", () => { toggleLock(cur.id); focus = cur.id; draw(); });
+      const ok = document.createElement("button");
+      ok.textContent = "✖";
+      ok.setAttribute("aria-label", "とじる");
+      ok.addEventListener("click", close);
+      row.append(st, lk, ok);
+      sheet.append(big, name, desc, who, row);
+      // 同じ しゅるいの ほかの シール（タップで 見る）
+      if (list.length > 1) {
+        const same = document.createElement("div");
+        same.className = "same";
+        for (const p of list) {
+          const s2 = sticker(p, { off: p.id === cur.id });
+          s2.addEventListener("click", () => { focus = p.id; draw(); });
+          same.appendChild(s2);
+        }
+        sheet.appendChild(same);
+      }
+      box.appendChild(sheet);
+    };
+    draw();
   });
 }
 // まとめて かさねる: しゅるいごとに いちばん良い シールへ（はっている・🔒は のせない）
 document.getElementById("bulkCombine")!.addEventListener("click", () => {
-  const inv = loadInventory();
-  const eq = equippedIds();
-  const plans = planStacks(inv.parts, eq);
-  if (!plans.length) return;
-  const byId = new Map(inv.parts.map((p) => [p.id, p]));
-  openModal((box, close) => {
-    add2(box, "kidhint", `🪄 まとめて かさねる（${plans.length}しゅるい）`);
-    add2(box, "note", "のせた シールは なくなるよ。のこしたい シールには 🔒を かけてね。おまけは 空きが あれば いちばん 大きいのを もらうよ。");
-    for (const pl of plans) {
-      const b = byId.get(pl.baseId)!;
-      add2(box, "mats", `${kindIcon(b.kind)} ${kindInfo(b.kind).name}　★${b.star} → ★${Math.min(MAX_STAR, b.star + pl.matIds.length)}（${pl.matIds.length}まい のせる）`);
-    }
-    const row = document.createElement("div");
-    row.className = "row";
-    const ok = document.createElement("button");
-    ok.className = "primary inline";
-    ok.textContent = "🪄 かさねる";
-    ok.addEventListener("click", () => { const made = stackAll(equippedIds()); close(); if (made.length) toast(`🪄 ${made.length}しゅるい かさねたよ！`); renderParts(); renderEffects(); });
-    const cancel = document.createElement("button");
-    cancel.textContent = "やめる";
-    cancel.addEventListener("click", close);
-    row.append(ok, cancel);
-    box.appendChild(row);
-  });
+  const made = stackAll(equippedIds());
+  if (made.length) toast(`🪄 ${made.map((m) => `${kindIcon(m.kind)}${"★".repeat(m.star)}`).join(" ")}`);
+  renderParts();
+  renderEffects();
 });
 
 // --- ストーリー ---
@@ -2132,11 +2052,41 @@ function refreshStoryChars() {
   for (const c of loadRoster()) storyCharSel.add(new Option(c.name, `saved:${c.id}`));
   storyCharSel.value = [...storyCharSel.options].some((o) => o.value === keep) ? keep : "";
 }
+// 章は 1つずつ 見せる（上の 札で えらぶ）。はじめは まだ クリアしていない ステージの 章
+let storyCh = -1;
 function renderStory() {
   refreshStoryChars();
   const { cleared } = loadStory();
   chaptersEl.innerHTML = "";
-  for (const ch of CHAPTERS) {
+  if (storyCh < 0) {
+    const i = CHAPTERS.findIndex((ch) => ch.stages.some((st) => !cleared[st.id] && isUnlocked(st, cleared)));
+    storyCh = i < 0 ? CHAPTERS.length - 1 : i;
+  }
+  const chips = document.createElement("div");
+  chips.className = "chips";
+  CHAPTERS.forEach((ch, i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    const done = ch.stages.every((st) => cleared[st.id]);
+    const open = isUnlocked(ch.stages[0], cleared);
+    b.textContent = `${done ? "👑" : open ? "" : "🔒"}${ch.no}`;
+    b.setAttribute("aria-label", `第${ch.no}章 ${ch.title}`);
+    b.classList.toggle("on", i === storyCh);
+    b.classList.toggle("lock", !open);
+    b.addEventListener("click", () => { storyCh = i; renderStory(); });
+    chips.appendChild(b);
+  });
+  for (const t of UPCOMING) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "lock";
+    b.disabled = true;
+    b.textContent = "🚧";
+    b.title = `${t} 準備中`;
+    chips.appendChild(b);
+  }
+  chaptersEl.appendChild(chips);
+  for (const ch of [CHAPTERS[storyCh]]) {
     const sec = document.createElement("div");
     sec.className = "chapter";
     const h = document.createElement("h2");
@@ -2168,12 +2118,6 @@ function renderStory() {
       grid.appendChild(b);
     });
     sec.append(h, grid);
-    chaptersEl.appendChild(sec);
-  }
-  for (const t of UPCOMING) {
-    const sec = document.createElement("div");
-    sec.className = "chapter locked";
-    sec.innerHTML = `<h2>${t}　準備中</h2>`;
     chaptersEl.appendChild(sec);
   }
 }

@@ -189,11 +189,8 @@
       .slab b { font-size: 15px; }
       .slab small { font-size: 10px; color: var(--muted); line-height: 1.25; }
       .pbox { border-color: var(--sc, var(--line)); }
-      .tfire { --tf-bg: var(--bg); --tf-floor: var(--line); margin: 8px 0; border-radius: 16px; overflow: hidden; border: 3px solid var(--line); }
+      .tfire { --tf-bg: var(--bg); --tf-floor: var(--line); border-radius: 16px; overflow: hidden; border: 3px solid var(--line); }
       .tfire canvas { display: block; width: 100%; }
-      .tf-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; }
-      .tf-seg button { min-height: 36px; padding: 4px 8px; white-space: nowrap; }
-      .tf-info { padding: 4px 10px 8px; font-weight: 800; font-size: 14px; min-height: 1.4em; }
       @media (max-width: 420px) { .srow { grid-template-columns: 1fr; } }
       .ptile:disabled { opacity: .35; }
       .kidhint { font-weight: 800; font-size: 14px; margin-top: 4px; }
@@ -465,6 +462,168 @@
       .warn { background: #fff3bf; color: #5c3c00; border-radius: 10px; padding: 8px 10px; font-size: 13px; font-weight: 700; }
       .b-err { position: absolute; z-index: 4; left: 8px; right: 8px; bottom: 8px; padding: 6px 8px; border-radius: 8px; background: rgba(200,0,0,.85); color: #fff; font: 11px/1.3 monospace; white-space: pre-wrap; pointer-events: none; }
       .b-close { position: absolute; z-index: 3; top: calc(env(safe-area-inset-top, 0px) + 8px); right: 10px; width: 36px; height: 36px; min-height: 0; padding: 0; border-radius: 50%; background: rgba(255,255,255,.8); color: #222; border: none; font-size: 20px; }
+      /* ===== 2026-10-25 UI 改修: スマホで スクロールが 少なく、見て わかる ===== */
+      body { padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
+      .toast { bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); }
+      /* 下の タブ（どの画面からも 1タップ） */
+      .bnav { position: fixed; z-index: 8; left: 50%; transform: translateX(-50%); bottom: 0; width: min(560px, 100%); display: grid; grid-template-columns: repeat(5, 1fr); align-items: end; gap: 4px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px)); background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(8px); border-top: 2px solid var(--line); border-radius: 20px 20px 0 0; box-shadow: 0 -4px 16px rgba(84, 64, 140, .12); }
+      .bnav button { display: grid; justify-items: center; gap: 0; min-height: 56px; padding: 4px 0; border: 0; border-radius: 16px; background: transparent; color: var(--muted); font-weight: 800; font-size: 11px; box-shadow: none; }
+      .bnav button b { font-size: 26px; line-height: 1.1; filter: saturate(.6); }
+      .bnav button.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+      .bnav button.on b { filter: none; transform: translateY(-2px) scale(1.1); }
+      .bnav button.main { min-height: 70px; margin-top: -18px; background: var(--accent); color: var(--accent-ink); box-shadow: 0 4px 0 #d9573a; }
+      .bnav button.main b { filter: none; }
+      .bnav button.main.on { background: var(--accent); color: var(--accent-ink); }
+      #photoBar:not([hidden]) ~ .bnav { display: none; }
+      /* ホーム: 1画面に おさめる */
+      .hero { max-height: 210px; margin-bottom: 10px; }
+      .profile { padding: 8px 14px; }
+      .profile .lv b { font-size: 28px; }
+      .menu { grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+      .menu .big { display: grid; justify-items: center; align-content: center; gap: 2px; text-align: center; padding: 10px 4px; min-height: 96px; }
+      .menu .big b { font-size: 38px; line-height: 1.1; }
+      .menu .big span { font-weight: 800; font-size: 14px; }
+      .menu .big small { font-size: 11px; }
+      .menu .big.story { grid-column: span 3; min-height: 88px; grid-auto-flow: column; justify-content: center; gap: 12px; }
+      .menu .big.story span { font-size: 22px; }
+      .menu .big.online { background: #4c6ef5; border-color: #4c6ef5; color: #fff; box-shadow: 0 4px 0 #364fc7; }
+      .minis { display: flex; justify-content: center; gap: 8px; margin-top: 10px; }
+      .minis button { display: flex; align-items: center; gap: 4px; min-height: 40px; padding: 4px 12px; border-radius: 999px; font-weight: 800; font-size: 13px; }
+      .minis button b { font-size: 18px; }
+      .credit { margin-top: 10px; }
+      /* キャラを つくる: タブは 絵＋短い ことば */
+      .tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+      .tabs button { display: grid; justify-items: center; gap: 2px; padding: 4px 0; min-height: 50px; border-radius: 14px; line-height: 1; }
+      .tabs button b { font-size: 22px; }
+      .tabs button .tl { font-size: 11px; font-weight: 800; }
+      .editbar { flex-wrap: nowrap; padding: 4px 6px; }
+      .editbar img { width: 38px; height: 38px; }
+      .editbar .ebtext { flex: 1 1 auto; }
+      .editbar button { width: 42px; padding: 0; font-size: 20px; }
+
+      /* キャラ: 1画面に ちかく */
+      #charSetup .savebar { display: none; }
+      #charSetup .kn { display: none; }
+      #charSetup .kcard { padding: 8px 12px; gap: 6px; }
+      #charSetup .kh { font-size: 15px; }
+      #charSetup input.text.big { min-height: 44px; font-size: 18px; }
+      .pcards { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+      .pcards button { min-height: 70px; padding: 6px 2px; }
+      .pcards button b { font-size: 26px; }
+      .pcards button span { font-size: 12px; }
+      .pcards button small { display: none; }
+      .badges span { padding: 4px 10px; font-size: 13px; }
+      /* ===== シール（ダイカットの ステッカー）===== */
+      .stk { --rot: 0deg; --sc: #e9e4ff; position: relative; display: grid; place-items: center; width: 74px; height: 84px; min-height: 0; padding: 0; border: 0; border-radius: 20px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 3px 0 rgba(84,64,140,.18), 0 6px 12px rgba(84,64,140,.18); transform: rotate(var(--rot)); transition: transform .15s; overflow: visible; color: #2d2640; flex: none; }
+      .stk:active { transform: rotate(var(--rot)) scale(.92); }
+      .stk .face { position: absolute; inset: 4px; border-radius: 16px; background: radial-gradient(circle at 50% 38%, #fff 0 30%, var(--sc) 75%); overflow: hidden; display: grid; place-items: center; align-content: center; }
+      .stk .ic { font-size: 34px; line-height: 1; filter: drop-shadow(0 2px 0 rgba(0,0,0,.15)); position: relative; z-index: 2; }
+      .stk .nm { position: relative; z-index: 2; max-width: 64px; font-size: 9.5px; font-weight: 800; line-height: 1.1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+      .stk .cost { position: absolute; z-index: 3; top: -6px; right: -6px; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 11px; display: grid; place-items: center; background: #fff3bf; color: #7a5300; font-size: 11px; font-weight: 900; box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(0,0,0,.25); }
+      .stk .cost::before { content: "⚡"; font-size: 9px; }
+      .stk .stars { position: absolute; z-index: 3; bottom: -7px; left: 50%; transform: translateX(-50%); padding: 0 5px; border-radius: 9px; background: #fff; color: #f59f00; font-size: 10px; letter-spacing: -1px; line-height: 16px; white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+      .stk .ex { position: absolute; z-index: 3; top: -6px; left: -6px; display: flex; gap: 0; padding: 1px 3px; border-radius: 10px; background: #fff; font-size: 11px; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+      .stk .mark { position: absolute; z-index: 4; right: -6px; bottom: -6px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 13px; font-weight: 900; box-shadow: 0 0 0 2px #fff; }
+      .stk .mark.x { background: #e03131; }
+      .stk .mark.plus { background: #2f9e44; }
+      .stk .mark.swap { background: #1c7ed6; }
+      .stk .cnt { position: absolute; z-index: 4; right: -8px; bottom: 14px; padding: 0 6px; border-radius: 10px; background: #2d2640; color: #fff; font-size: 11px; font-weight: 900; line-height: 18px; box-shadow: 0 0 0 2px #fff; }
+      .stk.off { filter: grayscale(.9); opacity: .55; }
+      .stk:disabled { filter: grayscale(1); opacity: .4; }
+      .stk.big { width: 148px; height: 168px; border-radius: 32px; }
+      .stk.big .face { inset: 7px; border-radius: 26px; }
+      .stk.big .ic { font-size: 72px; }
+      .stk.big .nm { font-size: 15px; max-width: 130px; }
+      .stk.big .stars { font-size: 18px; line-height: 24px; bottom: -12px; padding: 0 8px; border-radius: 12px; }
+      .stk.big .cost, .stk.big .ex { font-size: 16px; height: 30px; min-width: 30px; border-radius: 15px; top: -10px; }
+      .stk.big .cost { right: -10px; } .stk.big .ex { left: -10px; padding: 3px 6px; }
+      /* キラ: 銀の はくが 光が すべるように かがやく */
+      .stk .holo, .stk .spark { position: absolute; inset: 4px; border-radius: 16px; pointer-events: none; z-index: 1; }
+      .stk.big .holo, .stk.big .spark { inset: 7px; border-radius: 26px; }
+      .stk.h1 { box-shadow: 0 0 0 2px #dee2e6, 0 3px 0 rgba(84,64,140,.18), 0 6px 14px rgba(28,126,214,.3); }
+      .stk.h1 .face { background: radial-gradient(circle at 50% 38%, #fff 0 25%, transparent 70%), linear-gradient(135deg, #e7f5ff, #d0ebff 40%, #f8f9fa 60%, #c5f6fa); }
+      .stk.h1 .holo { background: linear-gradient(110deg, transparent 25%, rgba(255,255,255,.95) 42%, rgba(200,230,255,.8) 48%, transparent 62%); background-size: 260% 100%; mix-blend-mode: soft-light; animation: stk-sweep 2.8s ease-in-out infinite; }
+      .stk.h1 .holo { mix-blend-mode: normal; opacity: .75; }
+      /* ホログラム: にじ色が 流れ、星が またたく（いちばん すごい シール） */
+      .stk.h2 { background: conic-gradient(from var(--ha, 0deg), #ffd43b, #ff8787, #da77f2, #74c0fc, #63e6be, #ffd43b); animation: stk-rim 4s linear infinite; box-shadow: 0 3px 0 rgba(84,64,140,.2), 0 0 16px rgba(255,146,43,.55); }
+      .stk.h2 .face { background: radial-gradient(circle at 50% 38%, rgba(255,255,255,.9) 0 25%, transparent 70%), #fff; }
+      .stk.h2 .holo { background: repeating-linear-gradient(115deg, rgba(255,0,128,.55) 0%, rgba(255,200,0,.55) 7%, rgba(0,255,170,.55) 14%, rgba(0,170,255,.55) 21%, rgba(190,90,255,.55) 28%, rgba(255,0,128,.55) 35%); background-size: 300% 300%; mix-blend-mode: multiply; opacity: .5; animation: stk-holo 3.2s linear infinite; }
+      .stk.h2 .spark { background-image: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.9) 45%, transparent 58%), radial-gradient(circle, #fff 0 1.4px, transparent 2.2px), radial-gradient(circle, #fff 0 1px, transparent 1.8px); background-size: 260% 100%, 20px 24px, 13px 15px; animation: stk-sweep 2.4s ease-in-out infinite, stk-twinkle 1.4s ease-in-out infinite alternate; }
+      .stk.h2 .spark, .stk.h1 .spark { background-image: radial-gradient(circle, #fff 0 1.2px, transparent 2px), radial-gradient(circle, #fff 0 1px, transparent 1.8px); background-size: 22px 26px, 15px 17px; background-position: 3px 5px, 10px 2px; mix-blend-mode: screen; animation: stk-twinkle 1.6s ease-in-out infinite alternate; }
+      .stk.h1 .spark { opacity: .5; animation-duration: 2.2s; }
+      @property --ha { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+      @keyframes stk-rim { to { --ha: 360deg; } }
+      @keyframes stk-sweep { 0% { background-position: 120% 0; } 60%, 100% { background-position: -40% 0; } }
+      @keyframes stk-holo { to { background-position: 300% 300%; } }
+      @keyframes stk-twinkle { from { opacity: .15; } to { opacity: 1; } }
+      @media (prefers-reduced-motion: reduce) { .stk .holo, .stk .spark, .stk.h2 { animation: none !important; } }
+      @keyframes stk-pop { 0% { transform: rotate(var(--rot)) scale(.4); } 70% { transform: rotate(var(--rot)) scale(1.15); } 100% { transform: rotate(var(--rot)) scale(1); } }
+      .stk.pop { animation: stk-pop .35s ease-out; }
+
+      /* ===== ひっさつ 作業台（1画面に おさめる）===== */
+      #specialCard { padding: 8px; gap: 6px; }
+      .stabs { grid-template-columns: 1fr 1fr; gap: 6px; }
+      .stab { grid-auto-flow: column; justify-content: center; align-items: center; gap: 6px; padding: 4px 6px; min-height: 44px; border-radius: 14px; }
+      .stab b { font-size: 22px; }
+      .stab span { font-size: 13px; }
+      .stab small { font-size: 11px; }
+      .wbar { display: flex; align-items: center; gap: 6px; }
+      .wbar .pips { flex: 1; margin: 0; gap: 2px; }
+      .wbar .pips i { flex: 1; width: auto; height: 14px; border-radius: 3px; }
+      .wbar .pips b { display: none; }
+      .wbar .left { font-weight: 900; font-size: 14px; white-space: nowrap; }
+      .wbar .left.ng { color: #e03131; }
+      .tfire { position: relative; margin: 0; background: var(--bg); }
+      .tf-ctl { position: absolute; top: 6px; left: 6px; display: flex; gap: 4px; }
+      .tf-ctl button { width: 38px; height: 38px; min-height: 0; padding: 0; border-radius: 12px; font-size: 20px; opacity: .75; }
+      .tf-ctl button.on { opacity: 1; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+      .tf-info { position: absolute; right: 8px; bottom: 6px; padding: 2px 10px; border-radius: 999px; background: color-mix(in srgb, var(--panel) 85%, transparent); font-size: 13px; font-weight: 900; min-height: 0; }
+      .tf-info:empty { display: none; }
+      .slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+      .slot { --sc: #e9e4ff; position: relative; display: grid; align-content: start; justify-items: center; gap: 4px; min-height: 96px; padding: 6px 2px 10px; border-radius: 16px; border: 3px dashed color-mix(in srgb, var(--sc) 80%, #000 10%); background: color-mix(in srgb, var(--sc) 22%, var(--panel)); }
+      .slot.on { border-style: solid; box-shadow: 0 0 0 3px color-mix(in srgb, var(--sc) 60%, transparent); }
+      .slot > b { font-size: 12px; font-weight: 900; white-space: nowrap; }
+      .slot .pile { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 2px; }
+      .slot .pile .stk { width: 54px; height: 62px; border-radius: 15px; }
+      .slot .pile .stk .face { inset: 3px; border-radius: 12px; }
+      .slot .pile .stk .holo, .slot .pile .stk .spark { inset: 3px; border-radius: 12px; }
+      .slot .pile .stk .ic { font-size: 26px; }
+      .slot .pile .stk .nm { display: none; }
+      .slot .hole { width: 54px; height: 62px; border-radius: 15px; border: 2px dashed color-mix(in srgb, var(--sc) 70%, #000 15%); display: grid; place-items: center; color: var(--muted); font-size: 22px; font-weight: 900; }
+      .tray { display: grid; gap: 4px; }
+      .tray .seg button { min-height: 38px; font-size: 13px; padding: 2px 6px; }
+      .strip { display: grid; grid-auto-flow: column; grid-template-rows: auto; grid-auto-columns: 78px; gap: 14px 8px; overflow-x: auto; overscroll-behavior-x: contain; padding: 10px 8px 12px; scroll-snap-type: x proximity; }
+      .strip > * { scroll-snap-align: start; }
+      .strip .empty { grid-column: span 4; color: var(--muted); font-size: 13px; align-self: center; }
+      .sinfo { min-height: 2.6em; padding: 6px 10px; border-radius: 12px; background: var(--bg); font-size: 13px; line-height: 1.3; }
+      .sinfo b { font-size: 14px; }
+
+
+      .pc { display: inline-flex; flex-direction: column; align-items: center; gap: 8px; padding: 6px; border: 0; }
+      .pc .pn { font-weight: 800; font-size: 12px; }
+      .b-reward .drop { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+      .b-reward .pc { min-width: 0; background: transparent; }
+      /* ===== シール アルバム ===== */
+      .albumbar { display: flex; gap: 8px; align-items: center; }
+      .albumbar .seg { flex: 1; margin: 0; }
+      .seg.icons button { font-size: 22px !important; min-height: 44px; }
+      .seg.icons button:first-child { font-size: 13px; }
+      .albumbar #bulkCombine { min-height: 44px; font-size: 20px; padding: 0 14px; }
+      .album { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 16px 6px; justify-items: center; padding: 14px 2px; }
+      .albumfoot { text-align: center; color: var(--muted); font-size: 12px; }
+      .sheet { display: grid; justify-items: center; gap: 10px; text-align: center; }
+      .sheet .desc { font-size: 15px; font-weight: 700; }
+      .sheet .exl { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+      .sheet .exl span { padding: 4px 10px; border-radius: 999px; background: var(--bg); font-weight: 800; font-size: 13px; }
+      .sheet .same { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 6px; padding-top: 6px; }
+      .sheet .row { justify-content: center; }
+      /* じゆうバトル・ストーリー: 1つずつ 見せる */
+      .chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 8px; scrollbar-width: none; }
+      .chips button { flex: none; min-height: 40px; padding: 4px 14px; border-radius: 999px; font-weight: 800; font-size: 14px; white-space: nowrap; }
+      .chips button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+      .chips button.lock { opacity: .5; }
+      .help { margin-top: 8px; }
+      .help summary { cursor: pointer; font-weight: 800; color: var(--muted); }
     </style>
   </head>
   <body>
@@ -485,18 +644,17 @@
         <div class="exp"><div class="exp-bar"><i id="pExpBar"></i></div><small id="pExp"></small></div>
         <div class="pts">スキルポイント <b id="pPoints">0</b></div>
       </div>
-      <button id="shareBtn" class="share" type="button" data-noruby>📣 SNSよう じまんの ぶんを つくる</button>
       <div class="toast" id="toast" role="status" hidden></div>
       <div class="menu">
-        <button class="big story" data-go="story"><b>📖 ストーリー</b><small>てきを たおして つよくなる</small></button>
-        <button class="big online" data-go="online"><b>🌐 オンライン</b><small>みんなの キャラと たたかう・こうかい</small></button>
-        <button class="big" data-go="free"><b>⚔️ じゆうバトル</b><small>すきな あいてと たたかう・みる</small></button>
-        <button class="big" data-go="make"><b>✏️ キャラを つくる</b><small>かく・しらべる・うごかす</small></button>
-        <button class="big" data-go="tree"><b>🌳 スキルツリー</b><small id="treeHint">ポイントで強くなる</small></button>
-        <button class="big" data-go="parts"><b>🧩 ひっさつシール</b><small>もちもの・かさねる</small></button>
-        <button class="big" data-go="transfer"><b>📦 ひきつぎ</b><small>データを うつす（おうちの人と）</small></button>
+        <button class="big story" data-go="story"><b>📖</b><span>ストーリー</span></button>
+        <button class="big online" data-go="online"><b>🌐</b><span>オンライン</span></button>
+        <button class="big tree" data-go="tree"><b>🌳</b><span>スキルツリー</span><small id="treeHint"></small></button>
       </div>
-      <div class="row" style="justify-content:center;margin-top:12px"><button id="furigana" type="button"></button></div>
+      <div class="minis">
+        <button id="shareBtn" type="button" data-noruby aria-label="SNSよう じまんの ぶん"><b>📣</b><span>じまん</span></button>
+        <button data-go="transfer" type="button" aria-label="ひきつぎ"><b>📦</b><span>ひきつぎ</span></button>
+        <button id="furigana" type="button"></button>
+      </div>
       <p class="credit" id="buildInfo"></p>
       <p class="credit">3D表示に <a href="./third-party-licenses.txt" target="_blank" rel="noopener">three.js</a>（MIT License）を使っています。</p>
     </section>
@@ -524,28 +682,17 @@
       </div>
     </section>
     <section id="partsScreen" hidden>
-      <div class="tree-head">
-        <div>シール <b id="invCount">0</b> / <span id="invCap"></span></div>
-        <button id="bulkCombine" type="button">🪄 まとめて かさねる</button>
+      <div class="albumbar">
+        <div class="seg icons" id="partFilter">
+          <button type="button" data-pf="all" class="on">ぜんぶ</button>
+          <button type="button" data-pf="ranged">🎯</button>
+          <button type="button" data-pf="melee">👊</button>
+          <button type="button" data-pf="both">🔁</button>
+        </div>
+        <button id="bulkCombine" type="button" class="primary inline">🪄</button>
       </div>
-      <div class="seg" id="partFilter">
-        <button type="button" data-pf="all" class="on">すべて</button>
-        <button type="button" data-pf="ranged">🎯 とおく</button>
-        <button type="button" data-pf="melee">👊 ちかく</button>
-        <button type="button" data-pf="both">🔁 共通</button>
-      </div>
-      <div class="row prow">
-        <label>ならびかえ <select id="partSort">
-          <option value="kind">しゅるい ごと</option>
-          <option value="rare">つよい じゅん</option>
-          <option value="cost">⚡ コストの じゅん</option>
-          <option value="new">あたらしい じゅん</option>
-        </select></label>
-        <label>🧑 つけかえる キャラ <select id="equipChar"></select></label>
-      </div>
-      <div class="node-info" id="partInfo"></div>
-      <div class="plist" id="partList"></div>
-      <div class="note">パーツを タップすると、キャラに つける・はずす・🔒鍵・振り直し・分解・合成が できます。装備コストの合計は 🎯と👊 それぞれ 20まで。分解すると かけらになり、かけらで 数値を 振り直せます。同じレア度の 3個（ベース1＋材料2。しゅるいは ちがっても OK）で、ベースが 1段上の レア度に なります（F→E→D→C→B→A→S→SS→SSS。SS と SSS は 合成で だけ 作れる）。🔒と 装備中の パーツは 材料に なりません。</div>
+      <div class="album" id="partList"></div>
+      <div class="albumfoot"><span id="invCount">0</span> / <span id="invCap"></span></div>
     </section>
     <section id="transferScreen" hidden>
       <div class="note">保存したキャラ・レベル・ストーリー・パーツを、8文字の「ひっこし番号」で べつの 端末や アドレスへ うつせます（機種変更・データが消えた時の そなえにも）。番号は 1回 つかうと 消えます。24時間で 消えます。</div>
@@ -568,16 +715,17 @@
       <img id="ebThumb" alt="" />
       <div class="ebtext"><b id="ebName"></b><small id="ebState"></small></div>
       <div class="ebbtns">
-        <button id="ebSave" type="button">💾 ほぞん</button>
-        <button id="ebNew" type="button">✏️ あたらしく</button>
+        <button id="ebSave" type="button" aria-label="ほぞん">💾</button>
+        <button id="ebNew" type="button" aria-label="あたらしく">✏️</button>
       </div>
     </div>
     <button id="restoreBtn" type="button" class="restore" hidden>↩ さっきの 絵に もどす</button>
     <div class="tabs" id="makeTabs">
-      <button data-view="draw" class="on">✏️ かく</button>
-      <button data-view="detect">🔍 しらべる</button>
-      <button data-view="anim">🕺 うごかす</button>
-      <button data-view="char">🧑 キャラ</button>
+      <button data-view="draw" class="on"><b>✏️</b><span class="tl">かく</span></button>
+      <button data-view="detect"><b>🔍</b><span class="tl">しらべる</span></button>
+      <button data-view="anim"><b>🕺</b><span class="tl">うごかす</span></button>
+      <button data-view="char"><b>🪪</b><span class="tl">キャラ</span></button>
+      <button data-view="special"><b>💥</b><span class="tl">ひっさつ</span></button>
     </div>
     <section id="charSetup" class="kid" hidden>
       <div class="kcard">
@@ -587,15 +735,12 @@
       <div class="kcard">
         <div class="kh"><span class="kn">2</span>からだのとくちょう</div>
         <div id="myTraits" class="badges"></div>
-        <div class="ksub">描いた絵のかたちで決まるよ。強さはメイン画面の「スキルツリー」で育てよう。</div>
       </div>
       <div class="kcard">
         <div class="kh"><span class="kn">3</span>たたかいかた</div>
         <div id="persCards" class="pcards" role="radiogroup" aria-label="たたかいかた"></div>
-        <div class="ksub">コンピューターがこのキャラを動かすときの動きかた</div>
       </div>
-      <div class="kcard">
-        <div class="kh"><span class="kn">4</span>ひっさつわざ</div>
+      <div class="kcard" id="specialCard">
         <div id="stypeTabs" class="stabs" role="radiogroup" aria-label="ひっさつわざの しゅるい"></div>
         <div id="effects"></div>
       </div>
@@ -613,7 +758,6 @@
       <div class="field">
         <div class="label">あなたのキャラ</div>
         <div id="myCharName" class="mychar"></div>
-        <div class="note">「キャラを作る」で編集中のキャラで戦います。</div>
       </div>
       <div class="field">
         <div class="label">あいて</div>
@@ -626,7 +770,7 @@
       </div>
       <label class="check"><input type="checkbox" id="spectate" /> 観戦モード（自分のキャラも CPU が操作）</label>
       <button id="startBattle" class="primary">戦闘開始</button>
-      <div class="note">操作: 左下のスティックで移動、右下のボタンで攻撃・防御（押している間）・必殺・突き飛ばし（スタミナ不要）・回避（入力方向へ素早く移動、その間は当たらない。方向なしなら後ろへ）。PC は WASD / J=攻撃 / K=防御 / L=必殺 / H=突き飛ばし / スペース=回避 / U=飛ぶ（羽があるキャラ）。坂は 歩いて のぼれる。はしごは かべに 向かって 進むと のぼる。</div>
+      <details class="help"><summary>🎮 そうさの しかた</summary><div class="note">操作: 左下のスティックで移動、右下のボタンで攻撃・防御（押している間）・必殺・突き飛ばし（スタミナ不要）・回避（入力方向へ素早く移動、その間は当たらない。方向なしなら後ろへ）。PC は WASD / J=攻撃 / K=防御 / L=必殺 / H=突き飛ばし / スペース=回避 / U=飛ぶ（羽があるキャラ）。坂は 歩いて のぼれる。はしごは かべに 向かって 進むと のぼる。</div></details>
     </section>
     <div class="stage">
       <canvas id="view" width="512" height="512"></canvas>
@@ -702,7 +846,7 @@
         <select id="sample"><option value="">サンプルを読み込む…</option></select>
       </div>
     </div>
-    <details>
+    <details id="tuneBox">
       <summary>検知の調整</summary>
       <div id="sliders"></div>
       <div class="row"><button id="resetParams">初期値に戻す</button></div>
@@ -715,6 +859,13 @@
       <button id="pbarNext" class="primary inline" type="button"></button>
       <button id="pbarCancel" type="button">↩ やめる</button>
     </div>
+    <nav class="bnav" id="bnav" aria-label="画面">
+      <button type="button" data-go="home" data-nav="home"><b>🏠</b><span>ホーム</span></button>
+      <button type="button" data-go="story" data-nav="story"><b>📖</b><span>ストーリー</span></button>
+      <button type="button" data-go="make" data-nav="make" class="main"><b>✏️</b><span>キャラ</span></button>
+      <button type="button" data-go="parts" data-nav="parts"><b>🧩</b><span>シール</span></button>
+      <button type="button" data-go="free" data-nav="free"><b>⚔️</b><span>バトル</span></button>
+    </nav>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
