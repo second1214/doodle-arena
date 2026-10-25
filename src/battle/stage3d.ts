@@ -2,6 +2,7 @@
 import * as THREE from "three";
 import { ARENA_RADIUS } from "../sim/consts";
 import type { Arena, Backdrop, Ramp } from "../sim/arena";
+import { buildDecor } from "./decor";
 
 interface Look {
   sky: [string, string, string]; // 上・まん中・下
@@ -166,22 +167,16 @@ export function buildStage(scene: THREE.Scene, arena: Arena, disposables: { disp
     sunDisc.position.set(10, 5, -45);
   }
   if (arena.backdrop === "beach") {
+    // 舞台の まわりの 砂浜（ヤシの木などの 飾りを 置く）
+    const sand = mesh(new THREE.RingGeometry(ARENA_RADIUS, ARENA_RADIUS + 7, 96), mat(0xf3dca6, 1));
+    sand.rotation.x = -Math.PI / 2;
+    sand.position.y = -0.87;
+    sand.receiveShadow = true;
     // 遠くの 波の 白い線
     for (let k = 0; k < 4; k++) {
-      const wave = mesh(new THREE.RingGeometry(ARENA_RADIUS + 3 + k * 4, ARENA_RADIUS + 3.25 + k * 4, 64), keep(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 })));
+      const wave = mesh(new THREE.RingGeometry(ARENA_RADIUS + 8 + k * 4, ARENA_RADIUS + 8.25 + k * 4, 64), keep(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 })));
       wave.rotation.x = -Math.PI / 2;
       wave.position.y = -0.88;
-    }
-    // ヤシの木
-    const trunk = mat(0x8b5a2b), leaf = mat(0x2f9e44);
-    for (const [x, z] of [[-14, -10], [15, -12], [-18, 4]]) {
-      const t = mesh(new THREE.CylinderGeometry(0.25, 0.35, 6, 8), trunk);
-      t.position.set(x, 2.1, z);
-      for (let k = 0; k < 5; k++) {
-        const lf = mesh(new THREE.ConeGeometry(0.5, 3, 6), leaf);
-        lf.position.set(x + Math.cos(k * 1.3) * 1.2, 5.2, z + Math.sin(k * 1.3) * 1.2);
-        lf.rotation.set(Math.sin(k * 1.3) * 1.2, 0, -Math.cos(k * 1.3) * 1.2);
-      }
     }
   }
   if (arena.backdrop === "indoor") {
@@ -199,5 +194,7 @@ export function buildStage(scene: THREE.Scene, arena: Arena, disposables: { disp
     const frame = mesh(new THREE.PlaneGeometry(8.6, 5.6), mat(0xffffff));
     frame.position.set(6, 9, -15.95);
   }
+  // 背景の 飾り（Kenney の 3D モデル。読めしだい 出る）
+  scene.add(buildDecor(arena.backdrop));
   return { hemi, sun };
 }
