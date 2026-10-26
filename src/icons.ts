@@ -21,6 +21,7 @@ export const KIND_GLYPH: Record<string, [string, string]> = {
   "r:cloud": ["fluffy-cloud", "#74c0fc"], "r:drip": ["droplets", "#228be6"], "r:fire": ["fire", "#f03e3e"],
   "m:uppercut": ["punch-blast", "#f76707"], "m:dive": ["eagle-emblem", "#5f3dc4"], "m:gust": ["whirlwind", "#38d9a9"], "m:flame": ["fire-punch", "#e8590c"],
   "m:magnet": ["magnet", "#e03131"], "m:vampire": ["bat", "#862e9c"], "m:ice": ["ice-skate", "#339af0"], "m:counter": ["return-arrow", "#1098ad"],
+  "m:shockwave": ["sonic-boom", "#1c7ed6"], "m:rush": ["fist", "#e8590c"], "m:echo": ["shadow-follower", "#7048e8"],
   "m:mushroom": ["spotted-mushroom", "#e03131"], "m:bulldozer": ["bulldozer", "#f59f00"],
   bigger: ["balloons", "#f06595"], lucky: ["clover", "#2f9e44"], carry: ["cycle", "#0c8599"], pierce: ["piercing-sword", "#495057"],
   power: ["muscle-up", "#e8590c"], pspeed: ["bow-arrow", "#a0522d"], duration: ["hourglass", "#b08900"], windup: ["fast-forward-button", "#1c7ed6"], charge: ["battery-plus", "#2f9e44"],

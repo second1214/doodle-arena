@@ -72,7 +72,7 @@ describe("パーツの数値", () => {
   it("できばえの出やすさは章の表どおり（第1章は ピカピカが出ない）", () => {
     const rnd = seededRnd(7);
     for (let k = 0; k < 500; k++) expect(rollShine(1, rnd)).toBeLessThan(2);
-    expect(ALL_KINDS.length).toBe(51);
+    expect(ALL_KINDS.length).toBe(54);
   });
 });
 

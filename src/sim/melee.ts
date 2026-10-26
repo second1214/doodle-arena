@@ -6,7 +6,9 @@ import type { Slot } from "./special";
 export type MeleeEffectId = "tornado" | "wobble" | "legbind" | "giantHands" | "rubber" | "dash" | "grab" | "slam" | "crumple"
   | "magnet" | "vampire" | "ice" | "counter" | "mushroom" | "bulldozer"
   // 高さの ある 戦い用
-  | "uppercut" | "dive" | "gust" | "flame";
+  | "uppercut" | "dive" | "gust" | "flame"
+  // 掛け算で 効く わざ（遠距離の 分裂・時間差・おき罠に あたる）
+  | "shockwave" | "rush" | "echo";
 
 export interface MeleeSpec {
   windup: number; // 構え（tick。殴られると潰れる）
@@ -39,6 +41,9 @@ export interface MeleeSpec {
   dive: boolean; // 跳び上がって 相手へ 飛びこむ
   netTicks: number; // 当てた相手が 飛べなくなる（かぜで 落とす）
   burnTicks: number; // やけど
+  waves: number; // しょうげき波: わざを 出すたびに 相手へ 飛ぶ 弾の 数
+  repeats: number; // れんぞくわざ: わざを もう 何回 くり出すか
+  echo: number; // ざんぞう: 当てた所に 残って、あとで もう 何回 当たるか
   tags: MeleeEffectId[];
 }
 
@@ -59,10 +64,13 @@ export const BASE_MELEE: MeleeSpec = {
   range: 1.4, arc: Math.PI / 3, knock: 9, spinTicks: 0, dash: 0,
   grab: false, slam: false, wobbleTicks: 0, legbindTicks: 0, crumpleTicks: 0,
   limbScale: 1, rubberScale: 1, pull: 0, lifesteal: 0, freezeTicks: 0, counter: false, bigTicks: 0, push: 0,
-  vreach: 0, launch: 0, dive: false, netTicks: 0, burnTicks: 0, tags: [],
+  vreach: 0, launch: 0, dive: false, netTicks: 0, burnTicks: 0, waves: 0, repeats: 0, echo: 0, tags: [],
 };
 
 // 測定用の基準コスト
+export const SHOCKWAVE_COST = 9, RUSH_COST = 10, ECHO_COST = 8;
+// しょうげき波 1発・ざんぞう 1回・れんぞくの 2回目以降の 威力（わざの 威力に かける）
+export const WAVE_DMG = 0.35, ECHO_DMG = 0.4, RUSH_DMG = 0.6;
 export const UPPERCUT_COST = 4, DIVE_COST = 5, GUST_COST = 4, FLAME_COST = 7;
 export const MAGNET_COST = 6, VAMPIRE_COST = 14, ICE_COST = 4, COUNTER_COST = 1, MUSHROOM_COST = 1, BULLDOZER_COST = 6;
 export const MELEE_EFFECTS: MeleeEffectDef[] = [
@@ -86,6 +94,10 @@ export const MELEE_EFFECTS: MeleeEffectDef[] = [
   { id: "dive", name: "ダイブ", cost: DIVE_COST, slot: "path", phase: "motion", apply: (s) => { s.dive = true; s.dash += 4; s.vreach += 3; s.arc = Math.PI; s.windup += 2; } },
   { id: "gust", name: "かぜおこし", cost: GUST_COST, slot: "act", phase: "hit", apply: (s) => { s.arc = Math.PI; s.knock *= 1.9; s.vreach += 1.8; s.netTicks += 120; s.damage *= 0.9; } },
   { id: "flame", name: "ほのおパンチ", cost: FLAME_COST, slot: "fx", phase: "after", apply: (s) => { s.burnTicks += 150; } },
+  // 掛け算で 効く わざ（重ねると 増える。うごき・ほかの わざと かけ合わさる）
+  { id: "shockwave", name: "しょうげき波", cost: SHOCKWAVE_COST, slot: "act", phase: "after", apply: (s) => { s.waves += 1; } },
+  { id: "rush", name: "れんぞくわざ", cost: RUSH_COST, slot: "act", phase: "after", apply: (s) => { s.repeats += 1; } },
+  { id: "echo", name: "ざんぞう", cost: ECHO_COST, slot: "act", phase: "after", apply: (s) => { s.echo += 1; } },
   { id: "bulldozer", name: "ブルドーザー", cost: BULLDOZER_COST, slot: "path", phase: "motion", apply: (s) => { s.push += 1; s.active += 20; s.knock = 0; s.damage *= 0.6; } }, // 測定1回目は1回平均50ダメで強すぎ
 ];
 

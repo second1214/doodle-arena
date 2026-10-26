@@ -2,6 +2,7 @@
 // 空間は地面の平面(x, z)＋高さ h。数値はすべて調整前提の仮値。
 import { Rng } from "./rng";
 import { BASE_SPEC, composeSpecial, DRIP_DMG, type EffectId, type ProjSpec } from "./special";
+import { ECHO_DMG, RUSH_DMG, WAVE_DMG } from "./melee";
 import { DEFAULT_TRAITS, type Hurt, type Traits } from "../shape";
 import { composeMelee, type MeleeEffectId, type MeleeSpec } from "./melee";
 import { BASE_CHARGE_NEED, BASE_DODGE_COST, statEffects, type Boost, type StatEffects } from "./stats";
@@ -191,6 +192,7 @@ export interface MeleeState {
   mult: number; // この1回の威力倍率（会心・カウンター）
   pulled: boolean; // じしゃくの手を使ったか
   pushHit: boolean; // ブルドーザーで壁に挟んだか
+  repeatsLeft: number; // れんぞくわざの のこり
 }
 
 export interface Projectile {
@@ -245,7 +247,7 @@ export interface BattleEvent {
   gap?: boolean; // 空白を素通りした（描いていない所に当たった）
 }
 
-const idleMelee = (): MeleeState => ({ phase: "none", t: 0, hitsDone: 0, rehit: 0, spin: 0, dashLeft: 0, dirX: 1, dirZ: 0, grabbed: false, slamR: 0, slamHit: false, extraRecover: 0, mult: 1, pulled: false, pushHit: false });
+const idleMelee = (): MeleeState => ({ phase: "none", t: 0, hitsDone: 0, rehit: 0, spin: 0, dashLeft: 0, dirX: 1, dirZ: 0, grabbed: false, slamR: 0, slamHit: false, extraRecover: 0, mult: 1, pulled: false, pushHit: false, repeatsLeft: 0 });
 
 // 必殺パーツの数値: 威力の倍率・弾の速さの倍率・状態異常の時間の倍率・構えを縮める tick（いずれも標準 1 / 0）
 // size=大きさの倍率 / crit=会心の確率 / carry=撃った後に残るゲージ / pierce=防御を貫く割合
@@ -691,7 +693,7 @@ function stepFighter(w: World, i: number, rawInp: Input) {
   const carry = Math.max(0, mod.carry ?? 0);
   if (canSpecial && me.cfg.specialType === "melee") {
     me.charge = Math.min(me.st.chargeNeed, carry); // carry
-    me.ms = { ...idleMelee(), phase: "windup", dirX: me.fx, dirZ: me.fz, mult: crit };
+    me.ms = { ...idleMelee(), phase: "windup", dirX: me.fx, dirZ: me.fz, mult: crit, repeatsLeft: me.mspec.repeats };
     if (me.mspec.dive) { me.vy = Math.max(me.vy, 7); me.air = true; } // ダイブ: 跳び上がる
     w.events.push({ kind: "mstart", x: me.x, z: me.z, h: 1, amount: 0, src: "special", target: i, dx: me.fx, dz: me.fz, size: 0, tags: me.mspec.tags });
   } else if (canSpecial && w.projectiles.length < MAX_PROJECTILES) {
@@ -784,6 +786,7 @@ function stepMelee(w: World, i: number, dist: number) {
       ms.phase = "active"; ms.t = 0;
       ms.dashLeft = s.dash;
       ev("mactive");
+      meleeWaves(w, i);
       if (s.slam) { ms.slamR = 0.4; ev("slam"); }
       if (s.bigTicks > 0) me.big = Math.max(me.big, s.bigTicks); // でっかくなる
       // じしゃくの手: 届く距離の2.5倍以内なら手元へ引き寄せる（防御中も・回避中は無効）
@@ -861,6 +864,18 @@ function stepMelee(w: World, i: number, dist: number) {
         ms.grabbed = false;
         hitWith(w, i, op.x, op.z, dir[0], dir[1], s.damage, s.knock * 1.6, true);
       }
+      // れんぞくわざ: 同じ わざを もう一度（少し 弱く）。しょうげき波も また 出る
+      if (ms.repeatsLeft > 0) {
+        ms.repeatsLeft--;
+        ms.t = 0; ms.hitsDone = 0; ms.rehit = 0; ms.slamHit = false; ms.pushHit = false;
+        ms.slamR = s.slam ? 0.4 : 0; ms.dashLeft = s.dash; ms.dirX = me.fx; ms.dirZ = me.fz;
+        ms.mult *= RUSH_DMG;
+        if (s.grab && dist <= grabRange(me.cfg, op.cfg) + 0.6) ms.grabbed = true;
+        ev("mactive");
+        if (s.slam) ev("slam");
+        meleeWaves(w, i);
+        return;
+      }
       ms.phase = "recover"; ms.t = 0;
       if (s.spinTicks > 0) me.dizzy = Math.max(me.dizzy, Math.round(s.spinTicks * 0.5)); // 回った分だけ目を回す
     }
@@ -870,9 +885,39 @@ function stepMelee(w: World, i: number, dist: number) {
   if (ms.phase === "recover" && ms.t >= s.recover + ms.extraRecover) me.ms = idleMelee();
 }
 
+// 近接の わざから 出る 弾（しょうげき波・ざんぞう）。わざの 効果（やけど・こおり・すいとり など）も 乗せる
+function meleeShot(w: World, i: number, damage: number, size: number, speed: number, hits: number, interval: number, life: number): Projectile | null {
+  if (w.projectiles.length >= MAX_PROJECTILES) return null;
+  const m = w.fighters[i].mspec;
+  const spec: ProjSpec = { ...BASE_SPEC, damage: damage * w.fighters[i].ms.mult, size, speed, hits, hitInterval: interval, lifetime: life,
+    burnTicks: m.burnTicks, freezeTicks: m.freezeTicks, netTicks: m.netTicks, lifesteal: m.lifesteal, tags: [],
+    grind: true }; // 当たっても 吹き飛ばさない（わざ本体が 続けて 当たるように）
+  const p = launch(w, i, spec, 1);
+  w.projectiles.push(p); // 戦う人の 処理の 中で 作るので spawn（弾の 処理の あとで 足す）ではなく 直接
+  return p;
+}
+// しょうげき波: 相手の方へ 扇の形に 飛ぶ
+function meleeWaves(w: World, i: number) {
+  const s = w.fighters[i].mspec;
+  if (s.waves <= 0) return;
+  const me = w.fighters[i];
+  const base = Math.atan2(me.fz, me.fx);
+  for (let k = 0; k < s.waves; k++) {
+    const p = meleeShot(w, i, s.damage * WAVE_DMG, 0.55, 11, 1, 6, 50);
+    if (!p) break;
+    const a = base + (k - (s.waves - 1) / 2) * 0.22;
+    p.dx = Math.cos(a); p.dz = Math.sin(a);
+  }
+}
+
 function hitWith(w: World, i: number, x: number, z: number, dx: number, dz: number, amount: number, knock: number, ignoreGuard: boolean) {
   const s = w.fighters[i].mspec;
   const oi = foeOf(w, i);
+  // ざんぞう: 当てた所に 残って、少し あとで もう一度 当たる（重ねると 何回も）
+  if (s.echo > 0) {
+    const p = meleeShot(w, i, amount * ECHO_DMG, 0.9, 0, s.echo, 18, 18 * s.echo + 12);
+    if (p) { p.x = x; p.z = z; p.h = w.fighters[oi].y + 1; p.sl = 0; p.rehit = 15; }
+  }
   damage(w, oi, {
     by: i, amount: amount * w.fighters[i].st.special * w.fighters[i].ms.mult, src: "special", dx, dz, knock, stun: SPECIAL_STUN, x, z, h: w.fighters[oi].y + 1, size: 0, tags: s.tags,
     ignoreGuard, wobble: s.wobbleTicks, legbind: s.legbindTicks, crumple: s.crumpleTicks,

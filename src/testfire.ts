@@ -2,6 +2,7 @@
 // 戦闘画面と 行き来しなくても、組み合わせを 目で 確かめられる。
 import { ARENA_RADIUS } from "./sim/consts";
 import { createWorld, meleeSpecialRange, NO_INPUT, step, type FighterConfig, type Input, type World } from "./sim/world";
+import { estimateDamage } from "./sim/estimate";
 
 export type DummyMove = "stand" | "walk" | "run";
 const MOVES: { id: DummyMove; label: string; name: string }[] = [
@@ -20,6 +21,7 @@ export class TestFire {
   private canvas = document.createElement("canvas");
   private ctx = this.canvas.getContext("2d")!;
   private info = document.createElement("div");
+  private est = document.createElement("div"); // 想定ダメージ（すぐ 出す）
   private cfg: FighterConfig | null = null;
   private w: World | null = null;
   private move: DummyMove = "stand";
@@ -50,12 +52,19 @@ export class TestFire {
       seg.appendChild(b);
     }
     this.info.className = "tf-info";
-    this.el.append(this.canvas, seg, this.info);
+    this.est.className = "tf-est";
+    this.el.append(this.canvas, seg, this.est, this.info);
   }
 
   // 撃つ キャラの 設定（シールを 貼りかえたら 呼ぶ）
   set(cfg: FighterConfig) {
     this.cfg = cfg;
+    // 想定ダメージ: かかし（とまる・あるく・にげる）に 1回 撃った 合計を 先に 計算して すぐ 出す（戦闘と 同じ 計算）
+    try {
+      const e = estimateDamage(cfg, 1);
+      this.est.innerHTML = `<b>💥 そうてい ${Math.round(e.avg)}</b><small>とまる ${Math.round(e.stand)}・あるく ${Math.round(e.walk)}・にげる ${Math.round(e.run)}</small>`;
+    } catch { this.est.textContent = ""; }
+    this.info.textContent = "";
     this.restart();
   }
 
