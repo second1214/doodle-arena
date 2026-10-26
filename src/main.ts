@@ -1,4 +1,5 @@
 import { CANVAS_SIZE, DEFAULT_PARAMS, detect, type DetectParams, type DetectResult, type Stroke } from "./detect";
+import { fillIcons, kindGlyph } from "./icons";
 import { cutParts, drawStroke, renderStrokes } from "./parts";
 import { SAMPLES } from "./samples";
 import { furiganaOn, installFurigana, setFurigana } from "./furigana";
@@ -1002,12 +1003,12 @@ function sticker(p: Part, o: StickerOpt = {}): HTMLButtonElement {
   b.style.setProperty("--sc", SLOT_TINT[partSlot(p.kind)]);
   b.style.setProperty("--rot", `${(hashStr(p.id) % 7) - 3}deg`);
   b.innerHTML = `<span class="face"><span class="ic"></span><span class="nm"></span></span>${p.shine ? `<span class="holo"></span><span class="spark"></span>` : ""}<span class="cost"></span>`;
-  b.querySelector(".ic")!.textContent = kindIcon(p.kind);
+  b.querySelector(".ic")!.innerHTML = kindGlyph(p.kind) || kindIcon(p.kind);
   b.querySelector(".nm")!.textContent = shortName(p.kind);
   b.querySelector(".cost")!.textContent = `${o.cost ?? p.cost}`;
   const add = (cls: string, text: string) => { const e = document.createElement("span"); e.className = cls; e.textContent = text; b.appendChild(e); };
   if (p.star > 1) add("stars", "★".repeat(p.star));
-  if (p.extras.length) add("ex", p.extras.map((e) => kindIcon(e.stat)).join(""));
+  if (p.extras.length) { add("ex", ""); b.querySelector(".ex")!.innerHTML = p.extras.map((e) => kindGlyph(e.stat, false) || kindIcon(e.stat)).join(""); }
   if (o.mark) add(`mark ${o.mark}`, o.mark === "x" ? "✖" : o.mark === "swap" ? "⇄" : "＋");
   if (o.count && o.count > 1) add("cnt", `×${o.count}`);
   b.setAttribute("aria-label", `${shortName(p.kind)} ${starText(p)} ${shineText(p)}`);
@@ -1649,6 +1650,7 @@ function makeShareText(): string {
     charName: strokes.length && editor.name ? editor.name : undefined,
   });
 }
+fillIcons(); // ボタン・タブの 絵（data-icon）
 const toastEl = document.getElementById("toast")!;
 let toastTimer = 0;
 // 画面の下に しばらく出る お知らせ（どの画面でも見える）

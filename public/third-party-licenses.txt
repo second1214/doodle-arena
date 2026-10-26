@@ -35,3 +35,15 @@ SIL Open Font License 1.1  https://fonts.google.com/specimen/M+PLUS+Rounded+1c
 背景の飾り（public/models/*.glb）: Kenney（https://www.kenney.nl/）の Nature Kit・Furniture Kit・Pirate Kit・Graveyard Kit・Space Kit
 ライセンス: Creative Commons Zero（CC0 1.0）http://creativecommons.org/publicdomain/zero/1.0/
 （詳しくは models/LICENSE-kenney.txt）
+
+----------------------------------------------------------------
+アイコン（シール・ボタン・タブの 絵）: game-icons.net（https://game-icons.net/）
+ライセンス: Creative Commons Attribution 3.0（CC BY 3.0）https://creativecommons.org/licenses/by/3.0/
+（形だけを 使い、色と 白い ふちを つけて 表示）作者:
+- Delapouite (http://delapouite.com): floating-ghost, stars-stack, knocked-out-stars, split-arrows, bouncing-spring, boomerang, ice-cubes, bat, ice-skate, bulldozer, bow-arrow, fast-forward-button, house, cardboard-box, pencil, sparkles, push, trophy-cup, mailbox
+- Lorc (http://lorcblog.blogspot.com): falling-boulder, crossed-chains, bullets, fast-arrow, bee, burning-meteor, boxing-glove, tornado, sprint, hammer-drop, grab, foot-trip, wolf-trap, vortex, heart-drop, unlit-bomb, big-wave, spider-web, thunder-struck, raining, fluffy-cloud, droplets, punch-blast, eagle-emblem, whirlwind, fire-punch, magnet, return-arrow, spotted-mushroom, balloons, clover, cycle, piercing-sword, muscle-up, hourglass, open-book, globe, tree-branch, crossed-swords, feathered-wing, dodging, punch, eyeball, scroll-unfurled, on-target
+- Skoll: open-palm
+- Caro Asercion: paper-bag-crumpled
+- Sbed (http://opengameart.org/content/95-game-icons): fire, shield
+- PriorBlue: battery-plus
+- Quoting: card-pickup

@@ -531,6 +531,13 @@
       .stk:active { transform: rotate(var(--rot)) scale(.92); }
       .stk .face { position: absolute; inset: 4px; border-radius: 16px; background: radial-gradient(circle at 50% 38%, #fff 0 30%, var(--sc) 75%); overflow: hidden; display: grid; place-items: center; align-content: center; }
       .stk .ic { font-size: 34px; line-height: 1; filter: drop-shadow(0 2px 0 rgba(0,0,0,.15)); position: relative; z-index: 2; }
+      .gi { width: 1em; height: 1em; display: inline-block; vertical-align: -0.12em; }
+      .b-btn .gi { width: 26px; height: 26px; vertical-align: middle; }
+      .b-btn.attack .gi { width: 34px; height: 34px; }
+      [data-icon] .gi { width: 1.15em; height: 1.15em; filter: drop-shadow(0 1px 0 rgba(0,0,0,.12)); }
+      .stk .ic .gi { width: 40px; height: 40px; filter: drop-shadow(0 2px 1px rgba(0,0,0,.25)); }
+      .stk.big .ic .gi { width: 84px; height: 84px; }
+      .stk .ex .gi { width: 13px; height: 13px; }
       .stk .nm { position: relative; z-index: 2; max-width: 64px; font-size: 9.5px; font-weight: 800; line-height: 1.1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
       .stk .cost { position: absolute; z-index: 3; top: -6px; right: -6px; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 11px; display: grid; place-items: center; background: #fff3bf; color: #7a5300; font-size: 11px; font-weight: 900; box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(0,0,0,.25); }
       .stk .cost::before { content: "⚡"; font-size: 9px; }
@@ -667,17 +674,17 @@
       </div>
       <div class="toast" id="toast" role="status" hidden></div>
       <div class="menu">
-        <button class="big story" data-go="story"><b>📖</b><span>ストーリー</span></button>
-        <button class="big online" data-go="online"><b>🌐</b><span>オンライン</span></button>
-        <button class="big tree" data-go="tree"><b>🌳</b><span>スキルツリー</span><small id="treeHint"></small></button>
+        <button class="big story" data-go="story"><b data-icon="open-book" data-icon-color="#e8590c">📖</b><span>ストーリー</span></button>
+        <button class="big online" data-go="online"><b data-icon="globe" data-icon-color="#1c7ed6">🌐</b><span>オンライン</span></button>
+        <button class="big tree" data-go="tree"><b data-icon="tree-branch" data-icon-color="#2f9e44">🌳</b><span>スキルツリー</span><small id="treeHint"></small></button>
       </div>
       <div class="minis">
         <button id="shareBtn" type="button" data-noruby aria-label="SNSよう じまんの ぶん"><b>📣</b><span>じまん</span></button>
-        <button data-go="transfer" type="button" aria-label="ひきつぎ"><b>📦</b><span>ひきつぎ</span></button>
+        <button data-go="transfer" type="button" aria-label="ひきつぎ"><b data-icon="cardboard-box" data-icon-color="#a0522d">📦</b><span>ひきつぎ</span></button>
         <button id="furigana" type="button"></button>
       </div>
       <p class="credit" id="buildInfo"></p>
-      <p class="credit">3D表示に <a href="./third-party-licenses.txt" target="_blank" rel="noopener">three.js</a>（MIT License）を使っています。</p>
+      <p class="credit">3D表示に <a href="./third-party-licenses.txt" target="_blank" rel="noopener">three.js</a>（MIT License）、音と 背景の 飾りに Kenney（CC0）、アイコンに game-icons.net（CC BY 3.0・作者は <a href="./third-party-licenses.txt" target="_blank" rel="noopener">こちら</a>）を使っています。</p>
     </section>
     <section id="storyScreen" hidden>
       <div class="field">
@@ -705,9 +712,9 @@
       <div class="albumbar">
         <div class="seg icons" id="partFilter">
           <button type="button" data-pf="all" class="on">ぜんぶ</button>
-          <button type="button" data-pf="ranged">🎯</button>
-          <button type="button" data-pf="melee">👊</button>
-          <button type="button" data-pf="both">🔁</button>
+          <button type="button" data-pf="ranged" aria-label="とおくの ひっさつ"><b data-icon="on-target" data-icon-color="#e03131">🎯</b></button>
+          <button type="button" data-pf="melee" aria-label="ちかくの ひっさつ"><b data-icon="punch" data-icon-color="#e8590c">👊</b></button>
+          <button type="button" data-pf="both" aria-label="どっちにも つかえる"><b data-icon="cycle" data-icon-color="#0c8599">🔁</b></button>
         </div>
       </div>
       <button id="bulkCombine" type="button" class="primary bulk" hidden></button>
@@ -881,11 +888,11 @@
       <button id="pbarCancel" type="button">↩ やめる</button>
     </div>
     <nav class="bnav" id="bnav" aria-label="画面">
-      <button type="button" data-go="home" data-nav="home"><b>🏠</b><span>ホーム</span></button>
-      <button type="button" data-go="story" data-nav="story"><b>📖</b><span>ストーリー</span></button>
-      <button type="button" data-go="make" data-nav="make" class="main"><b>✏️</b><span>キャラ</span></button>
-      <button type="button" data-go="parts" data-nav="parts"><b>🧩</b><span>シール</span></button>
-      <button type="button" data-go="free" data-nav="free"><b>⚔️</b><span>バトル</span></button>
+      <button type="button" data-go="home" data-nav="home"><b data-icon="house" data-icon-outline="0">🏠</b><span>ホーム</span></button>
+      <button type="button" data-go="story" data-nav="story"><b data-icon="open-book" data-icon-outline="0">📖</b><span>ストーリー</span></button>
+      <button type="button" data-go="make" data-nav="make" class="main"><b data-icon="pencil" data-icon-outline="0">✏️</b><span>キャラ</span></button>
+      <button type="button" data-go="parts" data-nav="parts"><b data-icon="sparkles" data-icon-outline="0">🧩</b><span>シール</span></button>
+      <button type="button" data-go="free" data-nav="free"><b data-icon="crossed-swords" data-icon-outline="0">⚔️</b><span>バトル</span></button>
     </nav>
     <script type="module" src="/src/main.ts"></script>
   </body>

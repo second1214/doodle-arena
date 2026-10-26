@@ -1,6 +1,7 @@
 // オンライン画面: たたかう / ランキング / かんせん / こうかい / ルール。
 // サーバーにつながらない・人が少ない時は、CPU の「門番」キャラで遊べる（空っぽにしない）。
 import type { CharacterBuild } from "../battle/character";
+import { icon } from "../icons";
 import { buildCharacter } from "../battle/character";
 import { DEFAULT_PARAMS, type DetectParams, type Stroke } from "../detect";
 import { CPU_CHARS, type CpuChar } from "../cpuChars";
@@ -95,12 +96,12 @@ export function initOnline(root: HTMLElement, deps: OnlineDeps) {
     <div class="ostatus" id="oStatus"></div>
     <div class="onews" id="oNews" hidden></div>
     <div class="seg otabs" role="tablist">
-      <button type="button" data-otab="fight" class="on"><b>⚔️</b>たたかう</button>
-      <button type="button" data-otab="zukan"><b>🗂</b>みんな</button>
-      <button type="button" data-otab="rank"><b>🏆</b>ランキング</button>
-      <button type="button" data-otab="watch"><b>👀</b>かんせん</button>
-      <button type="button" data-otab="publish"><b>📮</b>こうかい</button>
-      <button type="button" data-otab="rules"><b>📜</b>ルール</button>
+      <button type="button" data-otab="fight" class="on"><b>${icon("crossed-swords", "#e8590c")}</b>たたかう</button>
+      <button type="button" data-otab="zukan"><b>${icon("card-pickup", "#7048e8")}</b>みんな</button>
+      <button type="button" data-otab="rank"><b>${icon("trophy-cup", "#f59f00")}</b>ランキング</button>
+      <button type="button" data-otab="watch"><b>${icon("eyeball", "#1c7ed6")}</b>かんせん</button>
+      <button type="button" data-otab="publish"><b>${icon("mailbox", "#e03131")}</b>こうかい</button>
+      <button type="button" data-otab="rules"><b>${icon("scroll-unfurled", "#a0522d")}</b>ルール</button>
     </div>
     <div id="oBody"></div>`;
   const body = root.querySelector<HTMLElement>("#oBody")!;

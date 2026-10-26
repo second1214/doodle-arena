@@ -5,6 +5,7 @@ import type { Sfx } from "./audio";
 import type { CharacterBuild } from "./character";
 import { BattleScene } from "./scene";
 import type { Arena } from "../sim/arena";
+import { icon } from "../icons";
 
 export interface BattleOptions {
   player: CharacterBuild;
@@ -38,11 +39,11 @@ const HTML = `
     <div class="b-stick"><div class="b-knob"></div></div>
     <div class="b-buttons">
       <button class="b-btn special" data-act="special" aria-label="必殺">✨</button>
-      <button class="b-btn fly" data-act="fly" aria-label="飛ぶ" hidden>🪽<br>とぶ</button>
-      <button class="b-btn dodge" data-act="dodge" aria-label="回避">💨<br>よける</button>
-      <button class="b-btn shove" data-act="shove" aria-label="突き飛ばし">🫸<br>おす</button>
-      <button class="b-btn guard" data-act="guard" aria-label="防御">🛡️<br>まもる</button>
-      <button class="b-btn attack" data-act="attack" aria-label="攻撃">👊<br>こうげき</button>
+      <button class="b-btn fly" data-act="fly" aria-label="飛ぶ" hidden>${icon("feathered-wing", "#fff", false)}<br>とぶ</button>
+      <button class="b-btn dodge" data-act="dodge" aria-label="回避">${icon("dodging", "#fff", false)}<br>よける</button>
+      <button class="b-btn shove" data-act="shove" aria-label="突き飛ばし">${icon("push", "#fff", false)}<br>おす</button>
+      <button class="b-btn guard" data-act="guard" aria-label="防御">${icon("shield", "#fff", false)}<br>まもる</button>
+      <button class="b-btn attack" data-act="attack" aria-label="攻撃">${icon("punch", "#fff", false)}<br>こうげき</button>
     </div>
   </div>
   <div class="b-result" hidden>
