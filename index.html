@@ -466,9 +466,9 @@
       body { padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
       .toast { bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); }
       /* 下の タブ（どの画面からも 1タップ） */
-      .bnav { position: fixed; z-index: 8; left: 50%; transform: translateX(-50%); bottom: 0; width: min(560px, 100%); display: grid; grid-template-columns: repeat(5, 1fr); align-items: end; gap: 4px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px)); background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(8px); border-top: 2px solid var(--line); border-radius: 20px 20px 0 0; box-shadow: 0 -4px 16px rgba(84, 64, 140, .12); }
+      .bnav { position: fixed; z-index: 8; left: 50%; transform: translateX(-50%); bottom: 0; width: min(560px, 100%); display: grid; grid-template-columns: repeat(5, 1fr); align-items: end; gap: 4px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px)); background: var(--panel); background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(8px); border-top: 2px solid var(--line); border-radius: 20px 20px 0 0; box-shadow: 0 -4px 16px rgba(84, 64, 140, .12); }
       .bnav button { display: grid; justify-items: center; gap: 0; min-height: 56px; padding: 4px 0; border: 0; border-radius: 16px; background: transparent; color: var(--muted); font-weight: 800; font-size: 11px; box-shadow: none; }
-      .bnav button b { font-size: 26px; line-height: 1.1; filter: saturate(.6); }
+      .bnav button b { font-size: 26px; line-height: 1.1; }
       .bnav button.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
       .bnav button.on b { filter: none; transform: translateY(-2px) scale(1.1); }
       .bnav button.main { min-height: 70px; margin-top: -18px; background: var(--accent); color: var(--accent-ink); box-shadow: 0 4px 0 #d9573a; }
@@ -652,7 +652,14 @@
       .chips button.lock { opacity: .5; }
       .help { margin-top: 8px; }
       .help summary { cursor: pointer; font-weight: 800; color: var(--muted); }
-    </style>
+          /* 下の タブの 絵: iPhone の Safari は 絵（SVG）を 入れた 所に filter を 重ねると 消えることが あるので、filter を 使わない */
+      .bnav [data-icon] .gi { filter: none; }
+      /* ダークモードでも 読めるように: 明るい 背景の 所は 文字を こい色に きめる */
+      .seg.rooms button.on { color: #2d2640; }
+      .kcard.warn * { color: inherit; }
+      .kcard.warn a { color: #c2410c; }
+      .cpick .dice, .cgrid button .dice, .swatch.pick, .movekey, .movebar, .restore { color: #2d2640; }
+</style>
   </head>
   <body>
     <div class="topbar" id="topbar" hidden>
