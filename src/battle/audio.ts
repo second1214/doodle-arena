@@ -15,8 +15,6 @@ export const SOUND_FILES = {
   bind: ["phaserDown1"],
   ko: ["impactBell_heavy_002"],
   koJingle: ["threeTone2"],
-  tick: ["tick_002"],
-  go: ["confirmation_002"],
 } as const;
 type SoundKey = keyof typeof SOUND_FILES;
 const SFX_BASE = "sfx/";
@@ -142,5 +140,15 @@ export class Sfx {
   wah() { this.tone("triangle", 400, 200, 0.3, 0.25); this.tone("triangle", 300, 450, 0.3, 0.2, 0.25); }
   shove() { if (!this.play("thud", 0.7, 1.2)) { this.noise(0.1, 0.8, 500, 0.7); this.tone("sine", 120, 70, 0.15, 0.6); } }
   dodge() { this.noise(0.18, 0.35, 5000, 0.4); this.tone("sine", 900, 1500, 0.12, 0.08); }
-  beep(high = false) { if (!this.play(high ? "go" : "tick", 0.8)) this.tone("square", high ? 1046 : 523, high ? 1046 : 523, high ? 0.35 : 0.12, 0.2); }
+  // カウントダウン: 3・2・1 は まるい「ポーン」、GO は 明るい 和音で「パーン」（前の カチッ・決定音 は 違和感が あった。2026-10-27 ユーザー報告）
+  beep(high = false) {
+    if (!high) {
+      this.tone("sine", 784, 784, 0.22, 0.32);
+      this.tone("triangle", 392, 392, 0.16, 0.08);
+      return;
+    }
+    [1047, 1319, 1568].forEach((f, k) => this.tone("sine", f, f, 0.5 - k * 0.05, 0.2, k * 0.045));
+    this.tone("triangle", 523, 523, 0.45, 0.12);
+    this.noise(0.25, 0.12, 4000, 0.6);
+  }
 }
