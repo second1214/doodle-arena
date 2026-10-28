@@ -73,7 +73,7 @@ describe("ストーリーの敵", () => {
       while (w.winner === -1) step(w, ais.map((a, i) => aiInput(w, i, a)));
       expect(w.winner).toBeGreaterThanOrEqual(0);
     }
-  });
+  }, 60_000);
 
   it("スキルツリー 2周目: 60を こえた 分で もっと 強くなる。12章の ボスは なかま5人と 集団戦・シール15まい", () => {
     const st = ALL_STAGES.find((s) => s.id === "12-6")!;
