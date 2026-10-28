@@ -282,6 +282,18 @@ export const CHAPTERS: Chapter[] = [
       { id: "10-6", no: 60, title: "3つの ドクロ", ...X("ウィザ"), personality: "sniper", specialType: "ranged", parts: [["r:homing", "SSS"], ["r:blast", "SSS"], ["r:split", "SS"], ["r:fire", "SS"]], boostPoints: 56, hp: 20, prefer: ["sp", "hp", "def", "tec"], ai: { wait: [1, 2], defend: 1.35 }, boss: true, final: true, arena: "night" },
     ],
   },
+  {
+    no: 11,
+    title: "キノコ王国の なかま",
+    stages: [
+      { id: "11-1", no: 61, title: "むれで くる", ...X("クリボン"), personality: "aggressive", specialType: "melee", parts: [["m:dash", "SS"], ["m:echo", "SS"], ["m:rush", "SS"]], boostPoints: 57, prefer: ["atk", "hp", "spd"], ai: CH10_AI, arena: "hill" },
+      { id: "11-2", no: 62, title: "みどりの 弟", ...X("ルイジ"), personality: "cautious", specialType: "ranged", parts: [["r:homing", "SSS"], ["r:fire", "SS"], ["r:split", "S"]], boostPoints: 56, prefer: ["def", "spd", "sp"], ai: CH10_AI, arena: "night" },
+      { id: "11-3", no: 63, title: "名人 ふたたび", ...X("マリヨ"), personality: "aggressive", specialType: "ranged", parts: [["r:bounce", "SSS"], ["r:fire", "SSS"], ["r:split", "SS"]], boostPoints: 60, hp: 10, prefer: ["atk", "spd", "hp"], ai: CH10_AI, arena: "beach" },
+      { id: "11-4", no: 64, title: "ちいさな ゆうしゃ", ...X("キノピヨ"), personality: "tricky", specialType: "melee", parts: [["m:dash", "SS"], ["m:rush", "S"], ["m:echo", "S"]], boostPoints: 50, prefer: ["spd", "tec", "sta"], ai: CH9_AI, arena: "room" },
+      { id: "11-5", no: 65, title: "大まおう ふたたび", ...X("グッパ"), personality: "aggressive", specialType: "melee", parts: [["m:slam", "SSS"], ["m:shockwave", "SSS"], ["m:flame", "SS"]], boostPoints: 56, hp: 10, prefer: ["hp", "atk", "def", "sta"], ai: CH10_AI, arena: "cave" },
+      { id: "11-6", no: 66, title: "ひめの さいごの しれん", ...X("ピーナひめ"), personality: "cautious", specialType: "ranged", parts: [["r:homing", "SS"], ["r:drain", "SS"], ["r:freeze", "S"], ["r:split", "S"]], boostPoints: 50, prefer: ["hp", "def", "sp", "tec"], ai: { wait: [1, 3], defend: 1.25 }, boss: true, final: true, arena: "sky" },
+    ],
+  },
 ];
 
 // 敵を 全体的に 強く（2026-10）: 章が 進むほど 強化ポイント・シールの レア度・反応の速さを 上乗せ。9章からは 最初から 強い 値で 書く

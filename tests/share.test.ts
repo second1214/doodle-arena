@@ -9,7 +9,7 @@ describe("じまんの文", () => {
     expect(t).toContain("「ねこまる」");
     expect(t).toContain("第2章");
     expect(t).toContain("2-1");
-    expect(t).toContain("（7/60）");
+    expect(t).toContain("（7/66）");
     expect(t).toContain("らくがき大王");
     expect(t).toContain("Lv12 ツリー18/60（こうげきマスター）");
     expect(t).toContain("A ☄️メテオ(遠)");
