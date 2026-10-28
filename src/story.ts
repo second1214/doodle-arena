@@ -7,6 +7,8 @@ import { crossMarks, crossStrokes } from "./crossChars";
 import type { AiLevel } from "./sim/ai";
 import { hashStr, makePart, seededRnd, type Part, type PartKind, type Rarity } from "./items";
 import type { Personality } from "./sim/world";
+import { autoTree, boostOf, TREE_CAP } from "./tree";
+import { sumBoost, type Boost } from "./sim/stats";
 
 export interface Stage {
   id: string; // 保存用（変えない）
@@ -25,6 +27,10 @@ export interface Stage {
   final?: boolean; // ラスボス（A 確定・4回に1回 S）
   arena?: string; // ステージ（地形と背景。src/sim/arena.ts。無ければ 平らな ひろば）
   marks?: () => Stroke[]; // 敵の 手足レイヤー（羽など）
+  crew?: string[]; // いっしょに 出てくる なかま（ステージ id。その ステージの 絵・シール・強化で 出る）＝1対多の 集団戦
+  crewBoost?: Partial<Boost>; // 集団戦の なかま 1人ずつに 足す 強化（体力・ダメージを 下げて 数で せめる）
+  crewAi?: AiLevel; // 集団戦の なかまの 強さ（無ければ ai と同じ）
+  drops?: number; // 勝った時に もらえる シールの 数（ふつう 1・ボス 2）
 }
 
 export interface Chapter {
@@ -294,6 +300,18 @@ export const CHAPTERS: Chapter[] = [
       { id: "11-6", no: 66, title: "ひめの さいごの しれん", ...X("ピーナひめ"), personality: "cautious", specialType: "ranged", parts: [["r:homing", "SS"], ["r:drain", "SS"], ["r:freeze", "S"], ["r:split", "S"]], boostPoints: 50, prefer: ["hp", "def", "sp", "tec"], ai: { wait: [1, 3], defend: 1.25 }, boss: true, final: true, arena: "sky" },
     ],
   },
+  {
+    no: 12,
+    title: "ダンス スクール",
+    stages: [
+      { id: "12-1", no: 67, title: "コリコリ ステップ", ...X("ナンコツ"), personality: "cautious", specialType: "melee", parts: [["m:slam", "SS"], ["m:counter", "SS"], ["m:grab", "S"]], boostPoints: 120, prefer: ["def", "hp", "atk"], ai: CH10_AI, arena: "room" },
+      { id: "12-2", no: 68, title: "もちもち 3れんぱつ", ...X("ダンゴ"), personality: "cautious", specialType: "ranged", parts: [["r:homing", "A"], ["r:split", "A"], ["r:giant", "A"]], boostPoints: 120, hp: -100, prefer: ["hp", "sp", "def"], ai: CH9_AI, arena: "hill" },
+      { id: "12-3", no: 69, title: "あまい わな", ...X("リンゴアメ"), personality: "tricky", specialType: "ranged", parts: [["r:boomerang", "SS"], ["r:restrain", "SS"], ["r:split", "S"]], boostPoints: 120, prefer: ["tec", "sp", "spd"], ai: CH10_AI, arena: "night" },
+      { id: "12-4", no: 70, title: "2度づけ きんし", ...X("クシカツ"), personality: "sniper", specialType: "ranged", parts: [["r:fast", "SSS"], ["r:multi", "SSS"], ["r:split", "SS"]], boostPoints: 120, prefer: ["sp", "spd", "tec"], ai: CH10_AI, arena: "beach" },
+      { id: "12-5", no: 71, title: "ほねほね ダンス", ...X("ホネチキン"), personality: "aggressive", specialType: "melee", parts: [["m:dash", "SS"], ["m:rush", "SS"], ["m:echo", "S"]], boostPoints: 120, prefer: ["atk", "spd", "hp"], ai: CH10_AI, arena: "sky" },
+      { id: "12-6", no: 72, title: "先生と みんなで 発表会", ...X("スキップガエル先生"), personality: "aggressive", specialType: "melee", parts: [["m:slam", "S"], ["m:shockwave", "S"], ["m:rush", "S"]], boostPoints: 120, hp: -140, prefer: ["atk", "hp", "spd", "def"], ai: CH10_AI, boss: true, final: true, crew: ["12-1", "12-2", "12-3", "12-4", "12-5"], crewBoost: { hp: -120, dealt: -0.6 }, crewAi: { wait: [6, 5], defend: 0.8 }, drops: 15 },
+    ],
+  },
 ];
 
 // 敵を 全体的に 強く（2026-10）: 章が 進むほど 強化ポイント・シールの レア度・反応の速さを 上乗せ。9章からは 最初から 強い 値で 書く
@@ -329,3 +347,12 @@ export function enemyParts(stage: Stage): Part[] {
   return stage.parts.map(([kind, rarity], i) => makePart(kind, rarity, seededRnd(hashStr(`${stage.id}#${i}`)), `${stage.id}#${i}`));
 }
 
+// 敵の 強化: スキルツリー 1周は TREE_CAP。こえた 分は 2周目として 同じ 好みの 枝を もう1回 取る（12章は 120＝2周 ぜんぶ）
+export function stageBoost(st: Stage, extra: Partial<Boost> = {}): Partial<Boost> {
+  const laps: Partial<Boost>[] = [];
+  for (let left = st.boostPoints; left > 0; left -= TREE_CAP) laps.push(boostOf(autoTree(Math.min(left, TREE_CAP), st.prefer)));
+  return sumBoost([...laps, { hp: st.hp ?? 0 }, extra]);
+}
+
+// 集団戦の なかま（ボスの 後ろに ならぶ）
+export const crewOf = (st: Stage): Stage[] => (st.crew ?? []).map((id) => ALL_STAGES.find((s) => s.id === id)).filter((s): s is Stage => !!s);

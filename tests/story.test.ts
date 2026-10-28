@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { detect, DEFAULT_PARAMS } from "../src/detect";
-import { ALL_STAGES, enemyParts, isUnlocked } from "../src/story";
+import { ALL_STAGES, crewOf, enemyParts, isUnlocked, stageBoost } from "../src/story";
 import { buildSpecial, equipCosts, fitsType, partSlot, seededRnd, SPECIAL_BUDGET } from "../src/items";
 import { applyStageResult, expToNext, exportCode, importCode, loadProfile } from "../src/progress";
 import { createWorld, hashWorld, step } from "../src/sim/world";
@@ -66,12 +66,21 @@ describe("ストーリーの敵", () => {
     for (const st of ALL_STAGES) {
       const res = detect(st.strokes(), DEFAULT_PARAMS);
       const shape = fighterShape(res);
-      const cfg = { name: st.enemy, reach: shape.reach, hasHands: shape.hasHands, hasFeet: shape.hasFeet, ...(() => { const b = buildSpecial(enemyParts(st), st.specialType); return { special: b.special, melee: b.melee, specialMod: b.mod }; })(), specialType: st.specialType, boost: { ...boostOf(autoTree(st.boostPoints, st.prefer)), hp: st.hp ?? 0 }, personality: st.personality, traits: shape.traits };
-      const w = createWorld({ name: "p", reach: 0.8, hasHands: true, hasFeet: true, special: [] }, cfg, 7);
-      const ais = [createAi(), createAi(st.ai)];
-      while (w.winner === -1) step(w, [aiInput(w, 0, ais[0]), aiInput(w, 1, ais[1])]);
+      const cfg = { name: st.enemy, reach: shape.reach, hasHands: shape.hasHands, hasFeet: shape.hasFeet, ...(() => { const b = buildSpecial(enemyParts(st), st.specialType); return { special: b.special, melee: b.melee, specialMod: b.mod }; })(), specialType: st.specialType, boost: stageBoost(st), personality: st.personality, traits: shape.traits };
+      const crew = crewOf(st).map((m) => { const sh = fighterShape(detect(m.strokes(), DEFAULT_PARAMS)); const b = buildSpecial(enemyParts(m), m.specialType); return { name: m.enemy, reach: sh.reach, hasHands: sh.hasHands, hasFeet: sh.hasFeet, special: b.special, melee: b.melee, specialMod: b.mod, specialType: m.specialType, boost: stageBoost(m, st.crewBoost), personality: m.personality, traits: sh.traits }; });
+      const w = createWorld({ name: "p", reach: 0.8, hasHands: true, hasFeet: true, special: [] }, cfg, 7, undefined, crew);
+      const ais = [createAi(), createAi(st.ai), ...crew.map(() => createAi(st.ai))];
+      while (w.winner === -1) step(w, ais.map((a, i) => aiInput(w, i, a)));
       expect(w.winner).toBeGreaterThanOrEqual(0);
     }
+  });
+
+  it("スキルツリー 2周目: 60を こえた 分で もっと 強くなる。12章の ボスは なかま5人と 集団戦・シール15まい", () => {
+    const st = ALL_STAGES.find((s) => s.id === "12-6")!;
+    const one = stageBoost({ ...st, boostPoints: 60 }), two = stageBoost(st);
+    expect((two.dealt ?? 0) * 100 + (two.hp ?? 0)).toBeGreaterThan((one.dealt ?? 0) * 100 + (one.hp ?? 0));
+    expect(crewOf(st).map((s) => s.enemy)).toEqual(["ナンコツ", "ダンゴ", "リンゴアメ", "クシカツ", "ホネチキン"]);
+    expect(st.drops).toBe(15);
   });
 });
 

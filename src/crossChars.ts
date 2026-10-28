@@ -17,7 +17,7 @@ const dot = (cx: number, cy: number, r: number, color = "#222222"): Stroke[] => 
 // 手足レイヤー（太い ペンで 雑に 塗る）
 const mk = (kind: "hand" | "foot" | "wing", pts: number[], width = 44): Stroke => ({ color: kind, width, points: pts });
 
-export interface CrossChar { strokes: () => Stroke[]; marks: () => Stroke[]; group: "ブロック" | "ふしぎ" | "ゆめかわ" | "キノコ"; profile: CpuProfile }
+export interface CrossChar { strokes: () => Stroke[]; marks: () => Stroke[]; group: "ブロック" | "ふしぎ" | "ゆめかわ" | "キノコ" | "ダンサーズ"; profile: CpuProfile }
 
 // --- マインクラフト風（ブロック） ---
 const steve = (skin: string, shirt: string, pants: string, armsForward = false): Stroke[] => [
@@ -589,6 +589,90 @@ const MINE: Record<string, CrossChar> = {
   },
 };
 Object.assign(CROSS, MARIO, MINE);
+// --- チキップ風（ダンサーズ）: まるい ひよこの からだ＋ひとつずつ ちがう 食べものの かざり ---
+// back は からだの 後ろに 描く 物、front は からだに 重ねる 物（からだの 塗りの 後）
+const chick = (body: string, back: Stroke[], front: Stroke[]): Stroke[] => [
+  ...back,
+  line([226, 392, 220, 446], 10, "#f08c00"), line([200, 450, 220, 446, 240, 452], 8, "#f08c00"),
+  line([286, 392, 292, 446], 10, "#f08c00"), line([272, 452, 292, 446, 312, 450], 8, "#f08c00"),
+  ...oval(256, 300, 104, 100, body),
+  ...poly([160, 270, 112, 316, 160, 340], body, [134, 312], 6),
+  ...poly([352, 270, 400, 316, 352, 340], body, [378, 312], 6),
+  ...poly([228, 206, 240, 166, 256, 190, 272, 164, 284, 206], "#e03131", [240, 188], 5),
+  ...dot(222, 278, 9), ...dot(290, 278, 9),
+  ...poly([238, 300, 274, 300, 256, 324], "#f59f00", [256, 308], 5),
+  ...dot(200, 314, 11, "#ffa8a8"), ...dot(312, 314, 11, "#ffa8a8"),
+  ...front,
+];
+const chickMarks = (): Stroke[] => [mk("hand", [160, 290, 120, 316], 30), mk("hand", [352, 290, 392, 316], 30), mk("foot", [226, 398, 220, 448], 30), mk("foot", [286, 398, 292, 448], 30)];
+
+const DANCE: Record<string, CrossChar> = {
+  "ホネチキン": {
+    group: "ダンサーズ",
+    strokes: () => chick("#fff8e6", [], [
+      line([392, 300, 446, 236], 16, "#f1f3f5"), line([392, 300, 446, 236], 4, "#adb5bd"),
+      ...oval(452, 226, 12, 12, "#f1f3f5", 4), ...oval(436, 222, 12, 12, "#f1f3f5", 4),
+      line([224, 344, 288, 344], 5, "#ced4da"), line([230, 362, 282, 362], 5, "#ced4da"),
+    ]),
+    marks: () => [...chickMarks().slice(0, 1), mk("hand", [352, 290, 400, 300, 446, 236], 30), ...chickMarks().slice(2)],
+    profile: { intro: "ほねつき チキンの ダンサー。ほねを ふりまわして リズムよく れんぞく こうげき", personality: "aggressive", specialType: "melee", parts: ["m:rush", "m:dash", "m:echo"], prefer: ["atk", "spd", "hp"], catchphrase: "ほね ほね ステップ！" },
+  },
+  "ナンコツ": {
+    group: "ダンサーズ",
+    strokes: () => chick("#ffe3d3", [], [
+      ...poly([228, 352, 256, 336, 284, 352, 256, 380], "#f8f9fa", [256, 358], 5),
+      line([150, 230, 176, 214], 6), line([336, 214, 362, 230], 6),
+    ]),
+    marks: chickMarks,
+    profile: { intro: "コリコリ かたい なんこつの ダンサー。うけとめて なげ返す カウンターが とくい", personality: "cautious", specialType: "melee", parts: ["m:slam", "m:counter", "m:grab"], prefer: ["def", "hp", "atk"], catchphrase: "コリッと いくよ" },
+  },
+  "クシカツ": {
+    group: "ダンサーズ",
+    strokes: () => chick("#d9a441", [line([256, 110, 256, 196], 10, "#c9a46a"), line([256, 400, 256, 470], 10, "#c9a46a")], [
+      ...dot(190, 250, 5, "#a86b1f"), ...dot(320, 240, 5, "#a86b1f"), ...dot(230, 360, 5, "#a86b1f"), ...dot(300, 350, 5, "#a86b1f"), ...dot(270, 240, 4, "#a86b1f"),
+    ]),
+    marks: chickMarks,
+    profile: { intro: "くしに ささった あげたての ダンサー。くしみたいに まっすぐ はやい 弾を つらぬかせる", personality: "sniper", specialType: "ranged", parts: ["r:fast", "r:multi", "pierce"], prefer: ["sp", "spd", "tec"], catchphrase: "2度づけ きんし！" },
+  },
+  "リンゴアメ": {
+    group: "ダンサーズ",
+    strokes: () => chick("#e03131", [line([256, 400, 256, 470], 10, "#c9a46a")], [
+      ...oval(214, 246, 16, 26, "#ffc9c9", 4),
+      line([256, 196, 262, 172], 8, "#5c3d1e"), ...poly([264, 176, 296, 160, 300, 180], "#40c057", [286, 174], 4),
+    ]),
+    marks: chickMarks,
+    profile: { intro: "つやつや あまい りんごあめの ダンサー。ベタベタの あめで うごきを とめて ブーメラン", personality: "tricky", specialType: "ranged", parts: ["r:boomerang", "r:restrain", "r:split"], prefer: ["tec", "sp", "spd"], catchphrase: "あま〜く とめちゃう" },
+  },
+  "ダンゴ": {
+    group: "ダンサーズ",
+    strokes: () => chick("#fff4e6", [], [
+      line([400, 340, 452, 160], 8, "#c9a46a"),
+      ...oval(440, 196, 22, 22, "#fcc2d7", 5), ...oval(430, 238, 22, 22, "#ffffff", 5), ...oval(418, 280, 22, 22, "#8ce99a", 5),
+    ]),
+    marks: () => [...chickMarks().slice(0, 1), mk("hand", [352, 290, 400, 330], 30), ...chickMarks().slice(2)],
+    profile: { intro: "3色 だんごを もった ダンサー。だんごが 3つに わかれて 大きく ころがってくる", personality: "cautious", specialType: "ranged", parts: ["r:homing", "r:split", "r:giant"], prefer: ["hp", "sp", "def"], catchphrase: "もちもち 3れんぱつ" },
+  },
+  "スキップガエル先生": {
+    group: "ダンサーズ",
+    strokes: () => [
+      line([214, 380, 170, 420, 206, 456], 22, "#51cf66"), line([298, 380, 352, 400, 330, 452], 22, "#51cf66"),
+      ...oval(196, 458, 26, 12, "#51cf66", 5), ...oval(338, 456, 26, 12, "#51cf66", 5),
+      line([180, 270, 120, 220, 104, 180], 18, "#51cf66"), line([332, 270, 392, 300, 430, 280], 18, "#51cf66"),
+      ...oval(100, 172, 16, 16, "#51cf66", 5), ...oval(438, 276, 16, 16, "#51cf66", 5),
+      ...oval(256, 306, 92, 96, "#51cf66"), ...oval(256, 330, 60, 62, "#ffffff", 5),
+      ...oval(256, 196, 92, 58, "#51cf66"),
+      ...oval(206, 140, 30, 30, "#ffffff"), ...oval(306, 140, 30, 30, "#ffffff"),
+      ...dot(212, 144, 10), ...dot(300, 144, 10),
+      line([170, 140, 242, 140], 4), line([270, 140, 342, 140], 4),
+      line([206, 216, 256, 232, 306, 216], 6),
+      ...poly([226, 254, 256, 268, 226, 282], "#e03131", [236, 268], 5), ...poly([286, 254, 256, 268, 286, 282], "#e03131", [276, 268], 5),
+    ],
+    marks: () => [mk("hand", [182, 272, 120, 220, 102, 176], 32), mk("hand", [330, 272, 392, 300, 436, 278], 32), mk("foot", [214, 384, 170, 420, 200, 458], 34), mk("foot", [298, 384, 352, 400, 336, 456], 34)],
+    profile: { intro: "ダンスの 先生の カエル。スキップで 地面を ゆらし、しょうげき波と ざんぞうの ステップで せめる", personality: "aggressive", specialType: "melee", parts: ["m:slam", "m:shockwave", "m:rush", "m:echo"], prefer: ["atk", "hp", "spd", "def"], catchphrase: "はい、ワン・ツー・スキップ！" },
+  },
+};
+Object.assign(CROSS, DANCE);
+
 
 export const CROSS_GROUPS = ["ブロック", "ふしぎ"] as const;
 export const crossStrokes = (name: string) => CROSS[name].strokes;

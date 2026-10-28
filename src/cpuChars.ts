@@ -50,9 +50,9 @@ export const CPU_CHARS: CpuChar[] = [
   ...BOSSES.map(([stage, name, p]) => ({ ...p, id: `boss:${stage}`, name, group: "ボス", strokes: BOSS_DRAWINGS[name], bossStage: stage })),
   // ブロックの せかい・ふしぎな しま（章の ボスは たおすと 選べる）
   ...Object.entries(CROSS).map(([name, c]) => {
-    const bossStage = name === "エンダラゴン" ? "6-6" : name === "ミュウスリー" ? "7-6" : name === "クロミー" ? "8-6" : name === "グッパ" ? "9-6" : name === "ウォーダン" ? "10-5" : name === "ウィザ" ? "10-6" : name === "ピーナひめ" ? "11-6" : undefined;
+    const bossStage = name === "エンダラゴン" ? "6-6" : name === "ミュウスリー" ? "7-6" : name === "クロミー" ? "8-6" : name === "グッパ" ? "9-6" : name === "ウォーダン" ? "10-5" : name === "ウィザ" ? "10-6" : name === "ピーナひめ" ? "11-6" : name === "スキップガエル先生" ? "12-6" : undefined;
     return { ...c.profile, id: `x:${name}`, name, group: bossStage ? "ボス" : c.group, strokes: c.strokes, marks: c.marks, bossStage };
   }),
 ];
-export const CPU_GROUPS = ["らくがき", "どうぶつ", "たべもの", "どうぐ", "おばけ", "ブロック", "ふしぎ", "ゆめかわ", "キノコ", "ボス"];
+export const CPU_GROUPS = ["らくがき", "どうぶつ", "たべもの", "どうぐ", "おばけ", "ブロック", "ふしぎ", "ゆめかわ", "キノコ", "ダンサーズ", "ボス"];
 export const cpuCharById = (id: string) => CPU_CHARS.find((c) => c.id === id);

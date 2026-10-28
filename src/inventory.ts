@@ -54,10 +54,10 @@ function store(inv: Inventory, p: Part, res: DropResult) {
 }
 
 // ストーリーの勝利報酬: 1枚（ボスは2枚で、うち1枚は できばえ1段上。ラスボスは その1枚が ピカピカ）
-export function dropParts(chapter: number, boss: boolean, rnd: () => number = Math.random, final = false): DropResult {
+export function dropParts(chapter: number, boss: boolean, rnd: () => number = Math.random, final = false, count?: number): DropResult {
   const inv = loadInventory();
   const res: DropResult = { got: [], fed: [], lost: 0 };
-  const n = boss ? 2 : 1;
+  const n = count ?? (boss ? 2 : 1);
   for (let k = 0; k < n; k++) {
     let sh = rollShine(chapter, rnd);
     if (boss && k === 0) sh = Math.min(2, sh + 1) as Shine;

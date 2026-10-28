@@ -28,7 +28,7 @@ import { ARENA_LIST, arenaById } from "./sim/arena";
 import { initOnline } from "./online/screen";
 import { api } from "./online/client";
 import { AttractHeader } from "./battle/attract";
-import { ALL_STAGES, CHAPTERS, chapterOf, enemyParts, isUnlocked, UPCOMING, type Stage } from "./story";
+import { ALL_STAGES, CHAPTERS, chapterOf, crewOf, enemyParts, stageBoost, isUnlocked, UPCOMING, type Stage } from "./story";
 import { CHALLENGES, challengeOpen, foeStages, UNLOCK_STAGE, type Challenge } from "./challenge";
 
 const STORAGE_KEY = "doodle-arena:proto1";
@@ -2181,7 +2181,7 @@ function startChallenge(c: Challenge) {
   const player = buildPlayer(storyCharSel.value);
   const foes = foeStages(c).map((st) => {
     const b = buildCharacter(st.enemy, st.strokes(), [], DEFAULT_PARAMS, st.marks?.() ?? []);
-    applyData(b, st, enemyParts(st), sumBoost([boostOf(autoTree(st.boostPoints, st.prefer)), { hp: (st.hp ?? 0) + c.hpEach }]));
+    applyData(b, st, enemyParts(st), stageBoost(st, { hp: c.hpEach }));
     return b;
   });
   const [cpu, ...more] = foes;
@@ -2219,19 +2219,26 @@ function startStage(stage: Stage) {
   sfx.unlock();
   const player = buildPlayer(storyCharSel.value);
   const cpu = buildCharacter(stage.enemy, stage.strokes(), [], DEFAULT_PARAMS, stage.marks?.() ?? []);
-  applyData(cpu, stage, enemyParts(stage), sumBoost([boostOf(autoTree(stage.boostPoints, stage.prefer)), { hp: stage.hp ?? 0 }]));
+  applyData(cpu, stage, enemyParts(stage), stageBoost(stage));
+  const more = crewOf(stage).map((st) => {
+    const b = buildCharacter(st.enemy, st.strokes(), [], DEFAULT_PARAMS, st.marks?.() ?? []);
+    applyData(b, st, enemyParts(st), stageBoost(st, stage.crewBoost));
+    return b;
+  });
   runBattle({
     player,
     cpu,
+    more,
     arena: arenaById(stage.arena),
     spectate: false,
     seed: (Math.random() * 0xffffffff) >>> 0,
     sfx,
     cpuLevel: stage.ai,
+    moreLevel: stage.crewAi,
     exitLabel: "ステージ選択へ",
     onResult: (winner) => {
       const r = applyStageResult(stage.no, stage.id, !!stage.boss, winner === 0);
-      return rewardHtml(r, stage, winner === 0 ? dropParts(chapterOf(stage), !!stage.boss, Math.random, !!stage.final) : null);
+      return rewardHtml(r, stage, winner === 0 ? dropParts(chapterOf(stage), !!stage.boss, Math.random, !!stage.final, stage.drops) : null);
     },
   });
 }

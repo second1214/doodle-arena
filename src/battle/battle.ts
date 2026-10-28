@@ -23,6 +23,7 @@ export interface BattleOptions {
   fastButton?: boolean; // 観戦用: 2倍速ボタンを出す
   arena?: Arena; // ステージ（地形と背景。無ければ 平らな ひろば）
   more?: CharacterBuild[]; // 相手の なかま（1対多。同じ CPU の強さで 動く）
+  moreLevel?: AiLevel; // なかまだけ 別の 強さに する時（無ければ cpuLevel）
 }
 
 const pips = (i: number) => `<div class="b-charge" data-ch="${i}"></div>`; // 中身は必要な命中数ぶん（キャラごとに違う）
@@ -72,7 +73,7 @@ export function startBattle(opts: BattleOptions) {
 
   const more = opts.more ?? [];
   const newWorld = () => createWorld(opts.player.cfg, opts.cpu.cfg, opts.seed, opts.arena, more.map((b) => b.cfg));
-  const newAis = () => [createAi(), createAi(opts.cpuLevel), ...more.map(() => createAi(opts.cpuLevel))];
+  const newAis = () => [createAi(), createAi(opts.cpuLevel), ...more.map(() => createAi(opts.moreLevel ?? opts.cpuLevel))];
   let world: World = newWorld();
   let ais = newAis();
   let stats = [newStats(), newStats()];
