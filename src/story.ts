@@ -151,6 +151,8 @@ const CH4_AI: AiLevel = { wait: [4, 4], defend: 0.9 };
 const CH5_AI: AiLevel = { wait: [3, 4], defend: 1 };
 const CH6_AI: AiLevel = { wait: [3, 3], defend: 1.05 };
 const CH7_AI: AiLevel = { wait: [2, 3], defend: 1.1 };
+const CH9_AI: AiLevel = { wait: [1, 3], defend: 1.25 };
+const CH10_AI: AiLevel = { wait: [1, 2], defend: 1.3 };
 // 新しい章の 敵（絵と 手足レイヤーを いっしょに）
 const X = (name: string) => ({ enemy: name, strokes: crossStrokes(name), marks: crossMarks(name) });
 // 敵の強化ポイントの振り方（性格ごとの好みの枝）
@@ -256,7 +258,46 @@ export const CHAPTERS: Chapter[] = [
       { id: "8-6", no: 48, title: "いたずらの 女王", ...X("クロミー"), personality: "tricky", specialType: "ranged", parts: [["r:boomerang", "S"], ["r:split", "S"], ["r:net", "A"], ["r:fire", "A"]], boostPoints: 50, hp: 15, prefer: ["hp", "sp", "tec", "spd"], ai: { wait: [2, 3], defend: 1.25 }, boss: true, final: true, arena: "night" },
     ],
   },
+  {
+    no: 9,
+    title: "キノコ王国",
+    stages: [
+      { id: "9-1", no: 49, title: "ジャンプの 名人", ...X("マリヨ"), personality: "aggressive", specialType: "ranged", parts: [["r:bounce", "S"], ["r:fire", "S"], ["r:split", "A"]], boostPoints: 46, prefer: ["atk", "spd", "hp"], ai: CH9_AI, arena: "hill" },
+      { id: "9-2", no: 50, title: "したで パクッ", ...X("ヨッシ"), personality: "aggressive", specialType: "melee", parts: [["m:dash", "SS"], ["m:grab", "SS"], ["m:rush", "S"]], boostPoints: 47, prefer: ["atk", "spd", "hp"], ai: CH9_AI },
+      { id: "9-3", no: 51, title: "こうらが はねる", ...X("ノコノッコ"), personality: "sniper", specialType: "ranged", parts: [["r:bounce", "SS"], ["r:giant", "S"], ["r:multi", "A"]], boostPoints: 48, prefer: ["def", "sp", "hp"], ai: CH9_AI, arena: "room" },
+      { id: "9-4", no: 52, title: "どかんの 花", ...X("パックンフラワ"), personality: "cautious", specialType: "melee", parts: [["m:slam", "S"], ["m:grab", "SS"], ["m:vampire", "S"]], boostPoints: 49, prefer: ["hp", "atk", "def"], ai: CH9_AI, arena: "pool" },
+      { id: "9-5", no: 53, title: "見ないで〜", ...X("テレザ"), personality: "tricky", specialType: "ranged", parts: [["r:homing", "SSS"], ["r:invisible", "SS"], ["r:drain", "SS"]], boostPoints: 50, prefer: ["tec", "sp", "spd"], ai: CH9_AI, arena: "night" },
+      { id: "9-6", no: 54, title: "大まおう グッパ", ...X("グッパ"), personality: "aggressive", specialType: "melee", parts: [["m:slam", "SSS"], ["m:shockwave", "SSS"], ["m:rush", "SS"], ["m:flame", "SS"]], boostPoints: 52, hp: 12, prefer: ["hp", "atk", "def", "sta"], ai: { wait: [1, 3], defend: 1.25 }, boss: true, final: true, arena: "cave" },
+    ],
+  },
+  {
+    no: 10,
+    title: "ネザーと ふかい やみ",
+    stages: [
+      { id: "10-1", no: 55, title: "金が すき", ...X("ピグリム"), personality: "aggressive", specialType: "melee", parts: [["m:dash", "SS"], ["m:rush", "S"], ["m:echo", "S"]], boostPoints: 52, prefer: ["atk", "spd", "hp"], ai: CH10_AI, arena: "cave" },
+      { id: "10-2", no: 56, title: "ほのおの 棒", ...X("ブレイザー"), personality: "sniper", specialType: "ranged", parts: [["r:fast", "SS"], ["r:fire", "SS"], ["r:drip", "S"]], boostPoints: 53, prefer: ["sp", "spd", "tec"], ai: CH10_AI, arena: "sky" },
+      { id: "10-3", no: 57, title: "空から ほのおの玉", ...X("ガストン"), personality: "sniper", specialType: "ranged", parts: [["r:meteor", "SS"], ["r:blast", "S"], ["r:giant", "S"]], boostPoints: 54, prefer: ["sp", "hp", "def"], ai: CH10_AI, arena: "night" },
+      { id: "10-4", no: 58, title: "もどってきた 目", ...X("エンダマン"), personality: "tricky", specialType: "ranged", parts: [["r:homing", "SSS"], ["r:invisible", "SS"], ["r:split", "S"]], boostPoints: 55, prefer: ["tec", "spd", "sp"], ai: CH10_AI, arena: "room" },
+      { id: "10-5", no: 59, title: "やみの 番人", ...X("ウォーダン"), personality: "cautious", specialType: "melee", parts: [["m:slam", "SS"], ["m:shockwave", "SS"], ["m:grab", "SS"]], boostPoints: 50, hp: 10, prefer: ["hp", "def", "atk", "sta"], ai: CH10_AI, boss: true, arena: "cave" },
+      { id: "10-6", no: 60, title: "3つの ドクロ", ...X("ウィザ"), personality: "sniper", specialType: "ranged", parts: [["r:homing", "SSS"], ["r:blast", "SSS"], ["r:split", "SS"], ["r:fire", "SS"]], boostPoints: 56, hp: 20, prefer: ["sp", "hp", "def", "tec"], ai: { wait: [1, 2], defend: 1.35 }, boss: true, final: true, arena: "night" },
+    ],
+  },
 ];
+
+// 敵を 全体的に 強く（2026-10）: 章が 進むほど 強化ポイント・シールの レア度・反応の速さを 上乗せ。9章からは 最初から 強い 値で 書く
+const RANKS = ["F", "E", "D", "C", "B", "A", "S", "SS", "SSS"] as const;
+for (const c of CHAPTERS) {
+  if (c.no >= 9) continue;
+  for (const st of c.stages) {
+    st.boostPoints = Math.min(60, st.boostPoints + 2 + c.no * 2);
+    if (c.no === 1) st.hp = Math.max(st.hp ?? 0, -20);
+    if (c.no >= 2) {
+      st.parts = st.parts.map(([k, r]) => [k, RANKS[Math.min(RANKS.length - 1, RANKS.indexOf(r) + 1)]]);
+      st.ai = { wait: [Math.max(1, st.ai.wait[0] - 1), st.ai.wait[1]], defend: st.ai.defend + 0.1 };
+    }
+    if (st.boss) st.hp = (st.hp ?? 0) + 3 + c.no;
+  }
+}
 
 // これから足す章（メニューに「準備中」で出す）
 export const UPCOMING: string[] = [];
