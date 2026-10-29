@@ -1,0 +1,3 @@
+title: toon-cat-humanoid
+license: CC0 
+page: https://opengameart.org/content/toon-cat-humanoid
