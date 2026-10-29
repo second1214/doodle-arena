@@ -1,0 +1,78 @@
+# 新しいゲーム用: フリーの 猫の 3D モデルの 候補を 集めて cat-models ブランチに 置く（見くらべ用）。
+# 作業用の環境からは 素材サイトに つながらないため、GitHub の 自動処理で 取ってくる。
+# 集める先: poly.pizza（Quaternius ほか・CC0/CC-BY）、OpenGameArt（3D の 猫）、Kenney の 動物系パック。
+name: 猫の3D素材の候補を取る
+on:
+  workflow_dispatch:
+  push:
+    branches: [proto/character]
+    paths: [.github/workflows/cats.yml]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ダウンロード
+        run: |
+          set +e
+          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
+          get() { curl -sSL -A "$UA" --max-time 60 --max-filesize 30000000 "$@"; }
+          mkdir -p out
+          # --- poly.pizza: 「cat」「kitten」で 探して 上から 12こ ---
+          for q in cat kitten; do get "https://poly.pizza/search/$q" -o "pp-$q.html"; done
+          cat pp-*.html | grep -oE '/m/[A-Za-z0-9_-]+' | sort -u | head -12 > pp-ids.txt
+          echo "poly.pizza: $(wc -l < pp-ids.txt) 件"
+          while read -r m; do
+            id=${m#/m/}; d="out/polypizza-$id"; mkdir -p "$d"
+            get "https://poly.pizza$m" -o "$d/page.html"
+            title=$(grep -oE '<title>[^<]*' "$d/page.html" | head -1 | sed 's/<title>//')
+            lic=$(grep -oE 'CC0|CC-BY[^"<]{0,12}|Creative Commons[^"<]{0,40}|Public Domain' "$d/page.html" | head -1)
+            author=$(grep -oE '/u/[A-Za-z0-9_-]+' "$d/page.html" | head -1)
+            glb=$(grep -oE 'https://static\.poly\.pizza/[A-Za-z0-9_-]+\.glb' "$d/page.html" | head -1)
+            [ -z "$glb" ] && glb="https://static.poly.pizza/$id.glb"
+            get "$glb" -o "$d/model.glb"
+            printf 'title: %s\nlicense: %s\nauthor: https://poly.pizza%s\npage: https://poly.pizza%s\n' "$title" "$lic" "$author" "$m" > "$d/info.txt"
+            rm -f "$d/page.html"
+            [ -s "$d/model.glb" ] && head -c 4 "$d/model.glb" | grep -q glTF || rm -rf "$d"
+          done < pp-ids.txt
+          # --- OpenGameArt: 3D の 猫 ---
+          get "https://opengameart.org/art-search-advanced?keys=cat&field_art_type_tid%5B%5D=10" -o oga.html
+          { echo /content/simple-cat; grep -oE '/content/[a-z0-9-]*(cat|kitt)[a-z0-9-]*' oga.html; } | sort -u | head -8 > oga-ids.txt
+          echo "OpenGameArt: $(wc -l < oga-ids.txt) 件"
+          while read -r p; do
+            n=${p#/content/}; d="out/oga-$n"; mkdir -p "$d"
+            get "https://opengameart.org$p" -o page.html
+            lic=$(grep -oE 'CC0|CC-BY[ -][0-9.]+|CC-BY-SA[ -][0-9.]+|GPL[ 0-9.]*|OGA-BY[ 0-9.]*' page.html | sort -u | tr '\n' ' ')
+            printf 'title: %s\nlicense: %s\npage: https://opengameart.org%s\n' "$n" "$lic" "$p" > "$d/info.txt"
+            grep -oE 'https://opengameart\.org/sites/default/files/[^"]+\.(glb|gltf|zip|fbx|obj|blend|dae)' page.html | sort -u | head -4 | while read -r u; do
+              f=$(basename "$u"); get "$u" -o "$d/$f"
+              case "$f" in *.zip) (cd "$d" && unzip -q -o "$f" && rm -f "$f");; esac
+            done
+            find "$d" -type f ! -iname '*.glb' ! -iname '*.gltf' ! -iname '*.bin' ! -iname '*.png' ! -iname '*.jpg' ! -iname '*.fbx' ! -iname '*.obj' ! -iname '*.mtl' ! -iname '*.dae' ! -iname '*.txt' -delete
+            [ "$(find "$d" -type f ! -name info.txt | wc -l)" = 0 ] && rm -rf "$d"
+          done < oga-ids.txt
+          # --- Kenney: 動物の 3D パック（あれば） ---
+          for pack in cube-pets animal-pack-redux mini-characters; do
+            get "https://kenney.nl/assets/$pack" -o k.html || continue
+            u=$(grep -oE '(https?://kenney\.nl)?/[^"'"'"' ]+\.zip' k.html | head -1)
+            [ -z "$u" ] && continue
+            case "$u" in /*) u="https://kenney.nl$u";; esac
+            d="out/kenney-$pack"; mkdir -p "$d"; get "$u" -o k.zip && rm -rf kx && mkdir kx && unzip -q k.zip -d kx
+            find kx -iname '*.glb' | head -40 | while read -r f; do cp "$f" "$d/"; done
+            find kx -iname '*colormap*.png' -exec cp {} "$d/" \; 2>/dev/null
+            printf 'title: %s\nlicense: CC0 (Kenney)\npage: https://kenney.nl/assets/%s\n' "$pack" "$pack" > "$d/info.txt"
+            [ "$(find "$d" -iname '*.glb' | wc -l)" = 0 ] && rm -rf "$d"
+          done
+          find out -type d | sort; du -sh out
+      - name: cat-models ブランチに 置く
+        run: |
+          cd out
+          git init -q -b cat-models
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          printf '# 猫の 3D モデルの 候補（見くらべ用）\nライセンスは 各フォルダの info.txt。\n' > README.md
+          git add -A && git commit -q -m "猫の 3D モデルの 候補"
+          remote="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git push "$remote" --delete cat-models || true
+          git push "$remote" cat-models
