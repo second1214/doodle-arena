@@ -1,0 +1,49 @@
+このゲームで使っている部品のライセンス
+
+=== three.js（3D表示） https://threejs.org/ ===
+The MIT License
+
+Copyright © 2010-2025 three.js authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+=== M PLUS Rounded 1c（文字の形・Google Fonts から読み込み） ===
+SIL Open Font License 1.1  https://fonts.google.com/specimen/M+PLUS+Rounded+1c
+
+----------------------------------------------------------------
+効果音（public/sfx/*.mp3）: Kenney（https://www.kenney.nl/）の Impact Sounds・Interface Sounds・Digital Audio
+ライセンス: Creative Commons Zero（CC0 1.0）http://creativecommons.org/publicdomain/zero/1.0/
+（mp3・モノラルに 変換して 使用。詳しくは sfx/LICENSE-kenney.txt）
+
+----------------------------------------------------------------
+背景の飾り（public/models/*.glb）: Kenney（https://www.kenney.nl/）の Nature Kit・Furniture Kit・Pirate Kit・Graveyard Kit・Space Kit
+ライセンス: Creative Commons Zero（CC0 1.0）http://creativecommons.org/publicdomain/zero/1.0/
+（詳しくは models/LICENSE-kenney.txt）
+
+----------------------------------------------------------------
+アイコン（シール・ボタン・タブの 絵）: game-icons.net（https://game-icons.net/）
+ライセンス: Creative Commons Attribution 3.0（CC BY 3.0）https://creativecommons.org/licenses/by/3.0/
+（形だけを 使い、色と 白い ふちを つけて 表示）作者:
+- Delapouite (http://delapouite.com): floating-ghost, stars-stack, knocked-out-stars, split-arrows, bouncing-spring, boomerang, ice-cubes, bat, ice-skate, bulldozer, bow-arrow, fast-forward-button, house, cardboard-box, pencil, sparkles, push, trophy-cup, mailbox
+- Lorc (http://lorcblog.blogspot.com): falling-boulder, crossed-chains, bullets, fast-arrow, bee, burning-meteor, boxing-glove, tornado, sprint, hammer-drop, grab, foot-trip, wolf-trap, vortex, heart-drop, unlit-bomb, big-wave, spider-web, thunder-struck, raining, fluffy-cloud, droplets, punch-blast, eagle-emblem, whirlwind, fire-punch, magnet, return-arrow, spotted-mushroom, balloons, clover, cycle, piercing-sword, muscle-up, hourglass, open-book, globe, tree-branch, crossed-swords, feathered-wing, dodging, punch, eyeball, scroll-unfurled, on-target, sonic-boom, shadow-follower
+- Skoll: open-palm, fist
+- Caro Asercion: paper-bag-crumpled
+- Sbed (http://opengameart.org/content/95-game-icons): fire, shield
+- PriorBlue: battery-plus
+- Quoting: card-pickup
