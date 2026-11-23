@@ -15,6 +15,8 @@ export interface CharacterBuild {
   cfg: FighterConfig;
   features: ShapeFeatures;
   marks: Stroke[]; // 手足レイヤー（空なら自動検知）
+  size?: number; // 見た目の 大きさ（巨人モード。当たり判定は cfg 側で 合わせる）
+  sparkle?: string; // まわりに 光の つぶ（称号）: "gold" | "rainbow"
 }
 
 export function buildCharacter(name: string, strokes: Stroke[], special: EffectId[], params: DetectParams = DEFAULT_PARAMS, marks: Stroke[] = []): CharacterBuild {
