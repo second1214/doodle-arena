@@ -22,7 +22,7 @@ import { canStack, dropParts, INVENTORY_CAP, loadInventory, migrateToParts, plan
 import { autoTree, boostOf, BRANCHES, bridges, canTake, masteredBranches, nodeById, nodeId, randomTree, spentOf, talents, TREE_CAP, TREE_TOTAL, type ShapeFlags } from "./tree";
 import type { Personality } from "./sim/world";
 import { deleteCharacter, loadDraft, loadoutOf, loadRoster, normalize, saveCharacter, saveDraft, thumbnail, writeRoster, type CharacterData } from "./roster";
-import { applyStageResult, expToNext, exportCode, importCode, LEVEL_CAP, loadProfile, loadStory, requestPersist, resetTree, takeNode, totalPoints, type Reward } from "./progress";
+import { applyStageResult, expToNext, gainExp, exportCode, importCode, LEVEL_CAP, loadProfile, loadStory, requestPersist, resetTree, takeNode, totalPoints, type Reward } from "./progress";
 import { CPU_CHARS, CPU_GROUPS, cpuCharById, type CpuChar } from "./cpuChars";
 import { ARENA_LIST, arenaById } from "./sim/arena";
 import { initOnline } from "./online/screen";
@@ -30,6 +30,7 @@ import { api } from "./online/client";
 import { AttractHeader } from "./battle/attract";
 import { ALL_STAGES, CHAPTERS, chapterOf, crewOf, enemyParts, stageBoost, isUnlocked, UPCOMING, type Stage } from "./story";
 import { CHALLENGES, challengeOpen, foeStages, UNLOCK_STAGE, type Challenge } from "./challenge";
+import { equippedTitles, GIANT_MATCH_SECONDS, GIANT_SIZES, giantBoost, giantCrewBoost, giantOpen, giantUnlocked, loadGiant, makeGiant, recordGiant, saveGiant, titleBoost, titleFrom, titleLv, TITLE_MAX_LV, TITLES, titleSparkle } from "./giant";
 
 const STORAGE_KEY = "doodle-arena:proto1";
 // よく使う色（黒・白・灰・茶・はだ・赤・もも・だいだい・黄・黄緑・緑・水色・青・むらさき）。ほかの色は「🌈 すきな色」と「💧 スポイト」で
@@ -1502,16 +1503,20 @@ function applyData(build: ReturnType<typeof buildCharacter>, c: { personality: P
 const shapeFlags = (b: ReturnType<typeof buildCharacter>): ShapeFlags => ({ hasFeet: b.cfg.hasFeet, hasHands: b.cfg.hasHands, hits: b.cfg.traits?.hits ?? 1, reach: b.cfg.reach, hasWings: b.cfg.hasWings });
 const myBoost = (b: ReturnType<typeof buildCharacter>) => boostOf(loadProfile().nodes, shapeFlags(b));
 
-function buildPlayer(choice: string) {
+// titles: 巨人モードの 称号を つける（ストーリー・チャレンジ・巨人モード。オンラインには 持ちこまない）
+function buildPlayer(choice: string, titles = false) {
   const saved = choice.startsWith("saved:") ? loadRoster().find((c) => c.id === choice.slice(6)) : undefined;
+  const boost = (b: ReturnType<typeof buildCharacter>) => (titles ? sumBoost([myBoost(b), titleBoost()]) : myBoost(b));
+  let b: ReturnType<typeof buildCharacter>;
   if (saved) {
-    const b = buildCharacter(saved.name, saved.strokes, [], params, saved.marks);
-    applyData(b, saved, partsById(loadoutOf(saved, saved.specialType)), myBoost(b));
-    return b;
+    b = buildCharacter(saved.name, saved.strokes, [], params, saved.marks);
+    applyData(b, saved, partsById(loadoutOf(saved, saved.specialType)), boost(b));
+  } else {
+    const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
+    b = buildCharacter(editor.name || "あなた", mine, [], params, strokes.length ? marks : []);
+    applyData(b, editor, partsById(loadoutOf(editor, editor.specialType)), boost(b));
   }
-  const mine = strokes.length ? strokes : SAMPLES["棒人間"]();
-  const b = buildCharacter(editor.name || "あなた", mine, [], params, strokes.length ? marks : []);
-  applyData(b, editor, partsById(loadoutOf(editor, editor.specialType)), myBoost(b));
+  if (titles) b.sparkle = titleSparkle();
   return b;
 }
 
@@ -2095,6 +2100,17 @@ function renderStory() {
   cb.classList.toggle("lock", !chOpen);
   cb.addEventListener("click", () => { storyCh = CHAPTERS.length; renderStory(); });
   chips.appendChild(cb);
+  // 🗿 巨人モード（スキップガエル先生を 倒すと ひらく）
+  const gOpen = giantOpen(cleared);
+  const gb = document.createElement("button");
+  gb.type = "button";
+  gb.textContent = gOpen ? "🗿巨人" : "🔒🗿";
+  gb.setAttribute("aria-label", "巨人モード");
+  gb.classList.toggle("on", storyCh === CHAPTERS.length + 1);
+  gb.classList.toggle("lock", !gOpen);
+  gb.classList.add("giant-chip");
+  gb.addEventListener("click", () => { storyCh = CHAPTERS.length + 1; renderStory(); });
+  chips.appendChild(gb);
   for (const t of UPCOMING) {
     const b = document.createElement("button");
     b.type = "button";
@@ -2106,6 +2122,7 @@ function renderStory() {
   }
   chaptersEl.appendChild(chips);
   if (storyCh === CHAPTERS.length) { renderChallenges(cleared); return; }
+  if (storyCh === CHAPTERS.length + 1) { renderGiant(cleared); return; }
   for (const ch of [CHAPTERS[storyCh]]) {
     const sec = document.createElement("div");
     sec.className = "chapter";
@@ -2178,7 +2195,7 @@ function renderChallenges(cleared: Record<string, number>) {
 
 function startChallenge(c: Challenge) {
   sfx.unlock();
-  const player = buildPlayer(storyCharSel.value);
+  const player = buildPlayer(storyCharSel.value, true);
   const foes = foeStages(c).map((st) => {
     const b = buildCharacter(st.enemy, st.strokes(), [], DEFAULT_PARAMS, st.marks?.() ?? []);
     applyData(b, st, enemyParts(st), stageBoost(st, { hp: c.hpEach }));
@@ -2200,6 +2217,171 @@ function startChallenge(c: Challenge) {
   });
 }
 
+// --- 🗿 巨人モード ---
+let giantCh = -1;
+function renderGiant(cleared: Record<string, number>) {
+  const sec = document.createElement("div");
+  sec.className = "chapter giant";
+  const h = document.createElement("h2");
+  if (!giantOpen(cleared)) {
+    h.textContent = "🗿 巨人モード";
+    const p = document.createElement("p");
+    p.className = "note";
+    p.textContent = "第12章の ボス（スキップガエル先生）を 倒すと ひらく。ストーリーを もう一度、巨人に なった 敵と たたかう";
+    sec.append(h, p);
+    chaptersEl.appendChild(sec);
+    return;
+  }
+  const g = loadGiant();
+  if (giantCh < 0) {
+    const i = CHAPTERS.findIndex((ch) => ch.stages.some((st) => !g.cleared[st.id] && giantUnlocked(st, g)));
+    giantCh = i < 0 ? CHAPTERS.length - 1 : i;
+  }
+  const ch = CHAPTERS[giantCh];
+  h.textContent = `🗿 巨人モード　第${ch.no}章　${ch.title}`;
+  // 上の 段: 称号・大きさ
+  const bar = document.createElement("div");
+  bar.className = "giant-bar";
+  const owned = TITLES.filter((t) => titleLv(g, t.id) > 0).length;
+  const tb = document.createElement("button");
+  tb.type = "button";
+  tb.className = "primary inline";
+  tb.textContent = `🎖️ 称号 ${equippedTitles(g).length}/${owned}（ぜんぶで ${TITLES.length}）`;
+  tb.addEventListener("click", () => openTitles(() => renderStory()));
+  const sz = document.createElement("label");
+  sz.className = "giant-size";
+  sz.textContent = "巨人の 大きさ ";
+  const sel = document.createElement("select");
+  for (const n of GIANT_SIZES) sel.add(new Option(`${n}ばい`, String(n)));
+  sel.value = String(g.size);
+  sel.addEventListener("change", () => { const x = loadGiant(); x.size = Number(sel.value); saveGiant(x); });
+  sz.appendChild(sel);
+  bar.append(tb, sz);
+  // 章の 札
+  const chips = document.createElement("div");
+  chips.className = "chips";
+  CHAPTERS.forEach((c, i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    const done = c.stages.every((st) => g.cleared[st.id]);
+    const open = giantUnlocked(c.stages[0], g);
+    b.textContent = `${done ? "👑" : open ? "" : "🔒"}${c.no}`;
+    b.setAttribute("aria-label", `巨人モード 第${c.no}章`);
+    b.classList.toggle("on", i === giantCh);
+    b.classList.toggle("lock", !open);
+    b.addEventListener("click", () => { giantCh = i; renderStory(); });
+    chips.appendChild(b);
+  });
+  const grid = document.createElement("div");
+  grid.className = "stages";
+  ch.stages.forEach((st, k) => {
+    const b = document.createElement("button");
+    b.className = `giant-stage ${st.boss ? "boss" : ""}`;
+    b.disabled = !giantUnlocked(st, g);
+    if (!thumbs.has(st.id)) thumbs.set(st.id, thumbnail(st.strokes()));
+    const img = document.createElement("img");
+    img.src = thumbs.get(st.id)!;
+    img.alt = "";
+    const no = document.createElement("span");
+    no.className = "no";
+    const t = titleFrom(st.id);
+    no.textContent = `🗿${ch.no}-${k + 1}${st.boss ? ` ボス${t ? ` ${t.icon}` : ""}` : ""}`;
+    const nm = document.createElement("span");
+    nm.textContent = b.disabled ? "？？？" : st.enemy;
+    b.append(img, no, nm);
+    if (g.cleared[st.id]) {
+      const star = document.createElement("span");
+      star.className = "clear";
+      star.textContent = "★";
+      b.appendChild(star);
+    }
+    b.addEventListener("click", () => startGiantStage(st));
+    grid.appendChild(b);
+  });
+  const note = document.createElement("p");
+  note.className = "note";
+  note.textContent = "巨人は 体も 力も けたちがい。ボスを 倒すと 称号が もらえて、称号で どんどん 強く なれる（同じ ボスを また 倒すと 称号の Lv アップ）";
+  sec.append(h, bar, chips, grid, note);
+  chaptersEl.appendChild(sec);
+}
+
+// 称号の 一覧: つける・はずす（持っている だけ つけられる）
+function openTitles(after: () => void) {
+  openModal((box, close) => {
+    const draw = () => {
+      const g = loadGiant();
+      box.innerHTML = "";
+      const head = document.createElement("h2");
+      head.textContent = "🎖️ 称号";
+      const list = document.createElement("div");
+      list.className = "titles";
+      for (const t of TITLES) {
+        const lv = titleLv(g, t.id);
+        const row = document.createElement("button");
+        row.type = "button";
+        const on = lv > 0 && !g.off.includes(t.id);
+        row.className = `title-row ${lv ? (on ? "on" : "off") : "none"}`;
+        const from = ALL_STAGES.find((x) => x.id === t.from);
+        row.innerHTML = lv
+          ? `<span class="ti">${t.icon}</span><span class="tm"><b>${t.name} <small>Lv${lv}${lv >= TITLE_MAX_LV ? "（さいこう）" : ""}</small></b><small>${t.desc(lv)}</small>${lv < TITLE_MAX_LV ? `<small class="tn">つぎの Lv: ${t.desc(lv + 1)}</small>` : ""}</span><span class="tt">${on ? "つけている" : "はずしている"}</span>`
+          : `<span class="ti">❔</span><span class="tm"><b>？？？</b><small>巨人モードで ${from ? `第${chapterOf(from)}章の ボス（${from.enemy}）` : "ボス"}を 倒すと もらえる</small></span>`;
+        if (lv) row.addEventListener("click", () => {
+          const x = loadGiant();
+          x.off = x.off.includes(t.id) ? x.off.filter((id) => id !== t.id) : [...x.off, t.id];
+          saveGiant(x); draw();
+        });
+        list.appendChild(row);
+      }
+      const ok = document.createElement("button");
+      ok.className = "primary";
+      ok.textContent = "とじる";
+      ok.addEventListener("click", () => { close(); after(); });
+      const tip = document.createElement("p");
+      tip.className = "note";
+      tip.textContent = "称号は ストーリー・チャレンジ・巨人モードで 効く（オンラインでは 効かない）。タップで つける・はずす";
+      box.append(head, tip, list, ok);
+    };
+    draw();
+  });
+}
+
+function startGiantStage(stage: Stage) {
+  sfx.unlock();
+  const g = loadGiant();
+  const player = buildPlayer(storyCharSel.value, true);
+  const cpu = buildCharacter(stage.enemy, stage.strokes(), [], DEFAULT_PARAMS, stage.marks?.() ?? []);
+  applyData(cpu, stage, enemyParts(stage), giantBoost(stage));
+  makeGiant(cpu, g.size); // applyData の あと（性格を 上書きする）
+  cpu.cfg.name = `巨人 ${stage.enemy}`;
+  const more = crewOf(stage).map((st) => {
+    const b = buildCharacter(st.enemy, st.strokes(), [], DEFAULT_PARAMS, st.marks?.() ?? []);
+    applyData(b, st, enemyParts(st), giantCrewBoost(st, stage));
+    return makeGiant(b, Math.max(1.5, g.size * 0.6));
+  });
+  runBattle({
+    player, cpu, more,
+    arena: arenaById(stage.arena),
+    spectate: false,
+    seed: (Math.random() * 0xffffffff) >>> 0,
+    sfx,
+    cpuLevel: stage.ai,
+    moreLevel: stage.crewAi,
+    exitLabel: "巨人モードへ",
+    matchSeconds: GIANT_MATCH_SECONDS,
+    onResult: (winner) => {
+      const won = winner === 0;
+      const rec = recordGiant(stage, won);
+      // 経験値は ストーリーの つづき（73番め から）として 数える。はじめて 勝つと 2倍
+      const base = 40 + 12 * (stage.no + ALL_STAGES.length);
+      const exp = won ? (rec.firstClear ? base * 2 : base) : Math.round(base / 4);
+      const gx = gainExp(exp, rec.firstClear && stage.boss ? 1 : 0);
+      let html = rewardHtml({ exp, levelsUp: gx.levelsUp, points: gx.points, firstClear: false }, null, won ? dropParts(chapterOf(stage), !!stage.boss, Math.random, !!stage.final, stage.drops) : null);
+      if (rec.title) html = `<div class="title-get">${rec.title.icon} 称号「${rec.title.name}」${rec.lv && rec.lv > 1 ? ` Lv${rec.lv} に アップ！` : " を 手に入れた！"}<small>${rec.title.desc(rec.lv ?? 1)}</small></div>` + html;
+      return html;
+    },
+  });
+}
+
 function rewardHtml(r: Reward, stage: Stage | null, drop: DropResult | null): string {
   const p = loadProfile();
   let h = `<div class="exp">経験値 +${r.exp}</div>`;
@@ -2217,7 +2399,7 @@ function rewardHtml(r: Reward, stage: Stage | null, drop: DropResult | null): st
 
 function startStage(stage: Stage) {
   sfx.unlock();
-  const player = buildPlayer(storyCharSel.value);
+  const player = buildPlayer(storyCharSel.value, true);
   const cpu = buildCharacter(stage.enemy, stage.strokes(), [], DEFAULT_PARAMS, stage.marks?.() ?? []);
   applyData(cpu, stage, enemyParts(stage), stageBoost(stage));
   const more = crewOf(stage).map((st) => {

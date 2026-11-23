@@ -79,12 +79,14 @@ export interface FighterConfig {
   specialMod?: Partial<SpecialMod>; // 必殺パーツの数値（無ければ標準）
   hurt?: Hurt; // 描いた部分だけの当たり判定（無ければ体の円）
   personality?: Personality; // CPU が動かすときの性格
+  size?: number; // 体の 大きさの 倍率（巨人モード。当たり判定は 体の 円柱 ぜんぶ・高さも この 倍率）
 }
 
 export type Personality = "aggressive" | "cautious" | "sniper" | "tricky";
 
 const tr = (c: FighterConfig) => c.traits ?? DEFAULT_TRAITS;
 const rad = (c: FighterConfig) => BODY_RADIUS * tr(c).radius;
+const tall = (c: FighterConfig) => BODY_HEIGHT * (c.size ?? 1);
 export const bodyRadius = rad;
 
 const HURT_DEPTH = 0.35; // 膨らませた体の厚みの半分（目安）
@@ -93,8 +95,8 @@ const HURT_DEPTH = 0.35; // 膨らませた体の厚みの半分（目安）
 export function hurtHit(f: Fighter, wx: number, wh: number, wz: number, r: number): boolean {
   wh -= f.y; // 世界の高さ → そのキャラの 足元からの 高さ
   const H = f.cfg.hurt;
-  if (!H) return Math.hypot(wx - f.x, wz - f.z) <= r + rad(f.cfg) && wh <= BODY_HEIGHT + r && wh >= -r;
-  if (Math.abs(wz - f.z) > HURT_DEPTH + r) return false;
+  if (!H) return Math.hypot(wx - f.x, wz - f.z) <= r + rad(f.cfg) && wh <= tall(f.cfg) + r && wh >= -r;
+  if (Math.abs(wz - f.z) > (H.depth ?? HURT_DEPTH) + r) return false; // 巨人は 厚みも 大きい
   const facing = f.fx >= 0 ? 1 : -1; // 左を向くと絵は左右反転（見た目と同じ）
   const u = (wx - f.x) * facing;
   const gx = u / H.cs + H.ox, gy = H.gh - wh / H.cs;
@@ -219,6 +221,7 @@ export interface Projectile {
 
 export interface World {
   tick: number;
+  limit?: number; // 試合の 長さ（tick。無ければ MATCH_TICKS。巨人モードは 長い）
   rng: Rng;
   fighters: Fighter[]; // [0] は 自分。1対1 なら [自分, 相手]
   projectiles: Projectile[];
@@ -610,10 +613,12 @@ function stepFighter(w: World, i: number, rawInp: Input) {
       const hx = me.x + me.fx * tipD, hz = me.z + me.fz * tipD;
       const hv = me.cfg.hasHands ? (me.cfg.hurt?.handV ?? 1) : 0.9;
       const span = me.cfg.hasHands ? 0.45 : 0.7;
+      // 巨人は 腕が 長いので、近くの 相手にも 当たるよう 腕 ぜんぶを 調べる
+      const backs = (me.cfg.size ?? 1) > 1 ? Array.from({ length: Math.ceil((tipD - rad(me.cfg) * 0.3) / 0.25) + 1 }, (_, i) => i * 0.25) : [0, 0.25, 0.5];
       touch = false;
       for (const dv of [-span, -span / 2, 0, span / 2, span]) {
         // 届く先から手前までの線上を調べる（相手の体の手前側に触れれば当たり）
-        for (const back of [0, 0.25, 0.5]) {
+        for (const back of backs) {
           if (hurtHit(op, hx - me.fx * back, me.y + hv + dv, hz - me.fz * back, 0.18)) { touch = true; break; }
         }
         if (touch) break;
@@ -1126,7 +1131,7 @@ function hitCheck(w: World, p: Projectile, target: Fighter): boolean {
   if (s.ground && airborne(w, target)) return true; // じめん波は 飛んでいる相手に 当たらない
   const near = Math.hypot(target.x - p.x, target.z - p.z) <= s.size + rad(target.cfg) + 0.6 && hurtHit(target, p.x, p.h, p.z, s.size);
   const rel = p.h - target.y;
-  if (near && target.dodgeT === 0 && p.age > PROJ_ARM && rel - s.size <= BODY_HEIGHT && rel + s.size >= 0 && p.rehit === 0) {
+  if (near && target.dodgeT === 0 && p.age > PROJ_ARM && rel - s.size <= tall(target.cfg) && rel + s.size >= 0 && p.rehit === 0) {
     // 吹き飛ぶ向き: 落下弾は着弾点から外向き、それ以外は弾の進行方向
     let kdx = p.dx, kdz = p.dz;
     if (s.meteor || p.drop) {
@@ -1179,7 +1184,7 @@ export function step(w: World, inputs: Input[]) {
     if (n > 2 && (a.hp <= 0 || b.hp <= 0)) continue;
     const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz);
     const RR = rad(a.cfg) + rad(b.cfg);
-    if (d > 0 && d < RR && Math.abs(a.y - b.y) < BODY_HEIGHT * 0.8) {
+    if (d > 0 && d < RR && Math.abs(a.y - b.y) < Math.max(tall(a.cfg), tall(b.cfg)) * 0.8) {
       const push = (RR - d) / 2;
       a.x -= (dx / d) * push; a.z -= (dz / d) * push;
       b.x += (dx / d) * push; b.z += (dz / d) * push;
@@ -1197,7 +1202,7 @@ export function step(w: World, inputs: Input[]) {
   const alive = (t: number) => w.fighters.some((f) => f.team === t && f.hp > 0);
   const [a0, a1] = [alive(0), alive(1)];
   if (!a0 || !a1) w.winner = !a0 && !a1 ? 2 : !a0 ? 1 : 0;
-  else if (w.tick >= MATCH_TICKS) { const [ha, hb] = [teamHp(0), teamHp(1)]; w.winner = ha === hb ? 2 : ha > hb ? 0 : 1; }
+  else if (w.tick >= (w.limit ?? MATCH_TICKS)) { const [ha, hb] = [teamHp(0), teamHp(1)]; w.winner = ha === hb ? 2 : ha > hb ? 0 : 1; }
 }
 
 // 横の移動: 歩いて 入れない 段差（かべ）の手前で 止まる。片方の向きだけ 通れるなら そちらへ すべる

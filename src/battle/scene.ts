@@ -54,6 +54,9 @@ export class FighterVisual {
   statusCanvas = document.createElement("canvas");
   statusTex: THREE.CanvasTexture;
   statusKey = "";
+  size = 1; // 巨人モードの 大きさ（root ごと 大きくする）
+  sparkles: THREE.Sprite[] = [];
+  sparkleKind = "";
 
   setGhost(on: boolean) {
     for (const m of this.materials) { m.transparent = on; m.opacity = on ? 0.45 : 1; m.depthWrite = !on; }
@@ -191,6 +194,21 @@ export class FighterVisual {
     this.spin.add(this.flip);
     this.body.add(this.spin, this.guard);
     this.root.add(this.shadow, this.rootRing, this.body);
+    // 巨人モード: まるごと 大きく
+    this.size = build.size ?? 1;
+    this.root.scale.setScalar(this.size);
+    // 称号の キラキラ: まわりを まわる 光の つぶ
+    if (build.sparkle) {
+      this.sparkleKind = build.sparkle;
+      for (let i = 0; i < 12; i++) {
+        const m = new THREE.SpriteMaterial({ map: tex.glow, color: 0xffe066, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+        const s = new THREE.Sprite(m);
+        s.scale.setScalar(0.22);
+        this.sparkles.push(s);
+        this.root.add(s);
+        disposables.push(m);
+      }
+    }
   }
 
   meleeReach = 0; // 近接必殺の届く中心間距離（相手の体の分を含む）
@@ -279,6 +297,18 @@ export class FighterVisual {
       this.guard.rotation.z += dt * 1.5;
       (this.guard.material as THREE.MeshBasicMaterial).opacity = 0.25 + Math.sin(t * 10) * 0.08;
     }
+    // キラキラ（称号）
+    this.sparkles.forEach((s, i) => {
+      const a = t * 1.6 + (i / this.sparkles.length) * Math.PI * 2;
+      const r = 0.75 + Math.sin(t * 2 + i) * 0.12;
+      s.position.set(Math.cos(a) * r, 0.3 + ((i * 0.37 + t * 0.5) % 1) * 1.7, Math.sin(a) * r * 0.5);
+      const tw = 0.5 + 0.5 * Math.sin(t * 9 + i * 1.7);
+      s.scale.setScalar(0.12 + 0.16 * tw);
+      const m = s.material as THREE.SpriteMaterial;
+      if (this.sparkleKind === "rainbow") m.color.setHSL(((t * 0.3 + i / this.sparkles.length) % 1), 0.9, 0.65);
+      m.opacity = 0.45 + 0.55 * tw;
+      s.visible = f.hp > 0;
+    });
     this.aura.visible = f.charge >= f.st.chargeNeed && f.hp > 0;
     if (this.aura.visible) {
       const k = 1 + Math.sin(t * 9) * 0.12;
@@ -302,7 +332,7 @@ export class FighterVisual {
     const spinning = ms.phase === "active" && sp.spinTicks > 0;
     this.spin.rotation.y = spinning ? ms.spin : 0;
     this.rangeRing.visible = spinning && this.meleeReach > 0;
-    if (this.rangeRing.visible) this.rangeRing.scale.setScalar(this.meleeReach - BODY_RADIUS);
+    if (this.rangeRing.visible) this.rangeRing.scale.setScalar((this.meleeReach - BODY_RADIUS) / this.size); // root ごと 大きく しているので 戻す
     // 地面たたき: 構えで跳ぶ
     if (sp.slam && ms.phase === "windup") this.body.position.y = Math.sin(Math.min(1, ms.t / sp.windup) * Math.PI) * 1.2;
     // 紙くしゃくしゃ: 縮んで玉になり転がる

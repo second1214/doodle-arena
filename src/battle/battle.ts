@@ -24,6 +24,7 @@ export interface BattleOptions {
   arena?: Arena; // ステージ（地形と背景。無ければ 平らな ひろば）
   more?: CharacterBuild[]; // 相手の なかま（1対多。同じ CPU の強さで 動く）
   moreLevel?: AiLevel; // なかまだけ 別の 強さに する時（無ければ cpuLevel）
+  matchSeconds?: number; // 試合の 長さ（秒。無ければ ふつうの 長さ。巨人モードは 長い）
 }
 
 const pips = (i: number) => `<div class="b-charge" data-ch="${i}"></div>`; // 中身は必要な命中数ぶん（キャラごとに違う）
@@ -72,7 +73,7 @@ export function startBattle(opts: BattleOptions) {
   const q = <T extends HTMLElement>(s: string) => el.querySelector(s) as T;
 
   const more = opts.more ?? [];
-  const newWorld = () => createWorld(opts.player.cfg, opts.cpu.cfg, opts.seed, opts.arena, more.map((b) => b.cfg));
+  const newWorld = () => { const w = createWorld(opts.player.cfg, opts.cpu.cfg, opts.seed, opts.arena, more.map((b) => b.cfg)); if (opts.matchSeconds) w.limit = opts.matchSeconds * TICK_HZ; return w; };
   const newAis = () => [createAi(), createAi(opts.cpuLevel), ...more.map(() => createAi(opts.moreLevel ?? opts.cpuLevel))];
   let world: World = newWorld();
   let ais = newAis();
@@ -221,7 +222,7 @@ export function startBattle(opts: BattleOptions) {
       chEls[i].querySelectorAll("i").forEach((p, k) => { p.classList.toggle("on", k + 1 <= f.charge); p.classList.toggle("half", k < f.charge && k + 1 > f.charge); });
       chEls[i].classList.toggle("full", f.charge >= f.st.chargeNeed);
     });
-    timeEl.textContent = String(Math.ceil((MATCH_TICKS - world.tick) / TICK_HZ));
+    timeEl.textContent = String(Math.ceil(((world.limit ?? MATCH_TICKS) - world.tick) / TICK_HZ));
     const me = world.fighters[0];
     const need = me.st.chargeNeed;
     const ready = me.charge >= need;

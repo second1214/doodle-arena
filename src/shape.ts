@@ -189,6 +189,7 @@ export interface Hurt {
   ox: number; // 重心の位置（マス）
   dist: Float32Array; // 各マスから一番近い描いた部分までの距離（マス）
   handV: number; // 一番長い手の付け根の高さ（通常攻撃が当たる高さの目安）
+  depth?: number; // 体の 厚みの 半分（無ければ 0.35。巨人は 大きい）
 }
 
 const HURT_RES = 128;
