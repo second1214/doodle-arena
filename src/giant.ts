@@ -49,15 +49,15 @@ export function giantUnlocked(st: Stage, g: GiantSave): boolean {
 
 /** 巨人の 強さ: ステージの 強さに 上のせ。i = ストーリーの 通し番号（0〜） */
 export function giantExtra(i: number): Partial<Boost> {
+  // 2026-11-24 ユーザー指示「強すぎる。棒人間すら 倒せない」→ 攻めを 弱め、体力の のびを ゆるく
   return {
-    hp: 2000 + 90 * i, // 1章 2000 → 12章 8400 ほど
-    taken: Math.min(0.5, 0.1 + 0.005 * i), // 受ける ダメージ −10% → −45%
-    dealt: 0.8 + 0.03 * i, // 与える ダメージ ×1.8 → ×4
-    special: 0.5,
-    speed: 0.15,
+    hp: 2000 + 50 * i, // 1章 2000（必殺 3回で ぎりぎり 倒れない）→ 12章 5500 ほど
+    taken: Math.min(0.4, 0.05 + 0.004 * i), // 受ける ダメージ −5% → −33%
+    dealt: 0.015 * i, // 与える ダメージ ×1.0 → ×2.1（体が 大きい ぶん 当たりやすいので 控えめ）
+    speed: -0.1, // 大きくて 少し のろい（よけやすい）
     stamina: 150,
     regen: 0.5,
-    knock: -0.85, // ほとんど 吹き飛ばない
+    knock: -0.7, // あまり 吹き飛ばない
   };
 }
 export function giantBoost(st: Stage): Partial<Boost> {
@@ -75,7 +75,7 @@ export function makeGiant(b: CharacterBuild, k: number): CharacterBuild {
   b.size = (b.size ?? 1) * k;
   const t = b.cfg.traits;
   if (t) b.cfg.traits = { ...t, radius: t.radius * k };
-  b.cfg.reach *= k;
+  b.cfg.reach *= 1 + (k - 1) * 0.5; // 手の 届く 距離は 大きさの 半分ほど（4倍なら 2.5倍。遠くから 当たりすぎない）
   b.cfg.hurt = undefined;
   b.cfg.size = k;
   // 巨人は 逃げずに 向かってくる（はなれて 撃つ 性格だと 広場の はしで 止まって しまう）
