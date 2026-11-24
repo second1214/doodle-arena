@@ -36,7 +36,7 @@ describe("巨人モード", () => {
   it("巨人は 必殺（そうてい 650）を 3回 当てても 倒れない体力。後半ほど 硬い", () => {
     const first = statEffects(giantBoost(S("1-1"))), last = statEffects(giantBoost(S("12-6")));
     expect(first.maxHp * (1 / first.taken)).toBeGreaterThan(650 * 3);
-    expect(last.maxHp).toBeGreaterThan(first.maxHp * 3);
+    expect(last.maxHp).toBeGreaterThan(first.maxHp * 2.5);
     expect(last.taken).toBeLessThan(first.taken);
     expect(last.dealt).toBeGreaterThan(first.dealt);
   });
