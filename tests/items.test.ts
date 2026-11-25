@@ -134,3 +134,26 @@ describe("持ち物", () => {
     expect(loadInventory().parts.length).toBe(3); // l0・のこり1・🔒の l6
   });
 });
+
+describe("シールの あまり（2026-11-25）", () => {
+  it("いちばん良い 1まいへ ★5まで かさねる 分は のこし、それより 多い 分だけ あまり。はっている・🔒は 入れない", async () => {
+    const { surplusParts } = await import("../src/inventory");
+    const { makeSticker } = await import("../src/items");
+    let s = 3; const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    const mk = (star: number, id: string) => ({ ...makeSticker("r:fire", 2, star, rnd, id) });
+    // ★5 が いる → ほかは ぜんぶ あまり（🔒と はっている のは のこる）
+    const a = [mk(5, "best"), mk(1, "x1"), mk(2, "x2"), { ...mk(1, "lock"), locked: true }];
+    expect(surplusParts(a, new Set()).map((p) => p.id).sort()).toEqual(["x1", "x2"]);
+    // はっている のが 弱くても、はっていない ★5 は すてない
+    const c = [mk(1, "eq"), mk(5, "strong"), ...[1, 2, 3, 4, 5].map((i) => mk(1, `w${i}`))];
+    const sc = surplusParts(c, new Set(["eq"])).map((p) => p.id);
+    expect(sc).not.toContain("strong");
+    expect(sc).not.toContain("eq");
+    expect(sc).toHaveLength(1);
+    // ★3 → ★5 まで あと 2まい いる。のこりが あまり
+    const b = [mk(3, "base"), mk(1, "m1"), mk(1, "m2"), mk(1, "m3")];
+    expect(surplusParts(b, new Set())).toHaveLength(1);
+    // 1まい だけ なら あまり なし
+    expect(surplusParts([mk(1, "solo")], new Set())).toHaveLength(0);
+  });
+});
