@@ -121,6 +121,29 @@ export function planStacks(parts: Part[], equipped: Set<string>): StackPlan[] {
   }
   return out;
 }
+// あまり: しゅるいごとに いちばん良い 1まい（はっている なら それ）へ かさねきった あとも 残る シール。
+// はっている・🔒・いちばん良い 1まいは 入れない（2026-11-25 ユーザー指示: スマホで シールの 管理が できない）
+export function surplusParts(parts: Part[], equipped: Set<string>): Part[] {
+  const out: Part[] = [];
+  for (const k of new Set(parts.map((p) => p.kind))) {
+    const list = parts.filter((p) => p.kind === k);
+    if (list.length < 2) continue;
+    const base = [...list].sort((a, b) => Number(equipped.has(b.id)) - Number(equipped.has(a.id)) || partScore(b) - partScore(a))[0];
+    const free = list.filter((p) => p.id !== base.id && canBeMaterial(p, equipped)).sort((a, b) => partScore(a) - partScore(b));
+    // はっていない 中で いちばん良い 1まいも のこす（はっている のが 弱い 時に 強い シールを すてない）
+    if (equipped.has(base.id) && free.length) free.pop();
+    out.push(...free.slice(Math.max(0, MAX_STAR - base.star))); // かさねる 材料に つかう 分は のこす
+  }
+  return out;
+}
+// すてる（はっている・🔒は すてない）。すてた 数
+export function discardParts(ids: string[], equipped: Set<string>): number {
+  const inv = loadInventory();
+  const del = new Set(inv.parts.filter((p) => ids.includes(p.id) && canBeMaterial(p, equipped)).map((p) => p.id));
+  inv.parts = inv.parts.filter((p) => !del.has(p.id));
+  saveInventory(inv);
+  return del.size;
+}
 export function stackAll(equipped: Set<string>): Part[] {
   const inv = loadInventory();
   const made: Part[] = [];

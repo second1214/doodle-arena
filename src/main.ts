@@ -18,7 +18,7 @@ import { ALL_KINDS, buildSpecial, equipCosts, extraText, fitsType, hashStr, kind
 import { pathOf, type EffectId, type Slot } from "./sim/special";
 import { TestFire } from "./testfire";
 import { normalizeMelee, type MeleeEffectId } from "./sim/melee";
-import { canStack, dropParts, INVENTORY_CAP, loadInventory, migrateToParts, planStacks, stackAll, stackInto, toggleLock, type DropResult } from "./inventory";
+import { canStack, dropParts, INVENTORY_CAP, loadInventory, migrateToParts, planStacks, surplusParts, discardParts, stackAll, stackInto, toggleLock, type DropResult } from "./inventory";
 import { autoTree, boostOf, BRANCHES, bridges, canTake, masteredBranches, nodeById, nodeId, randomTree, spentOf, talents, TREE_CAP, TREE_TOTAL, type ShapeFlags } from "./tree";
 import type { Personality } from "./sim/world";
 import { deleteCharacter, loadDraft, loadoutOf, loadRoster, normalize, saveCharacter, saveDraft, thumbnail, writeRoster, type CharacterData } from "./roster";
@@ -1947,10 +1947,17 @@ function renderParts() {
   document.getElementById("invCount")!.textContent = String(inv.parts.length);
   document.getElementById("invCap")!.textContent = String(INVENTORY_CAP);
   const plans = planStacks(inv.parts, equippedIds());
-  // かさねられる 時だけ 出す: 重なった シールの 絵 ＋「まとめて かさねる」
+  // いつも 出す（かさねられない 時は うすく して わけを 書く）: 重なった シールの 絵 ＋「まとめて かさねる」
   const bulk = document.getElementById("bulkCombine") as HTMLButtonElement;
-  bulk.hidden = !plans.length;
-  bulk.innerHTML = `<span class="mini"></span><span>🧩 まとめて かさねる</span>`;
+  bulk.disabled = !plans.length;
+  bulk.innerHTML = `<span class="mini"></span><span>🧩 まとめて かさねる${plans.length ? "" : "<small>かさねられる シールは ないよ</small>"}</span>`;
+  // あまりを すてる（★5まで かさねきった 後に のこる 同じ しゅるい）
+  const extra = surplusParts(inv.parts, equippedIds());
+  const dis = document.getElementById("bulkDiscard") as HTMLButtonElement;
+  dis.disabled = !extra.length;
+  dis.innerHTML = `🗑️ あまり ${extra.length}<small>すてる</small>`;
+  const foot = document.querySelector(".albumfoot")!;
+  foot.classList.toggle("full", inv.parts.length >= INVENTORY_CAP * 0.9);
   const mini = bulk.querySelector(".mini")!;
   for (const pl of plans.slice(0, 4)) { const bp = inv.parts.find((p) => p.id === pl.baseId); if (bp) { const st = sticker(bp), sp = document.createElement("span"); sp.className = st.className; sp.style.cssText = st.style.cssText; sp.innerHTML = st.innerHTML; mini.appendChild(sp); } }
   const listEl = document.getElementById("partList")!;
@@ -2025,11 +2032,25 @@ function openSheet(kind: PartKind) {
       lk.textContent = cur.locked ? "🔒" : "🔓";
       lk.setAttribute("aria-label", cur.locked ? "鍵を はずす" : "鍵を かける（かさねる 材料に しない）");
       lk.addEventListener("click", () => { toggleLock(cur.id); focus = cur.id; draw(); });
+      // すてる（はっている・🔒は すてられない）
+      const del = document.createElement("button");
+      del.textContent = "🗑️";
+      del.className = "danger";
+      const busy = eq.has(cur.id) || !!cur.locked;
+      del.disabled = busy;
+      del.setAttribute("aria-label", busy ? "はっている・🔒の シールは すてられない" : "この シールを すてる");
+      del.addEventListener("click", () => {
+        if (!confirm(`この シール（${kindInfo(cur.kind).name} ${starText(cur)}）を すてる？ もとに もどせないよ`)) return;
+        discardParts([cur.id], equippedIds());
+        focus = null;
+        toast("🗑️ すてたよ");
+        draw();
+      });
       const ok = document.createElement("button");
       ok.textContent = "✖";
       ok.setAttribute("aria-label", "とじる");
       ok.addEventListener("click", close);
-      row.append(st, lk, ok);
+      row.append(st, lk, del, ok);
       sheet.append(big, name, desc, who, row);
       // 同じ しゅるいの ほかの シール（タップで 見る）
       if (list.length > 1) {
@@ -2047,6 +2068,40 @@ function openSheet(kind: PartKind) {
     draw();
   });
 }
+// あまりを すてる: 何を すてるか 見せて から（はっている・🔒・いちばん良い 1まいは のこす）
+document.getElementById("bulkDiscard")!.addEventListener("click", () => {
+  const extra = surplusParts(loadInventory().parts, equippedIds());
+  if (!extra.length) return;
+  openModal((box, close) => {
+    const h = document.createElement("h2");
+    h.textContent = `🗑️ あまり ${extra.length}まいを すてる？`;
+    const note = document.createElement("p");
+    note.className = "note";
+    note.textContent = "同じ しゅるいの いちばん良い シールは ★5まで かさねても あまる ぶん。はっている・🔒の シールは すてないよ";
+    // しゅるいごとに まとめて 見せる（アイコン ×まい数）
+    const grid = document.createElement("div");
+    grid.className = "discard-list";
+    const byKind = new Map<PartKind, number>();
+    for (const p of extra) byKind.set(p.kind, (byKind.get(p.kind) ?? 0) + 1);
+    for (const [k, n] of [...byKind].sort((a, b) => b[1] - a[1])) {
+      const c = document.createElement("span");
+      c.textContent = `${kindIcon(k)} ${kindInfo(k).name} ×${n}`;
+      grid.appendChild(c);
+    }
+    const row = document.createElement("div");
+    row.className = "row";
+    const yes = document.createElement("button");
+    yes.className = "primary inline";
+    yes.textContent = `🗑️ ${extra.length}まい すてる`;
+    yes.addEventListener("click", () => { const n = discardParts(extra.map((p) => p.id), equippedIds()); toast(`🗑️ ${n}まい すてたよ`); close(); });
+    const no = document.createElement("button");
+    no.textContent = "やめる";
+    no.addEventListener("click", close);
+    row.append(yes, no);
+    box.append(h, note, row, grid);
+  });
+});
+
 // まとめて かさねる: しゅるいごとに いちばん良い シールへ（はっている・🔒は のせない）
 document.getElementById("bulkCombine")!.addEventListener("click", () => {
   const made = stackAll(equippedIds());
