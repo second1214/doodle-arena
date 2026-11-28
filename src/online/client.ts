@@ -91,6 +91,7 @@ export function makeSnapshot(build: CharacterBuild, name: string, strokes: Strok
     specialMod: { ...(c.specialMod ?? {}) } as Record<string, number>,
     boost: { ...(c.boost ?? {}) } as Record<string, number>,
     growth,
+    ...(build.sparkle === "gold" || build.sparkle === "rainbow" ? { sparkle: build.sparkle } : {}),
     limbs: { reach: c.reach, hasHands: c.hasHands, hasFeet: c.hasFeet, hasWings: !!c.hasWings, traits: { ...(c.traits ?? DEFAULT_TRAITS) } as unknown as Record<string, number> },
   };
 }
@@ -113,6 +114,7 @@ export function buildFromSnapshot(s: Snapshot): CharacterBuild {
   cfg.melee = s.melee as MeleeEffectId[];
   cfg.specialMod = s.specialMod;
   cfg.boost = s.boost;
+  if (s.sparkle === "gold" || s.sparkle === "rainbow") b.sparkle = s.sparkle;
   return b;
 }
 

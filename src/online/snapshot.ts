@@ -16,6 +16,7 @@ export interface Snapshot {
   specialMod: Record<string, number>; // 予算内に絞った後の必殺の数値
   boost: Record<string, number>; // スキルツリーの合計＋発動ポイントの増減
   growth: number; // もらったスキルポイントの合計（部屋の決定に使う）
+  sparkle?: "gold" | "rainbow"; // 称号の キラキラ（見た目だけ）
   limbs?: { reach: number; hasHands: boolean; hasFeet: boolean; hasWings?: boolean; traits: Record<string, number> }; // 予備: 公開した時の手足の結果
 }
 

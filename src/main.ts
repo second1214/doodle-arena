@@ -1503,7 +1503,7 @@ function applyData(build: ReturnType<typeof buildCharacter>, c: { personality: P
 const shapeFlags = (b: ReturnType<typeof buildCharacter>): ShapeFlags => ({ hasFeet: b.cfg.hasFeet, hasHands: b.cfg.hasHands, hits: b.cfg.traits?.hits ?? 1, reach: b.cfg.reach, hasWings: b.cfg.hasWings });
 const myBoost = (b: ReturnType<typeof buildCharacter>) => boostOf(loadProfile().nodes, shapeFlags(b));
 
-// titles: 巨人モードの 称号を つける（ストーリー・チャレンジ・巨人モード。オンラインには 持ちこまない）
+// titles: 巨人モードの 称号を つける（ストーリー・チャレンジ・巨人モード・オンライン・じゆうバトル。ためしうちの そうていは 称号なし）
 function buildPlayer(choice: string, titles = false) {
   const saved = choice.startsWith("saved:") ? loadRoster().find((c) => c.id === choice.slice(6)) : undefined;
   const boost = (b: ReturnType<typeof buildCharacter>) => (titles ? sumBoost([myBoost(b), titleBoost()]) : myBoost(b));
@@ -1523,7 +1523,7 @@ function buildPlayer(choice: string, titles = false) {
 const sfx = new Sfx();
 document.getElementById("startBattle")!.addEventListener("click", () => {
   sfx.unlock(); // 効果音はボタン操作の中でしか有効にできない
-  const player = buildPlayer("");
+  const player = buildPlayer("", true);
 
   let v = cpuPick;
   if (!v) { const pool = CPU_CHARS.filter(cpuUnlocked); v = pool[Math.floor(Math.random() * pool.length)].id; }
@@ -2393,7 +2393,7 @@ function openTitles(after: () => void) {
       ok.addEventListener("click", () => { close(); after(); });
       const tip = document.createElement("p");
       tip.className = "note";
-      tip.textContent = "称号は ストーリー・チャレンジ・巨人モードで 効く（オンラインでは 効かない）。タップで つける・はずす";
+      tip.textContent = "称号は ストーリー・チャレンジ・巨人モード・オンライン・じゆうバトルで 効く。タップで つける・はずす";
       box.append(head, tip, list, ok);
     };
     draw();
@@ -2490,7 +2490,7 @@ function playerChoices() {
 }
 const onlineScreen = initOnline(onlineEl, {
   choices: playerChoices,
-  buildPlayer,
+  buildPlayer: (choice: string) => buildPlayer(choice, true), // 称号も オンラインで 効く（2026-11-28 ユーザー指示）
   strokesOf: (choice) => {
     const saved = choice.startsWith("saved:") ? loadRoster().find((c) => c.id === choice.slice(6)) : undefined;
     if (saved) return saved.strokes.length ? { name: saved.name, strokes: saved.strokes } : null;
