@@ -54,6 +54,16 @@ describe("オンラインのサーバー", () => {
     expect(g.body.char.thumb.length).toBe(2);
   });
 
+  it("称号つきの 強さ（体力 +数千・攻撃力 ×2）と キラキラも 公開できる（2026-11-28）", async () => {
+    const r = await call("POST", "/chars", { owner: OWNER, snap: { ...snap("しょうごう", 40), boost: { hp: 3150, dealt: 2, special: 2 }, sparkle: "gold" } });
+    expect(r.status).toBe(200);
+    const g = await call("GET", `/chars/${r.body.id}`);
+    expect(g.body.char.snap.boost).toEqual({ hp: 3150, dealt: 2, special: 2 });
+    expect(g.body.char.snap.sparkle).toBe("gold");
+    const bad = await call("POST", "/chars", { owner: OWNER + "x", snap: { ...snap("へんな", 5), sparkle: "<script>" } });
+    expect((await call("GET", `/chars/${bad.body.id}`)).body.char.snap.sparkle).toBeUndefined();
+  });
+
   it("手足レイヤー（手ペン・足ペン）も一緒に公開でき、壊れた塗りは弾く", async () => {
     const marks = [{ color: "foot", width: 30, points: [150, 300, 150, 340] }, { color: "erase", width: 39, points: [10, 10] }];
     const r = await call("POST", "/chars", { owner: OWNER, snap: { ...snap(), marks } });

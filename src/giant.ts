@@ -2,7 +2,7 @@
 // スキップガエル先生（12-6）を 倒すと ひらく。ストーリーを はじめから なぞるが、敵は 大きく（ふつう 4倍・変えられる）・すべての 能力が 大きく 上がる。
 // 体力は「必殺（そうてい 650 ほど）を 3回 当てても 倒れない」くらいから。後半ほど 硬く・強くなるので 称号の 強化 ありき。
 // ボスを 巨人モードで 倒すと 称号。称号は 持っている だけ つけられ、同じ 称号を また もらうと Lv が 上がって 強くなる。
-// クリアの あとの お遊びなので 称号は 今までの バランスを こわして よい（オンラインには 持ちこまない）。
+// クリアの あとの お遊びなので 称号は 今までの バランスを こわして よい。オンラインにも 持ちこむ（2026-11-28 ユーザー指示）。
 import { ALL_STAGES, stageBoost, type Stage } from "./story";
 import { sumBoost, type Boost } from "./sim/stats";
 import type { CharacterBuild } from "./battle/character";
@@ -116,7 +116,7 @@ export const titleFrom = (stageId: string) => TITLES.find((t) => t.from === stag
 export const titleLv = (g: GiantSave, id: string) => Math.min(TITLE_MAX_LV, g.titles[id] ?? 0);
 export const equippedTitles = (g: GiantSave) => TITLES.filter((t) => titleLv(g, t.id) > 0 && !g.off.includes(t.id));
 
-/** つけている 称号の 強化の 合計（ストーリー・チャレンジ・巨人モードで 効く。オンラインには 持ちこまない） */
+/** つけている 称号の 強化の 合計（ストーリー・チャレンジ・巨人モード・オンライン・じゆうバトルで 効く） */
 export function titleBoost(g: GiantSave = loadGiant()): Partial<Boost> {
   return sumBoost(equippedTitles(g).map((t) => t.boost(titleLv(g, t.id))));
 }

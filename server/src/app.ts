@@ -110,8 +110,9 @@ export function cleanSnapshot(raw: unknown): { ok: true; snap: Snapshot } | { ok
     special: ids(r.special, RANGED),
     melee: ids(r.melee, MELEE),
     specialMod: nums(r.specialMod, MOD_KEYS, -50, 50),
-    boost: nums(r.boost, BOOST_KEYS, -500, 500),
+    boost: nums(r.boost, BOOST_KEYS, -500, 20000), // 称号（体力 +数千・攻撃力 ×2 など）が のるので 上は 大きく
     growth: finite(r.growth) ? clamp(Math.round(r.growth), 0, 999) : 0,
+    ...(r.sparkle === "gold" || r.sparkle === "rainbow" ? { sparkle: r.sparkle } : {}),
     limbs: limbs ? {
       reach: finite(limbs.reach) ? clamp(limbs.reach, 0, 10) : 0.5,
       hasHands: limbs.hasHands === true,
